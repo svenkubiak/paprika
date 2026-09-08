@@ -56,7 +56,10 @@ jobs:
             eclipse-temurin:25-jdk-noble \
             bash -c "
               apt-get update -q &&
-              apt-get install -y -q fakeroot binutils maven &&
+              apt-get install -y -q fakeroot binutils wget &&
+              wget -q https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz -O /tmp/maven.tar.gz &&
+              tar -xzf /tmp/maven.tar.gz -C /opt &&
+              export PATH=/opt/apache-maven-3.9.16/bin:\$PATH &&
               mvn package -P package-deb-arm64 -DskipTests
             "
 
