@@ -145,6 +145,10 @@ public class Bootstrap implements MangooBootstrap {
                 On.post().to("/api/realtime/subscribe").respondeWith("subscribe")
         );
 
+        Bind.controller(HealthController.class).withRoutes(
+                On.get().to("/health").respondeWith("health")
+        );
+
         Bind.pathResource().to("/assets/");
         Bind.fileResource().to("/robots.txt");
     }
