@@ -39,7 +39,7 @@ services:
         condition: service_healthy
 
   mongodb:
-    image: mongodb/mongodb-community-server:8.0
+    image: mongodb/mongodb-community-server:8.3-ubi9-slim
     container_name: paprika-mongodb
     restart: unless-stopped
     environment:
