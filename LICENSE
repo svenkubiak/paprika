@@ -1,0 +1,114 @@
+# License
+
+Copyright © 2026 Sven Kubiak
+
+This software is made available under a dual-licensing model.
+
+There is one version of the software. The same source code and generally available releases are used under both the non-commercial and commercial licensing options described below.
+
+## 1. Non-Commercial License
+
+Except for the additional permissions expressly granted below, the Software is licensed for non-commercial use under the:
+
+**PolyForm Noncommercial License 1.0.0**
+
+The complete license terms are available at:
+
+https://polyformproject.org/licenses/noncommercial/1.0.0
+
+Those terms are incorporated into this license by reference and apply to all use of the Software under the Non-Commercial License.
+
+Required Notice: Copyright © 2026 Sven Kubiak
+
+## 2. Additional Permission for Evaluation, Development, and Testing
+
+In addition to the purposes permitted by the PolyForm Noncommercial License 1.0.0, the Licensor grants commercial organizations permission to use the Software internally, without charge, solely for:
+
+* evaluation;
+* development;
+* testing;
+* demonstrations;
+* proof-of-concept projects; and
+* determining whether to purchase a Commercial License.
+
+This additional permission does not permit Commercial Production Use.
+
+A Commercial License is required before the Software is used in a production environment for, or in connection with, a commercial business, product, service, customer, or revenue-generating activity.
+
+For purposes of this additional permission, "Commercial Production Use" includes operating the Software:
+
+* as part of a production system of a commercial organization;
+* as infrastructure for a commercial product or service;
+* as a backend for a customer-facing commercial application;
+* to provide services to customers or clients;
+* in connection with revenue-generating business operations; or
+* as, or as part of, a hosted or managed service offered to third parties.
+
+Internal evaluation, development, testing, staging, and proof-of-concept use do not constitute Commercial Production Use provided that they do not serve live production workloads or provide production services to customers or end users.
+
+## 3. Commercial License
+
+Any use of the Software that is not permitted by the PolyForm Noncommercial License 1.0.0 or the Additional Permission above requires a separate Commercial License from the Licensor.
+
+A Commercial License may permit Commercial Production Use and may contain additional terms concerning, among other things:
+
+* the licensed legal entity or entities;
+* permitted production use;
+* affiliates and contractors;
+* license term;
+* fees;
+* support;
+* warranties;
+* liability; and
+* termination.
+
+Commercial licensing terms are described in `COMMERCIAL-LICENSE.md`.
+
+For commercial licensing inquiries, contact:
+
+[EMAIL ADDRESS]
+
+## 4. Public Availability Does Not Grant Commercial Rights
+
+The Software may be publicly available, including its source code, binaries, container images, packages, documentation, patch releases, minor releases, and major releases.
+
+Public availability of the Software does not grant any rights beyond those expressly granted by the applicable license.
+
+Downloading, receiving, possessing, modifying, or having access to a publicly available release does not by itself grant permission for Commercial Production Use.
+
+## 5. One Software Product
+
+There is no separate Community Edition or Commercial Edition unless expressly stated otherwise by the Licensor.
+
+Non-commercial users and commercial licensees may receive the same:
+
+* source code;
+* binaries;
+* features;
+* releases;
+* bug fixes;
+* security fixes; and
+* updates.
+
+The distinction between non-commercial and commercial use is based on the rights granted under the applicable license, not on technical differences in the Software.
+
+## 6. No Implied Support or Release Commitment
+
+Nothing in this file creates an obligation for the Licensor to:
+
+* provide technical support;
+* fix any particular defect;
+* fix any security vulnerability;
+* provide any particular feature;
+* maintain compatibility with any software, API, platform, or service;
+* publish any particular release;
+* maintain any particular release schedule; or
+* continue development of the Software.
+
+Any support obligations or service-level commitments must be expressly agreed in writing.
+
+## 7. No Additional Rights
+
+Except for the Additional Permission expressly granted in Section 2 and rights granted under a separate Commercial License, nothing in this file expands the rights granted under the PolyForm Noncommercial License 1.0.0.
+
+All rights not expressly granted are reserved by the Licensor.

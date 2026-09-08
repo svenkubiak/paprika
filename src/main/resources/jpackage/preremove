@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+systemctl stop paprika || true
+systemctl disable paprika || true
+rm -f /lib/systemd/system/paprika.service
+systemctl daemon-reload || true

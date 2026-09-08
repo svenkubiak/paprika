@@ -1,0 +1,103 @@
+#!/bin/bash
+set -e
+
+# ── System user ───────────────────────────────────────────────
+# Dedicated system user with no login shell and no home directory
+if ! id -u paprika > /dev/null 2>&1; then
+    useradd --system --no-create-home --shell /bin/false paprika
+fi
+
+# ── Ownership model ───────────────────────────────────────────
+# The application process (paprika) can READ its installation but not WRITE to it.
+# root:paprika with group-read permissions prevents self-modification of binaries.
+
+# Installation root: root owns, paprika group may read/traverse
+chown root:paprika /opt/paprika
+chmod 750 /opt/paprika
+
+# Binaries and libraries: root:paprika, group-executable
+find /opt/paprika -mindepth 1 -not -path "/opt/paprika/storage*" -not -name ".env" \
+    -exec chown root:paprika {} \;
+find /opt/paprika -mindepth 1 -type d -not -path "/opt/paprika/storage*" \
+    -exec chmod 750 {} \;
+find /opt/paprika -mindepth 1 -type f -not -path "/opt/paprika/storage*" -not -name ".env" \
+    -exec chmod 640 {} \;
+
+# Launcher must be executable by the group
+chmod 750 /opt/paprika/bin/paprika 2>/dev/null || true
+
+# Storage directory: fully owned by the app user (write access required)
+mkdir -p /opt/paprika/storage
+chown paprika:paprika /opt/paprika/storage
+chmod 750 /opt/paprika/storage
+
+# Environment file: root owns it, paprika group may read — never world-readable
+if [ -f /opt/paprika/.env ]; then
+    chown root:paprika /opt/paprika/.env
+    chmod 640 /opt/paprika/.env
+else
+    echo "WARNING: /opt/paprika/.env not found. The application will not start correctly." >&2
+    echo "         Run the install.sh script or create the file manually." >&2
+fi
+
+# ── systemd service ───────────────────────────────────────────
+cat > /lib/systemd/system/paprika.service << 'EOF'
+[Unit]
+Description=Paprika Application
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=paprika
+Group=paprika
+WorkingDirectory=/opt/paprika
+EnvironmentFile=/opt/paprika/.env
+ExecStart=/opt/paprika/bin/paprika
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=paprika
+
+# ── Process hardening ─────────────────────────────────────────
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+
+# ── Filesystem hardening ──────────────────────────────────────
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ReadWritePaths=/opt/paprika/storage
+
+# ── Network hardening ─────────────────────────────────────────
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# ── Capability hardening ──────────────────────────────────────
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# ── File creation mask ────────────────────────────────────────
+UMask=0027
+
+# NOTE: MemoryDenyWriteExecute is intentionally NOT set.
+# The JVM JIT compiler must write executable memory pages at runtime.
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable paprika
+systemctl restart paprika || true

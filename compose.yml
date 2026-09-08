@@ -1,0 +1,55 @@
+services:
+
+  paprika:
+    image: ghcr.io/svenkubiak/paprika:latest
+    container_name: paprika
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      APPLICATION_MODE: prod
+      CONNECTOR_HTTP_HOST: "0.0.0.0"
+      CONNECTOR_HTTP_PORT: "8080"
+      PAPRIKA_STORAGE: /app/storage
+      PERSISTENCE_MONGO_HOST: mongodb
+      PERSISTENCE_MONGO_PORT: "27017"
+      APPLICATION_SECRET: ${APPLICATION_SECRET}
+      TOKEN_SECRET: ${TOKEN_SECRET}
+      TOKEN_KEY: ${TOKEN_KEY}
+      SESSION_COOKIE_SECRET: ${SESSION_COOKIE_SECRET}
+      SESSION_COOKIE_KEY: ${SESSION_COOKIE_KEY}
+      FLASH_COOKIE_SECRET: ${FLASH_COOKIE_SECRET}
+      FLASH_COOKIE_KEY: ${FLASH_COOKIE_KEY}
+      AUTHENTICATION_COOKIE_SECRET: ${AUTHENTICATION_COOKIE_SECRET}
+      AUTHENTICATION_COOKIE_KEY: ${AUTHENTICATION_COOKIE_KEY}
+      PERSISTENCE_MONGO_USERNAME: ${MONGO_USERNAME}
+      PERSISTENCE_MONGO_PASSWORD: ${MONGO_PASSWORD}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTHENTICATION: ${SMTP_AUTHENTICATION:-}
+      SMTP_PROTOCOL: ${SMTP_PROTOCOL:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  mongodb:
+    image: mongodb/mongodb-community-server:8.0
+    container_name: paprika-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - ./mongodb:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

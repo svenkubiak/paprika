@@ -1,0 +1,44 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+html {
+  scrollbar-gutter: stable;
+}
+
+/* Ensure form controls stretch inside their container (Nuxt UI 4) */
+[data-slot='root'][data-orientation] {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Stretch form controls placed directly in a field, not inside nested layouts */
+[data-slot='root'][data-orientation] > div:last-child > [data-slot='root'],
+[data-slot='root'][data-orientation] > div:last-child > button[data-slot='base'] {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Dialog overlays must sit above the app header (sticky z-10) */
+[data-slot="overlay"] {
+  z-index: 50 !important;
+}
+
+/* Modal/slideover content is a sibling of the overlay and needs a higher layer */
+[data-slot="overlay"] ~ [data-slot="content"] {
+  z-index: 51 !important;
+}
+
+/* Popover menus (select, dropdown) must render above slideovers */
+[role='listbox'],
+[data-reka-popper-content-wrapper] {
+  z-index: 52 !important;
+}
+
+/* Toasts should stay above dialogs */
+[data-slot='viewport'] {
+  z-index: 60 !important;
+}
+
+.brand-title {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}

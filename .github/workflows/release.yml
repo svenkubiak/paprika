@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  package-x86:
+    name: Build .deb (x86)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install packaging tools
+        run: sudo apt-get install -y fakeroot binutils
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build .deb package
+        run: mvn package -P package-deb-x86 -DskipTests
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-x86
+          path: target/dist/*.deb
+          if-no-files-found: error
+
+  package-arm64:
+    name: Build .deb (arm64 via QEMU)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: arm64-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: arm64-maven-
+
+      - name: Build .deb package (arm64)
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${{ github.workspace }}:/workspace" \
+            -v "$HOME/.m2:/root/.m2" \
+            -w /workspace \
+            eclipse-temurin:25-jdk-noble \
+            bash -c "
+              apt-get update -q &&
+              apt-get install -y -q fakeroot binutils maven &&
+              mvn package -P package-deb-arm64 -DskipTests
+            "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-arm64
+          path: target/dist/*.deb
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [package-x86, package-arm64]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -2 | tail -1)
+          RANGE="${PREV_TAG:+${PREV_TAG}..}HEAD"
+
+          changelog() {
+            local prefix=$1 title=$2
+            local items
+            items=$(git log ${RANGE} --pretty=format:"%s" | grep -E "^${prefix}(\(.+\))?: " | sed -E "s/^${prefix}(\(.+\))?: /- /")
+            [ -n "$items" ] && printf "## %s\n%s\n\n" "$title" "$items"
+          }
+
+          breaking=$(git log ${RANGE} --pretty=format:"%b" | grep "^BREAKING CHANGE:" | sed "s/^BREAKING CHANGE: /- /")
+
+          {
+            [ -n "$breaking" ] && printf "## Breaking Changes\n%s\n\n" "$breaking"
+            changelog "feat"     "Features"
+            changelog "fix"      "Bug Fixes"
+            changelog "perf"     "Performance"
+            changelog "refactor" "Refactoring"
+            changelog "docs"     "Documentation"
+            changelog "chore"    "Maintenance"
+          } > release-notes.md
+
+      - name: Download .deb packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file release-notes.md \
+            dist/*.deb
