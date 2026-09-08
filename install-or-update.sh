@@ -214,7 +214,7 @@ else
 APPLICATION_SECRET=$(gen_secret)
 
 # ── HTTP Connector ────────────────────────────
-CONNECTOR_HTTP_HOST=0.0.0.0
+CONNECTOR_HTTP_HOST=127.0.0.1
 CONNECTOR_HTTP_PORT=8080
 
 # ── Token ─────────────────────────────────────
