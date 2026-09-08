@@ -7,7 +7,7 @@ The standalone package installs Paprika as a hardened systemd service on Ubuntu 
 - Ubuntu 22.04+ or Debian 12+
 - `amd64` or `arm64` architecture (the script detects this automatically via `uname -m`)
 - `curl`, `openssl`, `sha256sum`, and `dpkg-deb` available on the host
-- A running MongoDB instance reachable from this host, plus a username and password for it
+- A running MongoDB instance reachable from this host, plus a username and password for it — if you don't have one yet, [install MongoDB](https://www.mongodb.com/docs/manual/installation/) first and make sure it's reachable before proceeding
 - Root access (the script must run via `sudo`)
 
 ## Install
@@ -27,7 +27,7 @@ The script:
 3. Verifies the download's SHA-256 checksum before touching anything else
 4. Extracts the package and installs it into the current directory
 5. Generates a `.env` file with all application secrets (see [Configuration](./configuration)) — **except the MongoDB connection**, which is left as `CHANGE_ME` placeholders
-6. Since the script is piped from `curl` it cannot wait for interactive input — it exits and asks you to edit `.env` and fill in your MongoDB host, username, and password, then run the same command again to complete setup
+6. Since the script is piped from `curl` it cannot wait for interactive input — it exits and asks you to edit `.env` and fill in your MongoDB host, username, and password. **Make sure MongoDB is running and reachable before continuing.** Then run the same command again to complete setup
 7. Creates a dedicated, unprivileged `paprika` system user
 8. Locks down file ownership and permissions (`root:paprika`, `640`/`750`) so the app can read its own files but not modify them, with only `storage/` fully owned by the `paprika` user
 9. Installs and enables a systemd unit with sandboxing hardening (`ProtectSystem=strict`, `PrivateDevices`, capability dropping, etc.) applied out of the box
@@ -54,6 +54,27 @@ journalctl -u paprika -f
 
 # Restart after manual config changes
 systemctl restart paprika
+```
+
+## Uninstall
+
+Run the installer with `--uninstall` from the directory Paprika is installed in:
+
+```bash
+cd /opt/paprika
+curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh | sudo bash -s -- --uninstall
+```
+
+The script:
+
+1. Stops and disables the `paprika` systemd service
+2. Removes the service unit file and reloads systemd
+3. Removes the `paprika` system user
+4. Deletes the application files (`bin/`, `lib/`, `.env`, `.version`)
+5. Asks whether to also delete the `storage/` directory — since this holds all application data, you're prompted to confirm. When run non-interactively (piped from `curl`), the storage directory is **not** removed automatically; delete it manually afterwards if no longer needed:
+
+```bash
+rm -rf /opt/paprika/storage
 ```
 
 ## Next steps
