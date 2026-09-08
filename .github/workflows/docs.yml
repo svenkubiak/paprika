@@ -69,6 +69,7 @@ jobs:
 
   deploy:
     needs: build
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     environment:
       name: github-pages

@@ -88,14 +88,14 @@ jobs:
           changelog() {
             local prefix=$1 title=$2
             local items
-            items=$(git log ${RANGE} --pretty=format:"%s" | grep -E "^${prefix}(\(.+\))?: " | sed -E "s/^${prefix}(\(.+\))?: /- /")
-            [ -n "$items" ] && printf "## %s\n%s\n\n" "$title" "$items"
+            items=$(git log ${RANGE} --pretty=format:"%s" | grep -E "^${prefix}(\(.+\))?: " | sed -E "s/^${prefix}(\(.+\))?: /- /") || true
+            if [ -n "$items" ]; then printf "## %s\n%s\n\n" "$title" "$items"; fi
           }
 
-          breaking=$(git log ${RANGE} --pretty=format:"%b" | grep "^BREAKING CHANGE:" | sed "s/^BREAKING CHANGE: /- /")
+          breaking=$(git log ${RANGE} --pretty=format:"%b" | grep "^BREAKING CHANGE:" | sed "s/^BREAKING CHANGE: /- /") || true
 
           {
-            [ -n "$breaking" ] && printf "## Breaking Changes\n%s\n\n" "$breaking"
+            if [ -n "$breaking" ]; then printf "## Breaking Changes\n%s\n\n" "$breaking"; fi
             changelog "feat"     "Features"
             changelog "fix"      "Bug Fixes"
             changelog "perf"     "Performance"
