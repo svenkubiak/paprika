@@ -22,6 +22,6 @@ public class HealthController {
             return Response.ok().bodyJson(Map.of("status", "ok", "db", true));
         }
 
-        return Response.serviceUnavailable().bodyJson(Map.of("status", "degraded", "db", false));
+        return Response.status(503).bodyJson(Map.of("status", "degraded", "db", false));
     }
 }
