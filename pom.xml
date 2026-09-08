@@ -345,8 +345,6 @@
 										<argument>io.mangoo.core.Application</argument>
 										<argument>--dest</argument>
 										<argument>${project.build.directory}/dist</argument>
-										<argument>--architecture</argument>
-										<argument>x64</argument>
 										<argument>--install-dir</argument>
 										<argument>/opt</argument>
 										<argument>--linux-package-name</argument>
@@ -393,8 +391,6 @@
 										<argument>io.mangoo.core.Application</argument>
 										<argument>--dest</argument>
 										<argument>${project.build.directory}/dist</argument>
-										<argument>--architecture</argument>
-										<argument>aarch64</argument>
 										<argument>--install-dir</argument>
 										<argument>/opt</argument>
 										<argument>--linux-package-name</argument>

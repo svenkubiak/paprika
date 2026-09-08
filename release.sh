@@ -32,10 +32,12 @@ step "3/9  Checking npm dependencies"
 OUTDATED=0
 
 cd admin-ui
+echo -e "${BOLD}admin-ui:${NC}"
 if ! npm outdated; then OUTDATED=1; fi
 cd "$SCRIPT_DIR"
 
 cd docs
+echo -e "${BOLD}docs:${NC}"
 if ! npm outdated; then OUTDATED=1; fi
 cd "$SCRIPT_DIR"
 
