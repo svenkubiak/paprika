@@ -225,6 +225,36 @@ Paprika sends the tenant-user recovery emails (password reset, email verificatio
 
 There is one sender identity for the whole instance, so make sure the From domain's SPF and DKIM records allow this server to send, or the mails will land in spam. The link inside each email points at the tenant's own app, configured per tenant on the [Tenants](/admin-ui/tenants) editor, not at Paprika. Recovery is best-effort: a failed send is logged and never blocks the API response, which is also why the request endpoints always answer `200`.
 
+## Health endpoint
+
+Paprika exposes a health endpoint at `/health` that your load balancer, uptime monitor, or orchestrator can poll. It checks whether the application is running and whether the database connection is healthy.
+
+```
+GET /health
+```
+
+A healthy response looks like this:
+
+```json
+{"db": true, "status": "ok"}
+```
+
+If the database is not reachable, the endpoint returns HTTP 503:
+
+```json
+{"db": false, "status": "degraded"}
+```
+
+The endpoint has no authentication. Keep it accessible only to internal systems; if you are using an IP restriction for the admin UI, make sure your monitoring can still reach it. A typical approach is to allow the health path through at the proxy before the IP gate:
+
+```nginx
+location /health {
+    proxy_pass http://127.0.0.1:8080;
+}
+```
+
+The Docker setup includes a healthcheck on the `paprika` container that polls `/health` every 30 seconds. You can use the same endpoint in whatever tooling you prefer.
+
 ## A few more things worth doing
 
 - **Lock down MongoDB.** The production config runs with authentication on (`auth: true`). Keep the database on a private network the outside can't reach, use a dedicated user with access to just the Paprika databases, and never publish the Mongo port. Everything a tenant stores lives here, one database per tenant.

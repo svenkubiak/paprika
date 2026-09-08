@@ -32,6 +32,8 @@ The script:
 9. Installs and enables a systemd unit with sandboxing hardening (`ProtectSystem=strict`, `PrivateDevices`, capability dropping, etc.) applied out of the box
 10. Starts the service
 
+By default the generated `.env` sets `CONNECTOR_HTTP_HOST=127.0.0.1`, so Paprika only listens on the loopback interface. To make it reachable from the network directly, change that value in `.env` and restart the service.
+
 ## Update
 
 Running the same command again against an existing install detects the currently installed version via `<install-dir>/paprika/.version`, shows you what's available, and asks for confirmation before replacing the application binaries. `.env`, `.version`, and `storage/` are never touched by an update:

@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-doc
 The script runs a set of preflight checks (`curl`, `openssl`, `docker`, and `docker compose` must all be present and the Docker daemon reachable), detects whether a `paprika` container is already running in the current directory, and branches into either a fresh install or an update (see below). On a **fresh install**, it:
 
 1. Generates a `.env` file with all application secrets (see [Configuration](./configuration) for what each variable does) and a random MongoDB root password
-2. Creates `storage/` and `mongodb/` directories next to the `.env` file for persistent data
+2. Creates a `storage/` directory next to the `.env` file for persistent file uploads
 3. Downloads `compose.yml` from this repository
 4. Runs `docker compose up -d` to start both containers
 
@@ -39,8 +39,8 @@ bash install-docker.sh
 
 `compose.yml` defines two services:
 
-- **`paprika`** — the application container, built from the published image, reading all configuration from `.env`. Its `storage/` volume (file uploads) is bind-mounted from the host so it survives container recreation.
-- **`mongodb`** — `mongodb/mongodb-community-server`, with its data directory bind-mounted to `mongodb/` on the host. `paprika` waits for MongoDB's healthcheck to pass before starting.
+- **`paprika`** — the application container, built from the published image, reading all configuration from `.env`. Its `storage/` volume for file uploads is bind-mounted from the host so it survives container recreation. The HTTP port is bound to `127.0.0.1` only, so it is not reachable from the network directly.
+- **`mongodb`** — `mongodb/mongodb-community-server`, with its data stored in a named Docker volume managed by the daemon. `paprika` waits for MongoDB's healthcheck to pass before starting.
 
 Both containers restart automatically (`unless-stopped`) if the host reboots or a container crashes.
 

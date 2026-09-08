@@ -8,7 +8,7 @@ Not every variable is filled in automatically, though. The install scripts gener
 |---|---|---|
 | `APPLICATION_MODE` | Set to `prod` in production, `dev` for local development. | No — Docker and standalone both set this to `prod` by default. |
 | `APPLICATION_SECRET` | 64-character secret for internal signing. | Yes, by both install scripts. |
-| `CONNECTOR_HTTP_HOST` | Bind address. Use `0.0.0.0` to listen on all interfaces, or `127.0.0.1` to only accept connections from a local reverse proxy. | No — preset (`0.0.0.0` for standalone; hardcoded in `compose.yml` for Docker), not a secret. Change it manually if applicable to your setup. |
+| `CONNECTOR_HTTP_HOST` | Bind address. Use `0.0.0.0` to listen on all interfaces, or `127.0.0.1` to only accept connections from a local reverse proxy. | No. Both install methods default to `127.0.0.1`, so Paprika only accepts connections from the local machine out of the box. Set it to `0.0.0.0` if Paprika needs to be reachable directly from the network rather than through a local reverse proxy. |
 | `CONNECTOR_HTTP_PORT` | HTTP port (default `8080`). | No — preset default. For Docker, change the externally exposed port via `HOST_PORT` instead. |
 | `TOKEN_SECRET` | 64-character secret for JWT encryption. | Yes, by both install scripts. |
 | `TOKEN_KEY` | 64-character key for JWT signing. | Yes, by both install scripts. |
