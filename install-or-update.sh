@@ -76,19 +76,27 @@ fi
 echo ""
 echo "Fetching latest release information from GitHub..."
 
-RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
+RELEASE_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
+
+if echo "$RELEASE_JSON" | grep -q '"message".*"Not Found"'; then
+    echo "Error: No releases found for ${GITHUB_REPO}." >&2
+    echo "       Check https://github.com/${GITHUB_REPO}/releases for available releases." >&2
+    exit 1
+fi
 
 DOWNLOAD_URL=$(echo "$RELEASE_JSON" \
     | grep '"browser_download_url"' \
     | grep "${DEB_ARCH}\.deb\"" \
     | head -n1 \
-    | cut -d '"' -f 4)
+    | cut -d '"' -f 4 \
+    || true)
 
 CHECKSUM_URL=$(echo "$RELEASE_JSON" \
     | grep '"browser_download_url"' \
     | grep "${DEB_ARCH}\.deb\.sha256\"" \
     | head -n1 \
-    | cut -d '"' -f 4)
+    | cut -d '"' -f 4 \
+    || true)
 
 if [ -z "$DOWNLOAD_URL" ]; then
     echo "Error: Could not find a .deb release asset for architecture ${DEB_ARCH}." >&2
