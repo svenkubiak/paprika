@@ -2,17 +2,19 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Paprika – Install / Update Script
+#  Paprika – Install / Update / Uninstall Script
 #
-#  Run this script from the directory where Paprika should be installed.
-#  The application will be placed in a 'paprika/' subdirectory at that location.
+#  Run this script from the directory where Paprika is (or should be) installed.
 #
-#  Usage:
-#    cd /srv                   # choose your install location
+#  Install / update:
+#    cd /opt/paprika
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
 #         | sudo bash
 #
-#  The service will be installed at: <current-directory>/paprika/
+#  Uninstall:
+#    cd /opt/paprika
+#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
+#         | sudo bash -s -- --uninstall
 # ─────────────────────────────────────────────────────────────────────────────
 
 GITHUB_REPO="svenkubiak/paprika"
@@ -23,12 +25,81 @@ ENV_FILE="${INSTALL_DIR}/.env"
 VERSION_FILE="${INSTALL_DIR}/.version"
 SERVICE_FILE="/lib/systemd/system/${APP_NAME}.service"
 
-# ── Preflight checks ──────────────────────────────────────────────────────────
+# ── Root check ────────────────────────────────────────────────────────────────
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Error: This script must be run as root (sudo)." >&2
     exit 1
 fi
+
+# ── Uninstall ─────────────────────────────────────────────────────────────────
+
+if [ "${1:-}" = "--uninstall" ]; then
+
+    if [ ! -f "$VERSION_FILE" ] && [ ! -d "${INSTALL_DIR}/bin" ]; then
+        echo "Error: No Paprika installation found in ${INSTALL_DIR}." >&2
+        echo "       Run this script from the directory where Paprika is installed." >&2
+        exit 1
+    fi
+
+    INSTALLED_VERSION=""
+    [ -f "$VERSION_FILE" ] && INSTALLED_VERSION=$(cat "$VERSION_FILE")
+
+    echo "Uninstalling Paprika from ${INSTALL_DIR} ..."
+    [ -n "$INSTALLED_VERSION" ] && echo "  Version: ${INSTALLED_VERSION}"
+    echo ""
+
+    echo "Stopping and disabling service..."
+    systemctl stop "$APP_NAME" 2>/dev/null || true
+    systemctl disable "$APP_NAME" 2>/dev/null || true
+
+    if [ -f "$SERVICE_FILE" ]; then
+        rm -f "$SERVICE_FILE"
+        systemctl daemon-reload
+    fi
+
+    if id -u "$APP_NAME" > /dev/null 2>&1; then
+        userdel "$APP_NAME"
+        echo "System user '${APP_NAME}' removed."
+    fi
+
+    rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib"
+    rm -f "${INSTALL_DIR}/.env" "${INSTALL_DIR}/.version"
+    echo "Application files removed."
+
+    if [ -d "${INSTALL_DIR}/storage" ]; then
+        DELETE_STORAGE=false
+        if [ ! -t 0 ]; then
+            echo ""
+            echo "  Storage directory not removed (non-interactive mode)."
+            echo "  Delete manually if no longer needed: rm -rf ${INSTALL_DIR}/storage"
+        else
+            echo ""
+            read -r -p "  Delete storage directory? All application data will be lost. [y/N] " confirm
+            case "$confirm" in
+                [yY]*) DELETE_STORAGE=true ;;
+            esac
+        fi
+        if [ "$DELETE_STORAGE" = true ]; then
+            rm -rf "${INSTALL_DIR}/storage"
+            echo "Storage directory removed."
+        fi
+    fi
+
+    echo ""
+    echo "────────────────────────────────────────────"
+    echo " Paprika uninstalled."
+    if [ -d "${INSTALL_DIR}/storage" ]; then
+        echo ""
+        echo " Storage kept at: ${INSTALL_DIR}/storage"
+        echo " Remove manually when no longer needed:"
+        echo "   rm -rf ${INSTALL_DIR}/storage"
+    fi
+    echo "────────────────────────────────────────────"
+    exit 0
+fi
+
+# ── Preflight checks (install / update only) ──────────────────────────────────
 
 for cmd in curl openssl sha256sum dpkg-deb; do
     if ! command -v "$cmd" &>/dev/null; then
