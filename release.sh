@@ -29,11 +29,23 @@ mvn clean verify || fail "Maven build failed."
 
 # ─── 3. npm outdated ──────────────────────────────────────────────────────────
 step "3/9  Checking npm dependencies"
+OUTDATED=0
+
 cd admin-ui
-if ! npm outdated; then
-    fail "Outdated npm packages found. Update them before releasing."
-fi
+if ! npm outdated; then OUTDATED=1; fi
 cd "$SCRIPT_DIR"
+
+cd docs
+if ! npm outdated; then OUTDATED=1; fi
+cd "$SCRIPT_DIR"
+
+if [[ "$OUTDATED" -eq 1 ]]; then
+    echo -e "\n${YELLOW}Outdated npm packages found (see above).${NC}"
+    read -rp "Continue release anyway? [y/N]: " CONTINUE_RELEASE
+    if [[ ! "$CONTINUE_RELEASE" =~ ^[yY]$ ]]; then
+        fail "Release aborted due to outdated npm packages."
+    fi
+fi
 ok
 
 # ─── 4. Determine release version ─────────────────────────────────────────────
