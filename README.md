@@ -1,3 +1,7 @@
+[![Latest](https://img.shields.io/github/v/tag/svenkubiak/paprika?label=ghcr.io&sort=semver)](https://ghcr.io/svenkubiak/paprika/paprika)
+![SemVer](https://img.shields.io/badge/SemVer-2.0.0-green)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-%F0%9F%8D%BA-yellow)](https://buymeacoffee.com/svenkubiak)
+
 # 🫑 Paprika
 
 > [!WARNING]
