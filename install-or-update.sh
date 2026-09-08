@@ -133,18 +133,8 @@ CURRENT_VERSION=""
 if [ -f "$VERSION_FILE" ]; then
     IS_UPDATE=true
     CURRENT_VERSION=$(cat "$VERSION_FILE")
-elif [ -d "$INSTALL_DIR" ]; then
-    if [ -f "$ENV_FILE" ] && ! grep -q "CHANGE_ME" "$ENV_FILE" 2>/dev/null; then
-        IS_PARTIAL=true
-    else
-        echo ""
-        echo "Warning: ${INSTALL_DIR} exists but contains no version file." >&2
-        read -r -p "Remove it and perform a fresh install? [y/N] " confirm
-        case "$confirm" in
-            [yY]*) rm -rf "$INSTALL_DIR" ;;
-            *) echo "Aborted."; exit 0 ;;
-        esac
-    fi
+elif [ -f "$ENV_FILE" ] && ! grep -q "CHANGE_ME" "$ENV_FILE" 2>/dev/null; then
+    IS_PARTIAL=true
 fi
 
 # ── Download latest release ───────────────────────────────────────────────────
