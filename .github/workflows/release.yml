@@ -102,6 +102,9 @@ jobs:
             changelog "refactor" "Refactoring"
             changelog "docs"     "Documentation"
             changelog "chore"    "Maintenance"
+            if [ -n "$PREV_TAG" ]; then
+              printf "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ github.ref_name }}\n"
+            fi
           } > release-notes.md
 
       - name: Download .deb packages
@@ -111,6 +114,12 @@ jobs:
           merge-multiple: true
           path: dist
 
+      - name: Generate checksums
+        run: |
+          for f in dist/*.deb; do
+            sha256sum "$f" | awk '{print $1}' > "${f}.sha256"
+          done
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -119,4 +128,4 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" \
             --notes-file release-notes.md \
-            dist/*.deb
+            dist/*.deb dist/*.sha256
