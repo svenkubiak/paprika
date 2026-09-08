@@ -10,8 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.nio.file.Files;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.isEmptyOrNullString;
+import static org.hamcrest.Matchers.*;
 
 @ExtendWith(io.mangoo.test.TestRunner.class)
 class TenantServiceTest {
@@ -44,7 +43,7 @@ class TenantServiceTest {
 
         tenantService.deleteWithCascade(tenant.id());
 
-        assertThat(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null), isEmptyOrNullString());
+        assertThat(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null), is(emptyOrNullString()));
     }
 
     @Test
