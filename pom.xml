@@ -349,8 +349,6 @@
 										<argument>/opt</argument>
 										<argument>--linux-package-name</argument>
 										<argument>paprika</argument>
-										<argument>--linux-app-summary</argument>
-										<argument>Paprika Application</argument>
 										<argument>--resource-dir</argument>
 										<argument>${project.basedir}/src/main/resources/jpackage</argument>
 									</arguments>
@@ -395,8 +393,6 @@
 										<argument>/opt</argument>
 										<argument>--linux-package-name</argument>
 										<argument>paprika</argument>
-										<argument>--linux-app-summary</argument>
-										<argument>Paprika Application</argument>
 										<argument>--resource-dir</argument>
 										<argument>${project.basedir}/src/main/resources/jpackage</argument>
 									</arguments>
