@@ -18,7 +18,7 @@ set -euo pipefail
 GITHUB_REPO="svenkubiak/paprika"
 APP_NAME="paprika"
 TARGET_DIR="$(pwd)"
-INSTALL_DIR="${TARGET_DIR}/paprika"
+INSTALL_DIR="${TARGET_DIR}"
 ENV_FILE="${INSTALL_DIR}/.env"
 VERSION_FILE="${INSTALL_DIR}/.version"
 SERVICE_FILE="/lib/systemd/system/${APP_NAME}.service"
@@ -56,19 +56,24 @@ echo "Architecture:     ${ARCH} (${DEB_ARCH})"
 # ── Determine install or update ───────────────────────────────────────────────
 
 IS_UPDATE=false
+IS_PARTIAL=false
 CURRENT_VERSION=""
 
 if [ -f "$VERSION_FILE" ]; then
     IS_UPDATE=true
     CURRENT_VERSION=$(cat "$VERSION_FILE")
 elif [ -d "$INSTALL_DIR" ]; then
-    echo ""
-    echo "Warning: ${INSTALL_DIR} exists but contains no version file." >&2
-    read -r -p "Remove it and perform a fresh install? [y/N] " confirm
-    case "$confirm" in
-        [yY]*) rm -rf "$INSTALL_DIR" ;;
-        *) echo "Aborted."; exit 0 ;;
-    esac
+    if [ -f "$ENV_FILE" ] && ! grep -q "CHANGE_ME" "$ENV_FILE" 2>/dev/null; then
+        IS_PARTIAL=true
+    else
+        echo ""
+        echo "Warning: ${INSTALL_DIR} exists but contains no version file." >&2
+        read -r -p "Remove it and perform a fresh install? [y/N] " confirm
+        case "$confirm" in
+            [yY]*) rm -rf "$INSTALL_DIR" ;;
+            *) echo "Aborted."; exit 0 ;;
+        esac
+    fi
 fi
 
 # ── Download latest release ───────────────────────────────────────────────────
@@ -144,7 +149,14 @@ fi
 
 # ── Branch: Install vs. Update ────────────────────────────────────────────────
 
-if [ "$IS_UPDATE" = true ]; then
+if [ "$IS_PARTIAL" = true ]; then
+
+    # ── Resume partial install ─────────────────────────────────────────────────
+
+    echo ""
+    echo "Resuming installation (using existing configuration in ${ENV_FILE})..."
+
+elif [ "$IS_UPDATE" = true ]; then
 
     # ── Update ────────────────────────────────────────────────────────────────
 
@@ -196,8 +208,8 @@ else
     echo "Installing version ${NEW_VERSION} to ${INSTALL_DIR} ..."
     echo ""
 
-    mkdir -p "$TARGET_DIR"
-    mv "$EXTRACTED_APP" "$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+    cp -a "$EXTRACTED_APP"/. "$INSTALL_DIR"/
 
     # ── Generate .env ─────────────────────────────────────────────────────────
 
@@ -218,12 +230,51 @@ else
 #  Permissions: root:paprika 640 – never world-readable
 # ─────────────────────────────────────────────────────────────
 
-# ── Application ───────────────────────────────
-APPLICATION_SECRET=$(gen_secret)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  REQUIRED – fill these in before starting
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ── MongoDB ───────────────────────────────────
+PERSISTENCE_MONGO_HOST=CHANGE_ME
+PERSISTENCE_MONGO_USERNAME=CHANGE_ME
+PERSISTENCE_MONGO_PASSWORD=CHANGE_ME
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  OPTIONAL – change if needed
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ── MongoDB ───────────────────────────────────
+PERSISTENCE_MONGO_PORT=27017
 
 # ── HTTP Connector ────────────────────────────
+#  By default Paprika only listens on loopback.
+#  Set to 0.0.0.0 to expose it on the network.
 CONNECTOR_HTTP_HOST=127.0.0.1
 CONNECTOR_HTTP_PORT=8080
+
+# ── Storage ───────────────────────────────────
+PAPRIKA_STORAGE=${INSTALL_DIR}/storage
+
+# ── Email (SMTP) ──────────────────────────────
+#  Only needed if you enable password reset or email verification
+#  for a tenant. Leave SMTP_HOST commented out to disable sending.
+#  Make sure SPF/DKIM allow the SMTP_FROM domain.
+#SMTP_HOST=smtp.example.com
+#SMTP_PORT=587
+#SMTP_USERNAME=
+#SMTP_PASSWORD=
+#SMTP_AUTHENTICATION=true
+#SMTP_PROTOCOL=smtp
+#SMTP_FROM=no-reply@example.com
+#SMTP_FROM_NAME=Paprika
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  ADVANCED – do not change unless you know
+#             exactly what you are doing
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ── Application ───────────────────────────────
+APPLICATION_SECRET=$(gen_secret)
 
 # ── Token ─────────────────────────────────────
 TOKEN_SECRET=$(gen_secret)
@@ -240,28 +291,6 @@ FLASH_COOKIE_KEY=$(gen_key)
 # ── Authentication Cookie ─────────────────────
 AUTHENTICATION_COOKIE_SECRET=$(gen_secret)
 AUTHENTICATION_COOKIE_KEY=$(gen_key)
-
-# ── Storage ───────────────────────────────────
-PAPRIKA_STORAGE=${INSTALL_DIR}/storage
-
-# ── MongoDB ───────────────────────────────────
-PERSISTENCE_MONGO_HOST=CHANGE_ME
-PERSISTENCE_MONGO_PORT=27017
-PERSISTENCE_MONGO_USERNAME=CHANGE_ME
-PERSISTENCE_MONGO_PASSWORD=CHANGE_ME
-
-# ── Email (SMTP) ──────────────────────────────
-#  Optional. Only needed if you enable password reset or email
-#  verification for a tenant. Leave SMTP_HOST unset to disable
-#  sending. Make sure SPF/DKIM allow the SMTP_FROM domain.
-#SMTP_HOST=smtp.example.com
-#SMTP_PORT=587
-#SMTP_USERNAME=
-#SMTP_PASSWORD=
-#SMTP_AUTHENTICATION=true
-#SMTP_PROTOCOL=smtp
-#SMTP_FROM=no-reply@example.com
-#SMTP_FROM_NAME=Paprika
 EOF
 
     umask "$OLD_UMASK"
@@ -278,12 +307,20 @@ EOF
     echo "  └─────────────────────────────────────────────────────────────┘"
     echo ""
 
-    while grep -q "CHANGE_ME" "$ENV_FILE"; do
-        read -r -p "Press ENTER once all CHANGE_ME values have been replaced..."
-        if grep -q "CHANGE_ME" "$ENV_FILE"; then
-            echo "  Still found CHANGE_ME in ${ENV_FILE} – please complete the configuration."
+    if grep -q "CHANGE_ME" "$ENV_FILE"; then
+        if [ ! -t 0 ]; then
+            echo ""
+            echo "  Script is running non-interactively (piped from curl)."
+            echo "  Edit ${ENV_FILE}, then run the script again to complete setup."
+            exit 0
         fi
-    done
+        while grep -q "CHANGE_ME" "$ENV_FILE"; do
+            read -r -p "  Press ENTER once all CHANGE_ME values have been replaced..."
+            if grep -q "CHANGE_ME" "$ENV_FILE"; then
+                echo "  Still found CHANGE_ME in ${ENV_FILE} – please complete the configuration."
+            fi
+        done
+    fi
 
 fi
 
