@@ -155,14 +155,14 @@ environments:
       from-name: env{}
       protocol: env{}
       authentication: env{}
-  persistence:
-    mongo:
-      embedded: false
-      host: env{}
-      port: env{}
-      dbname: paprika
-      username: env{}
-      password: env{}
-      authdb: admin
-      auth: true
-      package: models
+    persistence:
+      mongo:
+        embedded: false
+        host: env{}
+        port: env{}
+        dbname: paprika
+        username: env{}
+        password: env{}
+        authdb: admin
+        auth: true
+        package: models
