@@ -343,6 +343,8 @@
 										<argument>paprika.jar</argument>
 										<argument>--main-class</argument>
 										<argument>io.mangoo.core.Application</argument>
+										<argument>--app-version</argument>
+										<argument>${project.version}</argument>
 										<argument>--dest</argument>
 										<argument>${project.build.directory}/dist</argument>
 										<argument>--install-dir</argument>
@@ -387,6 +389,8 @@
 										<argument>paprika.jar</argument>
 										<argument>--main-class</argument>
 										<argument>io.mangoo.core.Application</argument>
+										<argument>--app-version</argument>
+										<argument>${project.version}</argument>
 										<argument>--dest</argument>
 										<argument>${project.build.directory}/dist</argument>
 										<argument>--install-dir</argument>
