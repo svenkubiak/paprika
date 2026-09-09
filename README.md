@@ -1,6 +1,6 @@
 [![Latest](https://img.shields.io/github/v/tag/svenkubiak/paprika?label=ghcr.io&sort=semver)](https://ghcr.io/svenkubiak/paprika/paprika)
 [![Release](https://img.shields.io/github/v/release/svenkubiak/paprika?label=release)](https://github.com/svenkubiak/paprika/releases/latest)
-![SemVer](https://img.shields.io/badge/SemVer-2.0.0-green)
+[![SemVer](https://img.shields.io/badge/SemVer-2.0.0-green)](https://semver.org/lang/de)
 [![Release Build](https://github.com/svenkubiak/paprika/actions/workflows/release.yml/badge.svg)](https://github.com/svenkubiak/paprika/actions/workflows/release.yml)
 [![Docs](https://img.shields.io/badge/docs-online-blue?logo=readthedocs&logoColor=white)](https://svenkubiak.github.io/paprika/)
 [![Status](https://img.shields.io/badge/status-beta-orange)](https://github.com/svenkubiak/paprika#-paprika)
