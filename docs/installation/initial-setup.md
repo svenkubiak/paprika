@@ -6,7 +6,7 @@ Paprika ships with no default credentials. On first start against a fresh databa
 Complete initial superadmin setup within 30 minutes: /setup#token=<token>
 ```
 
-For the Docker install, find it with `docker compose logs -f`. For the standalone service, use `journalctl -u paprika -f`.
+Startup logs are noisy, so filter for the token instead of scrolling: for the Docker install, `docker compose logs -f | grep setup`; for the standalone service, `journalctl -u paprika -f | grep --line-buffered setup`.
 
 ## Completing setup
 

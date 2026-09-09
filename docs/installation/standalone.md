@@ -7,8 +7,24 @@ The standalone package installs Paprika as a hardened systemd service on Ubuntu 
 - Ubuntu 22.04+ or Debian 12+
 - `amd64` or `arm64` architecture (the script detects this automatically via `uname -m`)
 - `curl`, `openssl`, `sha256sum`, and `dpkg-deb` available on the host
-- A running MongoDB instance reachable from this host, plus a username and password for it — if you don't have one yet, [install MongoDB](https://www.mongodb.com/docs/manual/installation/) first and make sure it's reachable before proceeding
+- A running MongoDB instance reachable from this host — if you don't have one yet, [install MongoDB](https://www.mongodb.com/docs/manual/installation/) first and make sure it's reachable before proceeding
+- A manually created database named `paprika` on that instance, plus a user with `readWrite` access to it (see [MongoDB setup](#mongodb-setup) below) — Paprika does not create the database or user itself
 - Root access (the script must run via `sudo`)
+
+## MongoDB setup
+
+Paprika expects a database named exactly `paprika` and a user authenticated against the `admin` database (`authSource=admin`) with `readWrite` access to it. Create both before starting the service, e.g. via `mongosh`:
+
+```js
+use admin
+db.createUser({
+  user: "paprika",
+  pwd: "<a-strong-password>",
+  roles: [ { role: "readWrite", db: "paprika" } ]
+})
+```
+
+You'll enter this username and password into `.env` as `PERSISTENCE_MONGO_USERNAME` / `PERSISTENCE_MONGO_PASSWORD` further down.
 
 ## Install
 
@@ -42,6 +58,14 @@ systemctl start paprika
 ```
 
 The service is registered to start automatically on server reboot (`systemctl enable`) — you only need to start it manually once after the initial setup or after an update.
+
+On first start against a fresh database, Paprika prints a one-time superadmin setup link to the log. Since the systemd journal is noisy on startup, filter for it directly instead of scrolling:
+
+```bash
+journalctl -u paprika -f | grep --line-buffered setup
+```
+
+The link is only valid for 30 minutes — see [Initial Setup](./initial-setup) for how to complete it.
 
 By default the generated `.env` sets `CONNECTOR_HTTP_HOST=127.0.0.1`, so Paprika only listens on the loopback interface. To make it reachable from the network directly, change that value in `.env` before starting the service.
 
