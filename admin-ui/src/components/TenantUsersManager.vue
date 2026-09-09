@@ -15,7 +15,6 @@ const { load, bootstrap } = useBootstrap()
 
 const users = ref<TenantUser[]>([])
 const loading = ref(false)
-const savingRegistration = ref(false)
 const editorOpen = ref(false)
 const editorMode = ref<UserEditorMode>('add')
 const editingUser = ref<TenantUser | null>(null)
@@ -23,7 +22,6 @@ const saving = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 const deletingUser = ref<TenantUser | null>(null)
-const registrationEnabled = ref(false)
 
 const form = ref<UserEditorForm>({ username: '', password: '', email: '' })
 
@@ -44,7 +42,6 @@ watch(hasActiveTenant, async (value) => {
     await refresh()
   } else {
     users.value = []
-    registrationEnabled.value = false
   }
 })
 
@@ -59,14 +56,12 @@ async function refresh() {
   const tenant = activeTenant.value
   if (!tenant) {
     users.value = []
-    registrationEnabled.value = false
     return
   }
 
   loading.value = true
   try {
     users.value = await api.listTenantUsers(tenant.id)
-    registrationEnabled.value = tenant.registrationEnabled ?? false
   } catch (error) {
     toast.add({
       title: error instanceof Error ? error.message : 'Failed to load users',
@@ -186,33 +181,6 @@ async function deleteUserAction() {
   }
 }
 
-async function onRegistrationToggle(enabled: boolean) {
-  const tenant = activeTenant.value
-  if (!tenant) return
-
-  const previous = registrationEnabled.value
-  registrationEnabled.value = enabled
-  savingRegistration.value = true
-
-  try {
-    await api.updateTenant(tenant.id, { registrationEnabled: enabled })
-    await load(true)
-    toast.add({
-      title: enabled ? 'Self-registration enabled' : 'Self-registration disabled',
-      color: 'success',
-      icon: 'i-lucide-circle-check'
-    })
-  } catch (error) {
-    registrationEnabled.value = previous
-    toast.add({
-      title: error instanceof Error ? error.message : 'Failed to update tenant settings',
-      color: 'error',
-      icon: 'i-lucide-circle-x'
-    })
-  } finally {
-    savingRegistration.value = false
-  }
-}
 </script>
 
 <template>
@@ -223,35 +191,8 @@ async function onRegistrationToggle(enabled: boolean) {
       variant="soft"
       icon="i-lucide-globe"
       title="Select a tenant"
-      description="Choose a tenant in the sidebar to manage users and registration settings."
+      description="Choose a tenant in the sidebar to manage its users."
     />
-
-    <UCard v-if="hasActiveTenant">
-      <template #header>
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 class="font-semibold">Self-registration</h2>
-            <p class="text-sm text-muted">
-              Allow new users to sign up via
-              <code class="text-xs">POST /api/auth/register</code>
-              for tenant
-              <span class="font-medium text-default">{{ activeTenant?.name }}</span>
-              (<code class="text-xs">{{ activeTenant?.slug }}</code>).
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
-            <span class="text-sm text-muted">
-              {{ registrationEnabled ? 'Enabled' : 'Disabled' }}
-            </span>
-            <USwitch
-              :model-value="registrationEnabled"
-              :loading="savingRegistration"
-              @update:model-value="onRegistrationToggle"
-            />
-          </div>
-        </div>
-      </template>
-    </UCard>
 
     <div v-if="hasActiveTenant" class="flex justify-end">
       <UButton icon="i-lucide-user-plus" @click="openCreate">New user</UButton>
@@ -305,7 +246,7 @@ async function onRegistrationToggle(enabled: boolean) {
         </template>
         <template #empty>
           <div class="py-10 text-center text-muted">
-            No users yet. Create one manually or enable self-registration.
+            No users yet. Create one manually, or enable self-registration under User settings.
           </div>
         </template>
       </UTable>

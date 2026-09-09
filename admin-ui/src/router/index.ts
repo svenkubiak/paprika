@@ -59,6 +59,12 @@ const router = createRouter({
       meta: { title: 'API', requiresTenant: true }
     },
     {
+      path: '/admin/user-settings',
+      name: 'user-settings',
+      component: () => import('@/pages/UserSettingsPage.vue'),
+      meta: { title: 'User settings', requiresTenant: true }
+    },
+    {
       path: '/admin/global-hooks',
       name: 'global-hooks',
       component: () => import('@/pages/GlobalHooksPage.vue'),

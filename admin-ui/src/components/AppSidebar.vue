@@ -92,6 +92,13 @@ const tenantNavItems = computed(() => {
       to: '/admin/collections/users/data',
       active: route.params.collection === 'users'
     })
+
+    items.push({
+      label: 'Auth',
+      icon: 'i-lucide-user-cog',
+      to: '/admin/user-settings',
+      active: route.name === 'user-settings'
+    })
   }
 
   items.push({

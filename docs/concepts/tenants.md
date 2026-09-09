@@ -50,4 +50,4 @@ There's nothing stopping you from [deleting](/admin-ui/tenants#deleting-a-tenant
 
 ## Self-registration
 
-Each tenant independently controls whether `POST /api/auth/register` is open. Toggle it from the [Tenant Users page](/admin-ui/tenant-users). When disabled (the default), new tenant users can only be created by a superadmin.
+Each tenant independently controls whether `POST /api/auth/register` is open. Toggle it under [Auth settings](/admin-ui/auth-settings). When disabled (the default), new tenant users can only be created by a superadmin.

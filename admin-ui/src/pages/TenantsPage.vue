@@ -33,13 +33,7 @@ const isDeletingDefaultTenant = computed(
 
 const form = ref<TenantEditorForm>({
   name: '',
-  slug: '',
-  registrationEnabled: false,
-  passwordResetEnabled: false,
-  emailVerificationEnabled: false,
-  emailVerificationRequired: false,
-  passwordResetUrl: '',
-  emailVerificationUrl: ''
+  slug: ''
 })
 
 const columns = [
@@ -82,15 +76,7 @@ async function loadDefaultTenantId() {
 }
 
 function resetForm() {
-  form.value = {
-    name: '',
-    slug: '',
-    registrationEnabled: false,
-    passwordResetEnabled: false,
-    emailVerificationEnabled: false,
-    passwordResetUrl: '',
-    emailVerificationUrl: ''
-  }
+  form.value = { name: '', slug: '' }
   editingTenant.value = null
 }
 
@@ -101,16 +87,7 @@ function openCreate() {
 }
 
 function tenantToForm(tenant: TenantDefinition): TenantEditorForm {
-  return {
-    name: tenant.name,
-    slug: tenant.slug,
-    registrationEnabled: tenant.registrationEnabled ?? false,
-    passwordResetEnabled: tenant.passwordResetEnabled ?? false,
-    emailVerificationEnabled: tenant.emailVerificationEnabled ?? false,
-    emailVerificationRequired: tenant.emailVerificationRequired ?? false,
-    passwordResetUrl: tenant.passwordResetUrl ?? '',
-    emailVerificationUrl: tenant.emailVerificationUrl ?? ''
-  }
+  return { name: tenant.name, slug: tenant.slug }
 }
 
 function openEdit(_event: Event, tableRow: { original: TenantDefinition }) {
@@ -139,16 +116,7 @@ async function saveTenant() {
       await api.createTenant(name, slug)
       toast.add({ title: 'Tenant created', color: 'success', icon: 'i-lucide-circle-check' })
     } else if (editingTenant.value) {
-      await api.updateTenant(editingTenant.value.id, {
-        name,
-        slug,
-        registrationEnabled: form.value.registrationEnabled,
-        passwordResetEnabled: form.value.passwordResetEnabled,
-        emailVerificationEnabled: form.value.emailVerificationEnabled,
-        emailVerificationRequired: form.value.emailVerificationRequired,
-        passwordResetUrl: form.value.passwordResetUrl.trim() || null,
-        emailVerificationUrl: form.value.emailVerificationUrl.trim() || null
-      })
+      await api.updateTenant(editingTenant.value.id, { name, slug })
       toast.add({ title: 'Tenant updated', color: 'success', icon: 'i-lucide-circle-check' })
     }
 

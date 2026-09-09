@@ -40,6 +40,7 @@ export default defineConfig({
           { text: 'Dashboard', link: '/admin-ui/dashboard' },
           { text: 'Tenants', link: '/admin-ui/tenants' },
           { text: 'Tenant Users', link: '/admin-ui/tenant-users' },
+          { text: 'Auth', link: '/admin-ui/auth-settings' },
           {
             text: 'Collections',
             collapsed: false,

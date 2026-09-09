@@ -16,7 +16,7 @@ Now `users` is a normal collection with a few guardrails baked in. You can add c
 
 The Data tab keeps its user-focused layout instead of the generic record grid.
 
-- **Self-registration toggle.** A switch at the top enables or disables `POST /api/auth/register` for the active tenant. When it's on, anyone can create an account for this tenant without a superadmin, and the tenant's slug is shown next to the switch as a reminder of what to send as `tenant` when registering.
+- **Self-registration** is configured under [Auth settings](/admin-ui/auth-settings), not on this tab.
 - **User table.** Each row shows id, username, email, and role. **New user** opens an editor for username, password, and email. A password is required when creating and optional when editing, so leaving it blank keeps the current one. Passwords must be at least **16 characters** (the same floor as the superadmin password) and are hashed with Argon2 before storage. Password hashes are never shown and never returned by the API. A password shorter than the minimum is only rejected once you submit, with the error coming straight from the API.
 
 Deleting a user is immediate and permanent, there's no soft-delete.
@@ -40,7 +40,7 @@ The five collection rules gate `/api/collections/users`, the data plane for user
 
 Two things are specific to `users`:
 
-- **Self-registration is not a rule.** The registration toggle on the Data tab drives `/api/auth/register` and bypasses the collection rules entirely, so registration keeps working even when `createRule` is locked. The default locked create rule is the safe choice and does not get in the way of sign-ups. There's a warning on this tab spelling that out so nobody loosens the create rule expecting it to control registration.
+- **Self-registration is not a rule.** The self-registration toggle under [Auth settings](/admin-ui/auth-settings) drives `/api/auth/register` and bypasses the collection rules entirely, so registration keeps working even when `createRule` is locked. The default locked create rule is the safe choice and does not get in the way of sign-ups. There's a warning on this tab spelling that out so nobody loosens the create rule expecting it to control registration.
 - **`role` is read-only over the data plane.** Even with an owner update rule, a user can't promote themselves. The API ignores any `role` in the request body and pins it to `user`. The only way to change a role is the superadmin path.
 
 ## Hooks tab
@@ -66,7 +66,7 @@ The auto-generated [API reference](/admin-ui/collection-api) covers `users` like
 
 ## Password reset and email verification
 
-Two optional, per-tenant recovery flows for tenant users. Both are **off by default** and switched on independently per tenant on the [Tenants](/admin-ui/tenants) editor. Paprika **sends the email itself** over the instance's [SMTP settings](/operations/going-to-production#email-smtp), but the link points at **your** app: Paprika owns the token, your app renders the screens. Paprika sends no page to end users.
+Two optional, per-tenant recovery flows for tenant users. Both are **off by default** and configured independently per tenant under [Auth settings](/admin-ui/auth-settings). Paprika **sends the email itself** over the instance's [SMTP settings](/operations/going-to-production#email-smtp), but the link points at **your** app: Paprika owns the token, your app renders the screens. Paprika sends no page to end users.
 
 ### How it works
 
@@ -77,12 +77,12 @@ The shape is the same for both flows:
 3. The user opens the link in **your** app, which collects the new password (for reset) and calls the confirm endpoint (`POST /api/auth/password/reset` or `POST /api/auth/verify/confirm`) with the token.
 4. Paprika validates the token, applies the change, and invalidates the token.
 
-Tokens live for **30 minutes** and work once. Two things have to be in place for the email to actually go out: the instance needs working SMTP settings, and the tenant needs its reset (or verification) link URL set. If the URL is missing, the token is still issued but no email is sent, so configure the URL when you turn the feature on.
+Tokens live for **30 minutes** and work once. Two things have to be in place for the email to actually go out: the instance needs working SMTP settings, and the tenant needs its reset (or verification) link URL configured. If the URL is missing, the token is still issued but no email is sent, so configure the URL when you turn the feature on.
 
 ### What each flow does
 
 - **Password reset** sets a new password (the usual 16-character minimum) and invalidates the token. Old passwords stop working immediately.
-- **Email verification** sets the user's `emailVerified` flag to `true`. That's all it does. It does **not** block login, it's a flag your app or your [rules](/admin-ui/collection-rules) can check (for example `record.emailVerified = true`). Enforcing verification, like requiring MFA, is a policy decision that isn't built in.
+- **Email verification** sets the user's `emailVerified` flag to `true`. By itself it does not block login — it's a flag your app or your [rules](/admin-ui/collection-rules) can check (for example `record.emailVerified = true`). If you want to enforce verification before users can sign in, enable **Require for login** under [Auth settings](/admin-ui/auth-settings): Paprika will then reject any login where `emailVerified` is still `false`.
 
 ### No account enumeration
 

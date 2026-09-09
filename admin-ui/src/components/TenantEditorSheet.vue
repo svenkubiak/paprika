@@ -9,12 +9,6 @@ export type TenantEditorMode = 'add' | 'edit'
 export interface TenantEditorForm {
   name: string
   slug: string
-  registrationEnabled: boolean
-  passwordResetEnabled: boolean
-  emailVerificationEnabled: boolean
-  emailVerificationRequired: boolean
-  passwordResetUrl: string
-  emailVerificationUrl: string
 }
 
 const props = defineProps<{
@@ -37,7 +31,7 @@ const title = computed(() =>
 const description = computed(() =>
   props.mode === 'add'
     ? 'Each tenant gets its own database with isolated collections and users.'
-    : 'Update tenant details and self-registration settings.'
+    : 'Update the tenant name and slug.'
 )
 
 const submitLabel = computed(() => (props.mode === 'add' ? 'Create tenant' : 'Save tenant'))
@@ -59,15 +53,6 @@ watch(
   (name) => {
     if (!slugManual.value) {
       props.form.slug = normalizeSlug(name)
-    }
-  }
-)
-
-watch(
-  () => props.form.emailVerificationEnabled,
-  (enabled) => {
-    if (!enabled) {
-      props.form.emailVerificationRequired = false
     }
   }
 )
@@ -124,83 +109,6 @@ function onSlugInput() {
             <UFormField label="Database" class="w-full">
               <UInput :model-value="tenant.databaseName" icon="i-lucide-database" class="w-full" disabled />
             </UFormField>
-
-            <UCard variant="subtle" :ui="{ body: 'p-4 sm:p-4' }">
-              <div class="flex items-start justify-between gap-4">
-                <div>
-                  <p class="font-medium">Self-registration</p>
-                  <p class="mt-1 text-sm text-muted">
-                    Allow users to register via POST /api/auth/register with this tenant slug.
-                  </p>
-                </div>
-                <USwitch v-model="form.registrationEnabled" />
-              </div>
-            </UCard>
-
-            <UCard variant="subtle" :ui="{ body: 'p-4 sm:p-4' }">
-              <div class="flex items-start justify-between gap-4">
-                <div>
-                  <p class="font-medium">Password reset</p>
-                  <p class="mt-1 text-sm text-muted">
-                    Enable POST /api/auth/password/forgot and /reset. Paprika emails the reset link
-                    over the instance SMTP settings.
-                  </p>
-                </div>
-                <USwitch v-model="form.passwordResetEnabled" />
-              </div>
-              <UFormField
-                v-if="form.passwordResetEnabled"
-                label="Reset link URL"
-                help="Your app's reset page. Paprika appends ?token=…, or substitutes a {token} placeholder."
-                class="mt-3 w-full"
-              >
-                <UInput
-                  v-model="form.passwordResetUrl"
-                  icon="i-lucide-link"
-                  class="w-full"
-                  placeholder="https://app.example.com/reset"
-                />
-              </UFormField>
-            </UCard>
-
-            <UCard variant="subtle" :ui="{ body: 'p-4 sm:p-4' }">
-              <div class="flex items-start justify-between gap-4">
-                <div>
-                  <p class="font-medium">Email verification</p>
-                  <p class="mt-1 text-sm text-muted">
-                    Enable POST /api/auth/verify/request and /confirm. Paprika emails the verification
-                    link. Confirming sets the user's emailVerified flag; it only gates login if
-                    required below.
-                  </p>
-                </div>
-                <USwitch v-model="form.emailVerificationEnabled" />
-              </div>
-              <UFormField
-                v-if="form.emailVerificationEnabled"
-                label="Verification link URL"
-                help="Your app's verification page. Paprika appends ?token=…, or substitutes a {token} placeholder."
-                class="mt-3 w-full"
-              >
-                <UInput
-                  v-model="form.emailVerificationUrl"
-                  icon="i-lucide-link"
-                  class="w-full"
-                  placeholder="https://app.example.com/verify"
-                />
-              </UFormField>
-              <div
-                v-if="form.emailVerificationEnabled"
-                class="mt-3 flex items-start justify-between gap-4 border-t border-default pt-3"
-              >
-                <div>
-                  <p class="text-sm font-medium">Require for login</p>
-                  <p class="mt-1 text-sm text-muted">
-                    Block login for users whose email isn't verified yet.
-                  </p>
-                </div>
-                <USwitch v-model="form.emailVerificationRequired" />
-              </div>
-            </UCard>
           </template>
         </form>
       </div>
