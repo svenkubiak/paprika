@@ -90,7 +90,10 @@ environments:
         host: localhost
         port: 29019
         package: models
-    
+    paprika:
+      storage:
+        root: target/test-storage
+
   dev:
     connector:
       http:
