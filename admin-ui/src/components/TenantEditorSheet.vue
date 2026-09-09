@@ -12,6 +12,7 @@ export interface TenantEditorForm {
   registrationEnabled: boolean
   passwordResetEnabled: boolean
   emailVerificationEnabled: boolean
+  emailVerificationRequired: boolean
   passwordResetUrl: string
   emailVerificationUrl: string
 }
@@ -58,6 +59,15 @@ watch(
   (name) => {
     if (!slugManual.value) {
       props.form.slug = normalizeSlug(name)
+    }
+  }
+)
+
+watch(
+  () => props.form.emailVerificationEnabled,
+  (enabled) => {
+    if (!enabled) {
+      props.form.emailVerificationRequired = false
     }
   }
 )
@@ -163,7 +173,8 @@ function onSlugInput() {
                   <p class="font-medium">Email verification</p>
                   <p class="mt-1 text-sm text-muted">
                     Enable POST /api/auth/verify/request and /confirm. Paprika emails the verification
-                    link. Confirming only sets the user's emailVerified flag; it does not gate login.
+                    link. Confirming sets the user's emailVerified flag; it only gates login if
+                    required below.
                   </p>
                 </div>
                 <USwitch v-model="form.emailVerificationEnabled" />
@@ -181,6 +192,18 @@ function onSlugInput() {
                   placeholder="https://app.example.com/verify"
                 />
               </UFormField>
+              <div
+                v-if="form.emailVerificationEnabled"
+                class="mt-3 flex items-start justify-between gap-4 border-t border-default pt-3"
+              >
+                <div>
+                  <p class="text-sm font-medium">Require for login</p>
+                  <p class="mt-1 text-sm text-muted">
+                    Block login for users whose email isn't verified yet.
+                  </p>
+                </div>
+                <USwitch v-model="form.emailVerificationRequired" />
+              </div>
             </UCard>
           </template>
         </form>

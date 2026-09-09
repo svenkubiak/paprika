@@ -38,9 +38,9 @@ public class Bootstrap implements MangooBootstrap {
         );
 
         Bind.controller(AdminController.class).withAuthentication().withRoutes(
+                On.get().to("/").respondeWith("admin"),
                 On.get().to("/admin/bootstrap").respondeWith("bootstrap"),
                 On.post().to("/admin/switch-tenant").respondeWith("switchTenant"),
-                On.get().to("/").respondeWith("admin"),
                 On.get().to("/admin/tenants").respondeWith("admin"),
                 On.get().to("/admin/settings").respondeWith("admin"),
                 On.get().to("/admin/global-hooks").respondeWith("admin"),

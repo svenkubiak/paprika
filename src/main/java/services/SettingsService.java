@@ -1,10 +1,10 @@
 package services;
 
 import com.mongodb.client.model.Updates;
+import constants.CollectionName;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.bson.Document;
-import constants.CollectionName;
 import utils.DbUtils;
 
 import java.time.Instant;

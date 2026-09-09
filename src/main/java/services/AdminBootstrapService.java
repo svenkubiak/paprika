@@ -3,6 +3,7 @@ package services;
 import auth.AuthContext;
 import auth.TenantContext;
 import auth.TenantContextHolder;
+import constants.SystemCollections;
 import io.mangoo.core.Application;
 import io.mangoo.core.Config;
 import io.mangoo.routing.bindings.Request;
@@ -11,15 +12,9 @@ import jakarta.inject.Singleton;
 import models.Stats;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
-import constants.SystemCollections;
 import session.AdminTenantSession;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Singleton
 public class AdminBootstrapService {

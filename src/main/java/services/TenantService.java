@@ -3,6 +3,9 @@ package services;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
+import constants.CollectionName;
+import constants.SettingKeys;
+import constants.SystemCollections;
 import io.mangoo.core.Config;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -10,10 +13,7 @@ import models.CollectionDefinition;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
-import constants.CollectionName;
 import utils.DbUtils;
-import constants.SettingKeys;
-import constants.SystemCollections;
 
 import java.time.Instant;
 import java.util.List;
@@ -82,6 +82,7 @@ public class TenantService {
                 false,
                 false,
                 false,
+                false,
                 null,
                 null
         );
@@ -134,6 +135,7 @@ public class TenantService {
             Boolean registrationEnabled,
             Boolean passwordResetEnabled,
             Boolean emailVerificationEnabled,
+            Boolean emailVerificationRequired,
             String passwordResetUrl,
             String emailVerificationUrl) {
         TenantDefinition current = findById(id).orElse(null);
@@ -153,6 +155,10 @@ public class TenantService {
         boolean newEmailVerificationEnabled = emailVerificationEnabled != null
                 ? emailVerificationEnabled
                 : current.emailVerificationEnabled();
+        boolean newEmailVerificationRequired = newEmailVerificationEnabled
+                && (emailVerificationRequired != null
+                        ? emailVerificationRequired
+                        : current.emailVerificationRequired());
         String newPasswordResetUrl = passwordResetUrl != null
                 ? (passwordResetUrl.isBlank() ? null : passwordResetUrl.trim())
                 : current.passwordResetUrl();
@@ -174,6 +180,7 @@ public class TenantService {
                 newRegistrationEnabled,
                 newPasswordResetEnabled,
                 newEmailVerificationEnabled,
+                newEmailVerificationRequired,
                 newPasswordResetUrl,
                 newEmailVerificationUrl
         );
@@ -325,6 +332,7 @@ public class TenantService {
                 .append("registrationEnabled", tenant.registrationEnabled())
                 .append("passwordResetEnabled", tenant.passwordResetEnabled())
                 .append("emailVerificationEnabled", tenant.emailVerificationEnabled())
+                .append("emailVerificationRequired", tenant.emailVerificationRequired())
                 .append("passwordResetUrl", tenant.passwordResetUrl())
                 .append("emailVerificationUrl", tenant.emailVerificationUrl());
     }
@@ -340,6 +348,7 @@ public class TenantService {
                 doc.getBoolean("registrationEnabled", false),
                 doc.getBoolean("passwordResetEnabled", false),
                 doc.getBoolean("emailVerificationEnabled", false),
+                doc.getBoolean("emailVerificationRequired", false),
                 doc.getString("passwordResetUrl"),
                 doc.getString("emailVerificationUrl")
         );

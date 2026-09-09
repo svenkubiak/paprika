@@ -2,6 +2,8 @@ package services;
 
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
+import constants.CollectionName;
+import constants.SystemCollections;
 import enums.FieldType;
 import enums.IndexDirection;
 import io.mangoo.core.Config;
@@ -9,8 +11,6 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.*;
 import org.bson.Document;
-import constants.CollectionName;
-import constants.SystemCollections;
 
 import java.util.List;
 import java.util.Objects;

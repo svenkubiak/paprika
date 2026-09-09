@@ -9,7 +9,8 @@ public record TenantLoginResult(TenantLoginResult.Status status, Optional<AuthCo
         SUCCESS,
         INVALID_CREDENTIALS,
         TENANT_NOT_FOUND,
-        AMBIGUOUS_USERNAME
+        AMBIGUOUS_USERNAME,
+        EMAIL_NOT_VERIFIED
     }
 
     public static TenantLoginResult success(AuthContext auth) {
@@ -26,5 +27,9 @@ public record TenantLoginResult(TenantLoginResult.Status status, Optional<AuthCo
 
     public static TenantLoginResult ambiguousUsername() {
         return new TenantLoginResult(Status.AMBIGUOUS_USERNAME, Optional.empty());
+    }
+
+    public static TenantLoginResult emailNotVerified() {
+        return new TenantLoginResult(Status.EMAIL_NOT_VERIFIED, Optional.empty());
     }
 }

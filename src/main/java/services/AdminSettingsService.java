@@ -1,6 +1,7 @@
 package services;
 
 import auth.AuthContext;
+import constants.SettingKeys;
 import dtos.ChangePasswordDto;
 import dtos.TwoFactorCodeDto;
 import dtos.TwoFactorSetupDto;
@@ -10,7 +11,6 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
-import constants.SettingKeys;
 import results.AdminSettingsResult;
 import session.PendingTwoFactorSession;
 

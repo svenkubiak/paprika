@@ -2,6 +2,7 @@ package services;
 
 import auth.AuthContext;
 import auth.TenantContext;
+import constants.SystemCollections;
 import handlers.RealtimeDisconnectListener;
 import hooks.HookRequestUtils;
 import io.mangoo.annotations.Run;
@@ -16,7 +17,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import rules.RuleService;
-import constants.SystemCollections;
 
 import java.io.IOException;
 import java.util.*;

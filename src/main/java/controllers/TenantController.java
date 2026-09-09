@@ -57,6 +57,7 @@ public class TenantController {
                             tenantDto.registrationEnabled(),
                             tenantDto.passwordResetEnabled(),
                             tenantDto.emailVerificationEnabled(),
+                            tenantDto.emailVerificationRequired(),
                             tenantDto.passwordResetUrl(),
                             tenantDto.emailVerificationUrl())
                     .map(Response.ok()::bodyJson)

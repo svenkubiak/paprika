@@ -10,6 +10,7 @@ public record TenantDefinition(
         boolean registrationEnabled,
         boolean passwordResetEnabled,
         boolean emailVerificationEnabled,
+        boolean emailVerificationRequired,
         String passwordResetUrl,
         String emailVerificationUrl) {
 

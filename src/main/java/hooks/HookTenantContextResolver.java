@@ -2,7 +2,6 @@ package hooks;
 
 import auth.TenantContext;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;

@@ -491,6 +491,11 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
         '{\n  "error": "Invalid username or password"\n}'
       ),
       errorBlock(
+        '403 Forbidden',
+        "Email verification is required for login (tenant's Require for login) and the user hasn't verified yet",
+        '{\n  "error": "Email address is not verified"\n}'
+      ),
+      errorBlock(
         '409 Conflict',
         'Ambiguous username across tenants',
         '{\n  "error": "Ambiguous username, specify tenant slug"\n}'
@@ -599,7 +604,7 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
     method: 'POST',
     path: '/api/auth/verify/confirm',
     summary:
-      "Complete email verification with the one-time token. Sets the user's emailVerified flag to true and invalidates the token. It does not gate login.",
+      "Complete email verification with the one-time token. Sets the user's emailVerified flag to true and invalidates the token. Only gates login if the tenant's Require for login switch is on.",
     examples: [
       {
         title: 'Request',

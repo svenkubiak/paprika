@@ -2,14 +2,14 @@ package filters.api;
 
 import auth.TenantContext;
 import auth.TenantContextHolder;
-import hooks.HookExecutionResult;
 import helpers.HookResponseHelper;
+import hooks.HookExecutionResult;
+import hooks.HookTenantContextResolver;
 import io.mangoo.interfaces.filters.PerRequestFilter;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import services.HookService;
-import hooks.HookTenantContextResolver;
 import services.RequestLogService;
 
 import java.util.Objects;

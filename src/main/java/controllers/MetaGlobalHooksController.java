@@ -2,10 +2,10 @@ package controllers;
 
 import auth.TenantContext;
 import auth.TenantContextHolder;
+import constants.GlobalHooks;
 import filters.RequiredTenantContextFilter;
 import filters.TenantContextFilter;
 import filters.admin.AdminAuthFilter;
-import hooks.HookTestResult;
 import io.mangoo.annotations.FilterWith;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
@@ -15,9 +15,7 @@ import models.HookDefinition;
 import models.HookEvent;
 import services.HookService;
 import utils.DbUtils;
-import constants.GlobalHooks;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 

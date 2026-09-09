@@ -4,6 +4,8 @@ import auth.TenantContext;
 import auth.TenantContextHolder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import constants.SettingKeys;
+import constants.SystemCollections;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
@@ -15,8 +17,6 @@ import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import utils.DbUtils;
-import constants.SettingKeys;
-import constants.SystemCollections;
 
 import java.time.Duration;
 import java.time.Instant;

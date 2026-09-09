@@ -37,6 +37,7 @@ const form = ref<TenantEditorForm>({
   registrationEnabled: false,
   passwordResetEnabled: false,
   emailVerificationEnabled: false,
+  emailVerificationRequired: false,
   passwordResetUrl: '',
   emailVerificationUrl: ''
 })
@@ -106,6 +107,7 @@ function tenantToForm(tenant: TenantDefinition): TenantEditorForm {
     registrationEnabled: tenant.registrationEnabled ?? false,
     passwordResetEnabled: tenant.passwordResetEnabled ?? false,
     emailVerificationEnabled: tenant.emailVerificationEnabled ?? false,
+    emailVerificationRequired: tenant.emailVerificationRequired ?? false,
     passwordResetUrl: tenant.passwordResetUrl ?? '',
     emailVerificationUrl: tenant.emailVerificationUrl ?? ''
   }
@@ -143,6 +145,7 @@ async function saveTenant() {
         registrationEnabled: form.value.registrationEnabled,
         passwordResetEnabled: form.value.passwordResetEnabled,
         emailVerificationEnabled: form.value.emailVerificationEnabled,
+        emailVerificationRequired: form.value.emailVerificationRequired,
         passwordResetUrl: form.value.passwordResetUrl.trim() || null,
         emailVerificationUrl: form.value.emailVerificationUrl.trim() || null
       })

@@ -25,7 +25,7 @@ class TenantAuthRecoveryIntegrationTest {
 
     @Test
     void passwordResetChangesThePasswordAndTokenIsSingleUse() {
-        setFlags(true, null);
+        setFlags(true, null, null);
         String username = "reset-" + CommonUtils.uuidV7();
         String email = username + "@example.com";
         Application.getInstance(UserService.class).createUser(username, email, OLD_PASSWORD);
@@ -48,7 +48,7 @@ class TenantAuthRecoveryIntegrationTest {
 
     @Test
     void forgotIsUniformAndResetRejectedWhenDisabled() {
-        setFlags(false, null);
+        setFlags(false, null, null);
 
         // Disabled, unknown tenant, unknown account: always the same answer, no enumeration.
         assertThat(forgot("default", "whoever@example.com").getStatusCode(), equalTo(StatusCodes.OK));
@@ -60,14 +60,14 @@ class TenantAuthRecoveryIntegrationTest {
 
     @Test
     void resetRejectsUnknownToken() {
-        setFlags(true, null);
+        setFlags(true, null, null);
         assertThat(resetRequest("not-a-real-token", NEW_PASSWORD).getStatusCode(),
                 equalTo(StatusCodes.BAD_REQUEST));
     }
 
     @Test
     void emailVerificationConfirmIsSingleUseAndGatedByToggle() {
-        setFlags(null, true);
+        setFlags(null, true, null);
         String username = "verify-" + CommonUtils.uuidV7();
         String email = username + "@example.com";
         Application.getInstance(UserService.class).createUser(username, email, OLD_PASSWORD);
@@ -82,7 +82,7 @@ class TenantAuthRecoveryIntegrationTest {
         assertThat(confirm(token).getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
         // With verification disabled, confirm is rejected.
-        setFlags(null, false);
+        setFlags(null, false, null);
         String other = Application.getInstance(TenantUserService.class)
                 .issueEmailVerificationToken(TenantTestUtils.defaultTenant(), email)
                 .orElseThrow()
@@ -90,10 +90,49 @@ class TenantAuthRecoveryIntegrationTest {
         assertThat(confirm(other).getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
     }
 
-    private void setFlags(Boolean passwordReset, Boolean emailVerification) {
+    @Test
+    void loginIsGatedByEmailVerificationOnlyWhenRequired() {
+        setFlags(null, true, true);
+        String username = "gate-" + CommonUtils.uuidV7();
+        String email = username + "@example.com";
+        Application.getInstance(UserService.class).createUser(username, email, OLD_PASSWORD);
+
+        // Correct credentials, but the tenant requires a verified email and this user has none yet.
+        assertThat(login(username, OLD_PASSWORD).getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
+
+        String token = Application.getInstance(TenantUserService.class)
+                .issueEmailVerificationToken(TenantTestUtils.defaultTenant(), email)
+                .orElseThrow()
+                .token();
+        assertThat(confirm(token).getStatusCode(), equalTo(StatusCodes.OK));
+
+        assertThat(login(username, OLD_PASSWORD).getStatusCode(), equalTo(StatusCodes.OK));
+
+        // Leave the shared default tenant clean for other tests.
+        setFlags(null, false, null);
+    }
+
+    @Test
+    void disablingEmailVerificationAlsoClearsTheLoginRequirement() {
+        TenantDefinition tenant = TenantTestUtils.defaultTenant();
+        TenantService tenantService = Application.getInstance(TenantService.class);
+
+        tenantService.update(tenant.id(), null, null, null, null, null, true, true, null, null);
+        assertThat(tenantService.findById(tenant.id()).orElseThrow().emailVerificationRequired(), is(true));
+
+        // Disabling verification implicitly drops the login requirement too - it can never be
+        // satisfied once the verify endpoints are gated off.
+        tenantService.update(tenant.id(), null, null, null, null, null, false, null, null, null);
+        assertThat(tenantService.findById(tenant.id()).orElseThrow().emailVerificationRequired(), is(false));
+
+        setFlags(null, false, null);
+    }
+
+    private void setFlags(Boolean passwordReset, Boolean emailVerification, Boolean emailVerificationRequired) {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
         Application.getInstance(TenantService.class)
-                .update(tenant.id(), null, null, null, null, passwordReset, emailVerification, null, null);
+                .update(tenant.id(), null, null, null, null, passwordReset, emailVerification,
+                        emailVerificationRequired, null, null);
     }
 
     private TestResponse forgot(String tenantSlug, String email) {

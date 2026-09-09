@@ -14,6 +14,8 @@ public record TenantUpdateDto(
 
         Boolean emailVerificationEnabled,
 
+        Boolean emailVerificationRequired,
+
         String passwordResetUrl,
 
         String emailVerificationUrl) {

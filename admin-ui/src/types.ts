@@ -131,6 +131,7 @@ export interface TenantDefinition {
   registrationEnabled?: boolean
   passwordResetEnabled?: boolean
   emailVerificationEnabled?: boolean
+  emailVerificationRequired?: boolean
   passwordResetUrl?: string | null
   emailVerificationUrl?: string | null
 }

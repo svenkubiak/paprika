@@ -6,13 +6,13 @@ import filters.api.ApiAuthFilter;
 import filters.api.ApiHookFilter;
 import filters.api.ApiMultipartFilter;
 import filters.api.ApiValidationFilter;
+import helpers.CollectionRecordResponseHelper;
 import io.mangoo.annotations.FilterWith;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import services.CollectionRecordService;
 import services.RequestLogService;
-import helpers.CollectionRecordResponseHelper;
 
 import java.util.Objects;
 

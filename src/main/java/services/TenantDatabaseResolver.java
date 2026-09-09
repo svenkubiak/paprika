@@ -4,12 +4,12 @@ import auth.TenantContext;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import constants.CollectionName;
 import exceptions.NoTenantContextException;
 import io.mangoo.persistence.interfaces.Datastore;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.bson.Document;
-import constants.CollectionName;
 
 import java.util.Objects;
 

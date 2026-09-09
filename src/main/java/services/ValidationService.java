@@ -1,12 +1,12 @@
 package services;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import constants.SystemFields;
 import enums.FieldType;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.CollectionDefinition;
 import models.FieldDefinition;
-import constants.SystemFields;
 import validation.ValidationContext;
 import validation.ValidationResult;
 import validation.validators.*;

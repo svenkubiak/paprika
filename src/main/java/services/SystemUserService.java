@@ -1,6 +1,7 @@
 package services;
 
 import auth.AuthContext;
+import constants.CollectionName;
 import enums.Role;
 import io.mangoo.utils.CommonUtils;
 import jakarta.inject.Inject;
@@ -9,7 +10,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
-import constants.CollectionName;
 import utils.DbUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -21,9 +21,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 
-import static com.mongodb.client.model.Filters.and;
-import static com.mongodb.client.model.Filters.eq;
-import static com.mongodb.client.model.Filters.exists;
+import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Updates.*;
 
 @Singleton

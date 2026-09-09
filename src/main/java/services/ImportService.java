@@ -11,10 +11,10 @@ import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.TenantDefinition;
-import org.bson.Document;
-import org.bson.conversions.Bson;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.Document;
+import org.bson.conversions.Bson;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -22,11 +22,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -134,6 +130,7 @@ public class ImportService {
                         Boolean.TRUE.equals(doc.get("registrationEnabled")),
                         Boolean.TRUE.equals(doc.get("passwordResetEnabled")),
                         Boolean.TRUE.equals(doc.get("emailVerificationEnabled")),
+                        Boolean.TRUE.equals(doc.get("emailVerificationRequired")),
                         (String) doc.get("passwordResetUrl"),
                         (String) doc.get("emailVerificationUrl")))
                 .toList();

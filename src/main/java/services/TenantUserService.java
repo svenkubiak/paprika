@@ -2,6 +2,9 @@ package services;
 
 import auth.AuthContext;
 import auth.TenantContext;
+import constants.CollectionName;
+import constants.SystemCollections;
+import constants.SystemFields;
 import enums.Role;
 import io.mangoo.utils.CommonUtils;
 import jakarta.inject.Inject;
@@ -9,9 +12,6 @@ import jakarta.inject.Singleton;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
-import constants.CollectionName;
-import constants.SystemCollections;
-import constants.SystemFields;
 import results.TenantLoginResult;
 import utils.AuthTokens;
 import utils.DbUtils;
@@ -52,9 +52,7 @@ public class TenantUserService {
                 return TenantLoginResult.tenantNotFound();
             }
 
-            return authenticate(tenant, normalizedUsername, password)
-                    .map(TenantLoginResult::success)
-                    .orElseGet(TenantLoginResult::invalidCredentials);
+            return loginResult(tenant, normalizedUsername, password);
         }
 
         List<TenantDefinition> matches = findTenantsWithUsername(normalizedUsername);
@@ -65,26 +63,21 @@ public class TenantUserService {
             return TenantLoginResult.ambiguousUsername();
         }
 
-        return authenticate(matches.getFirst(), normalizedUsername, password)
-                .map(TenantLoginResult::success)
-                .orElseGet(TenantLoginResult::invalidCredentials);
+        return loginResult(matches.getFirst(), normalizedUsername, password);
     }
 
-    public Optional<AuthContext> authenticate(TenantDefinition tenant, String username, String password) {
-        if (StringUtils.isBlank(username) || password == null) {
-            return Optional.empty();
+    private TenantLoginResult loginResult(TenantDefinition tenant, String username, String password) {
+        Document user = findByUsername(tenant, username);
+        if (user == null || !matchesPassword(password, user)) {
+            return TenantLoginResult.invalidCredentials();
         }
 
-        Document user = findByUsername(tenant, username.trim());
-        if (user == null) {
-            return Optional.empty();
+        if (tenant.emailVerificationRequired()
+                && !Boolean.TRUE.equals(user.getBoolean(UserRecordUtils.EMAIL_VERIFIED, false))) {
+            return TenantLoginResult.emailNotVerified();
         }
 
-        if (!matchesPassword(password, user)) {
-            return Optional.empty();
-        }
-
-        return Optional.of(AuthContext.of(user.getString("id"), Role.USER, tenant.id()));
+        return TenantLoginResult.success(AuthContext.of(user.getString("id"), Role.USER, tenant.id()));
     }
 
     public Map<String, Object> createUser(TenantDefinition tenant, String username, String email, String password) {

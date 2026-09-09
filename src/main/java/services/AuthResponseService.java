@@ -31,6 +31,9 @@ public class AuthResponseService {
             case INVALID_CREDENTIALS -> Response.unauthorized()
                     .bodyJson(Map.of("error", INVALID_CREDENTIALS))
                     .end();
+            case EMAIL_NOT_VERIFIED -> Response.forbidden()
+                    .bodyJson(Map.of("error", "Email address is not verified"))
+                    .end();
         };
     }
 

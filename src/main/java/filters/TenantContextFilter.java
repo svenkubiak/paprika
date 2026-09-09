@@ -8,10 +8,10 @@ import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import models.TenantDefinition;
-import session.AdminTenantSession;
 import services.AuthService;
 import services.TenantService;
 import services.TenantUserService;
+import session.AdminTenantSession;
 
 import java.util.Map;
 import java.util.Objects;
