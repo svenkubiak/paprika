@@ -239,10 +239,12 @@ public class HookService {
             return requestResult;
         }
 
+        boolean anyHookRan = requestResult.hooksRan();
         JsonNode currentBody = requestResult.body() != null ? requestResult.body() : body;
 
         List<HookDefinition> hooks = findEnabledHooks(ctx, definition.name(), event);
         for (HookDefinition hook : hooks) {
+            anyHookRan = true;
             HookExecutionResult result = executeBlocking(
                     hook,
                     definition,
@@ -262,7 +264,7 @@ public class HookService {
         }
 
         if (currentBody == body) {
-            return HookExecutionResult.proceedUnchanged();
+            return anyHookRan ? HookExecutionResult.proceedUnchangedWithHooks() : HookExecutionResult.proceedUnchanged();
         }
 
         return HookExecutionResult.proceed(currentBody);
@@ -280,8 +282,10 @@ public class HookService {
 
         List<HookDefinition> hooks = findMatchingBeforeRequestHooks(ctx, collection, authFlow);
         JsonNode currentBody = body;
+        boolean anyHookRan = false;
 
         for (HookDefinition hook : hooks) {
+            anyHookRan = true;
             HookExecutionResult result = executeBlocking(
                     hook,
                     definition,
@@ -301,7 +305,7 @@ public class HookService {
         }
 
         if (currentBody == body) {
-            return HookExecutionResult.proceedUnchanged();
+            return anyHookRan ? HookExecutionResult.proceedUnchangedWithHooks() : HookExecutionResult.proceedUnchanged();
         }
 
         return HookExecutionResult.proceed(currentBody);

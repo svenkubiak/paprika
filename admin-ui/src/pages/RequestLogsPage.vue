@@ -13,6 +13,7 @@ const total = ref(0)
 const loading = ref(false)
 const search = ref('')
 const statusFilter = ref<'all' | 'success' | 'error'>('all')
+const hookFilter = ref<'any' | 'fired' | 'blocked'>('any')
 const page = ref(1)
 const pageSize = ref(50)
 
@@ -24,18 +25,15 @@ const pageSizeOptions = [
   { label: '100', value: 100 }
 ]
 
-const statusOptions = [
-  { label: 'All requests', value: 'all' },
-  { label: 'Success only', value: 'success' },
-  { label: 'Errors only', value: 'error' }
-]
-
 const columns = [
-  { accessorKey: 'timestamp', header: 'Timestamp' },
-  { accessorKey: 'method', header: 'Method' },
-  { accessorKey: 'url', header: 'URL' },
-  { accessorKey: 'statusCode', header: 'Status' },
-  { accessorKey: 'errorMessage', header: 'Error' }
+  { key: 'timestamp', header: 'Timestamp' },
+  { key: 'method', header: 'Method' },
+  { key: 'url', header: 'URL' },
+  { key: 'statusCode', header: 'Status' },
+  { key: 'execTimeMs', header: 'Time' },
+  { key: 'userId', header: 'User' },
+  { key: 'hookFired', header: 'Hook' },
+  { key: 'errorMessage', header: 'Error' }
 ]
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
@@ -51,7 +49,7 @@ const summary = computed(() => {
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
-watch([page, pageSize, statusFilter, hasActiveTenant], () => {
+watch([page, pageSize, statusFilter, hookFilter, hasActiveTenant], () => {
   if (hasActiveTenant.value) {
     refreshLogs()
   }
@@ -89,7 +87,8 @@ async function refreshLogs() {
       (page.value - 1) * pageSize.value,
       pageSize.value,
       search.value,
-      statusFilter.value
+      statusFilter.value,
+      hookFilter.value
     )
     logs.value = data.items as RequestLogEntry[]
     total.value = data.total
@@ -104,12 +103,30 @@ async function refreshLogs() {
   }
 }
 
+function setStatusFilter(value: 'all' | 'success' | 'error') {
+  statusFilter.value = value
+  page.value = 1
+}
+
+function setHookFilter(value: 'any' | 'fired' | 'blocked') {
+  hookFilter.value = value
+  page.value = 1
+}
+
 function formatTimestamp(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
     return value
   }
-  return date.toLocaleString()
+  return date.toLocaleString(undefined, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    fractionalSecondDigits: 3
+  })
+}
+
+function copyUserId(id: string) {
+  navigator.clipboard.writeText(id)
 }
 
 function statusColor(code: number) {
@@ -149,20 +166,69 @@ function statusColor(code: number) {
       </template>
 
       <template v-if="hasActiveTenant">
-        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <UInput
-            v-model="search"
-            class="w-full sm:max-w-md"
-            icon="i-lucide-search"
-            placeholder="Search URL, method, or error…"
-          />
-          <USelect
-            v-model="statusFilter"
-            :items="statusOptions"
-            class="w-full sm:w-48"
-            value-key="value"
-            label-key="label"
-          />
+        <div class="mb-4 flex flex-col gap-3">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <UInput
+              v-model="search"
+              class="w-full sm:max-w-md"
+              icon="i-lucide-search"
+              placeholder="Search URL, method, or error…"
+            />
+
+            <div class="flex items-center gap-1 rounded-lg border border-default p-1">
+              <UButton
+                size="sm"
+                :color="statusFilter === 'all' ? 'primary' : 'neutral'"
+                :variant="statusFilter === 'all' ? 'soft' : 'ghost'"
+                @click="setStatusFilter('all')"
+              >
+                All
+              </UButton>
+              <UButton
+                size="sm"
+                :color="statusFilter === 'success' ? 'success' : 'neutral'"
+                :variant="statusFilter === 'success' ? 'soft' : 'ghost'"
+                @click="setStatusFilter('success')"
+              >
+                Success
+              </UButton>
+              <UButton
+                size="sm"
+                :color="statusFilter === 'error' ? 'error' : 'neutral'"
+                :variant="statusFilter === 'error' ? 'soft' : 'ghost'"
+                @click="setStatusFilter('error')"
+              >
+                Errors
+              </UButton>
+            </div>
+
+            <div class="flex items-center gap-1 rounded-lg border border-default p-1">
+              <UButton
+                size="sm"
+                :color="hookFilter === 'any' ? 'primary' : 'neutral'"
+                :variant="hookFilter === 'any' ? 'soft' : 'ghost'"
+                @click="setHookFilter('any')"
+              >
+                Any hook
+              </UButton>
+              <UButton
+                size="sm"
+                :color="hookFilter === 'fired' ? 'primary' : 'neutral'"
+                :variant="hookFilter === 'fired' ? 'soft' : 'ghost'"
+                @click="setHookFilter('fired')"
+              >
+                Hook fired
+              </UButton>
+              <UButton
+                size="sm"
+                :color="hookFilter === 'blocked' ? 'warning' : 'neutral'"
+                :variant="hookFilter === 'blocked' ? 'soft' : 'ghost'"
+                @click="setHookFilter('blocked')"
+              >
+                Hook blocked
+              </UButton>
+            </div>
+          </div>
         </div>
 
         <div class="overflow-x-auto rounded-lg border border-default">
@@ -171,7 +237,7 @@ function statusColor(code: number) {
               <tr>
                 <th
                   v-for="column in columns"
-                  :key="column.accessorKey"
+                  :key="column.key"
                   class="px-3 py-2 text-left font-medium text-muted"
                 >
                   {{ column.header }}
@@ -194,17 +260,44 @@ function statusColor(code: number) {
                   {{ formatTimestamp(entry.timestamp) }}
                 </td>
                 <td class="whitespace-nowrap px-3 py-2">
-                  <UBadge color="neutral" variant="soft" size="xs">{{ entry.method }}</UBadge>
+                  <UBadge color="neutral" variant="soft" size="sm">{{ entry.method }}</UBadge>
                 </td>
                 <td class="max-w-md truncate px-3 py-2 font-mono text-xs" :title="entry.url">
                   {{ entry.url }}
                 </td>
                 <td class="whitespace-nowrap px-3 py-2">
-                  <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="xs">
+                  <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="sm">
                     {{ entry.statusCode }}
                   </UBadge>
                 </td>
-                <td class="max-w-xs truncate px-3 py-2 text-muted" :title="entry.errorMessage || ''">
+                <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-muted">
+                  {{ entry.execTimeMs != null ? `${entry.execTimeMs}ms` : '—' }}
+                </td>
+                <td class="px-3 py-2">
+                  <div v-if="entry.userId" class="flex items-center gap-1.5">
+                    <button
+                      class="font-mono text-xs text-muted hover:text-default"
+                      :title="'Click to copy: ' + entry.userId"
+                      @click="copyUserId(entry.userId!)"
+                    >
+                      {{ entry.userId }}
+                    </button>
+                    <UBadge
+                      :color="entry.userRole === 'superadmin' ? 'neutral' : 'primary'"
+                      :variant="entry.userRole === 'superadmin' ? 'outline' : 'subtle'"
+                      size="xs"
+                    >
+                      {{ entry.userRole === 'superadmin' ? 'superadmin' : 'user' }}
+                    </UBadge>
+                  </div>
+                  <span v-else class="text-muted">—</span>
+                </td>
+                <td class="whitespace-nowrap px-3 py-2">
+                  <UBadge v-if="entry.hookBlocked" color="warning" variant="soft" size="sm">blocked</UBadge>
+                  <UBadge v-else-if="entry.hookFired" color="success" variant="soft" size="sm">fired</UBadge>
+                  <span v-else class="text-muted">—</span>
+                </td>
+                <td class="max-w-xs truncate px-3 py-2 text-sm" :title="entry.errorMessage || ''">
                   {{ entry.errorMessage || '—' }}
                 </td>
               </tr>

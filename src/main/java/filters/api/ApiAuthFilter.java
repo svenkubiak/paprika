@@ -66,6 +66,7 @@ public class ApiAuthFilter implements PerRequestFilter {
 
     @Override
     public Response execute(Request request, Response response) {
+        request.addAttribute("paprika.request.start", System.nanoTime());
         TenantContext tenantContext = TenantContextHolder.require(request);
 
         if (authService.hasBearerToken(request)) {

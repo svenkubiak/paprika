@@ -22,8 +22,8 @@ public class RequestLogsController {
         this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
     }
 
-    public Response list(Request request, int offset, int limit, String search, String status) {
+    public Response list(Request request, int offset, int limit, String search, String status, String hook) {
         TenantContext ctx = TenantContextHolder.require(request);
-        return Response.ok().bodyJson(requestLogService.list(ctx, offset, limit, search, status));
+        return Response.ok().bodyJson(requestLogService.list(ctx, offset, limit, search, status, hook));
     }
 }

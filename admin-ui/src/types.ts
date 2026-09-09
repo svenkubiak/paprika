@@ -221,6 +221,11 @@ export interface RequestLogEntry {
   statusCode: number
   errorMessage?: string | null
   timestamp: string
+  execTimeMs?: number | null
+  userId?: string | null
+  userRole?: string | null
+  hookFired?: boolean
+  hookBlocked?: boolean
 }
 
 export interface PaginatedRequestLogs {

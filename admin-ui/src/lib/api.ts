@@ -484,7 +484,8 @@ export const api = {
     offset: number,
     limit: number,
     search: string,
-    status: 'all' | 'success' | 'error'
+    status: 'all' | 'success' | 'error',
+    hook?: 'any' | 'fired' | 'blocked'
   ): Promise<PaginatedRequestLogs> {
     const params = new URLSearchParams({
       offset: String(offset),
@@ -493,6 +494,9 @@ export const api = {
     })
     if (search.trim()) {
       params.set('search', search.trim())
+    }
+    if (hook && hook !== 'any') {
+      params.set('hook', hook)
     }
     return request(`/api/admin/request-logs?${params.toString()}`)
   }

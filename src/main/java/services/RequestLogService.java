@@ -79,13 +79,29 @@ public class RequestLogService {
             return;
         }
 
+        Long startNano = (Long) request.getAttribute("paprika.request.start");
+        Long execTimeMs = startNano != null ? (System.nanoTime() - startNano) / 1_000_000L : null;
+
         Document entry = new Document()
                 .append("id", DbUtils.id())
                 .append("method", request.getMethod().toString())
                 .append("url", buildUrl(request, collection))
                 .append("statusCode", statusCode)
                 .append("errorMessage", statusCode >= 400 ? errorMessage : null)
-                .append("timestamp", Instant.now().toString());
+                .append("timestamp", Instant.now().toString())
+                .append("execTimeMs", execTimeMs);
+
+        if (ctx.hasAuthenticatedUser()) {
+            entry.append("userId", ctx.userId());
+            entry.append("userRole", ctx.role());
+        }
+
+        Boolean hookFired = (Boolean) request.getAttribute("paprika.hook.fired");
+        Boolean hookBlocked = (Boolean) request.getAttribute("paprika.hook.blocked");
+        if (Boolean.TRUE.equals(hookFired)) {
+            entry.append("hookFired", true);
+            entry.append("hookBlocked", Boolean.TRUE.equals(hookBlocked));
+        }
 
         resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS).insertOne(entry);
         maybePurgeExpired(ctx);
@@ -142,7 +158,8 @@ public class RequestLogService {
             int offset,
             int limit,
             String search,
-            String statusFilter) {
+            String statusFilter,
+            String hookFilter) {
 
         if (offset < 0) {
             offset = 0;
@@ -151,7 +168,7 @@ public class RequestLogService {
             limit = 50;
         }
 
-        Bson filter = buildFilter(search, statusFilter);
+        Bson filter = buildFilter(search, statusFilter, hookFilter);
         var collection = resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS);
 
         List<Document> items = new ArrayList<>();
@@ -166,7 +183,7 @@ public class RequestLogService {
         return Map.of("items", items, "total", total);
     }
 
-    private Bson buildFilter(String search, String statusFilter) {
+    private Bson buildFilter(String search, String statusFilter, String hookFilter) {
         List<Bson> clauses = new ArrayList<>();
 
         if (search != null && !search.isBlank()) {
@@ -183,6 +200,12 @@ public class RequestLogService {
             clauses.add(and(gte("statusCode", 200), lt("statusCode", 400)));
         } else if ("error".equalsIgnoreCase(statusFilter)) {
             clauses.add(gte("statusCode", 400));
+        }
+
+        if ("fired".equalsIgnoreCase(hookFilter)) {
+            clauses.add(eq("hookFired", true));
+        } else if ("blocked".equalsIgnoreCase(hookFilter)) {
+            clauses.add(and(eq("hookFired", true), eq("hookBlocked", true)));
         }
 
         if (clauses.isEmpty()) {

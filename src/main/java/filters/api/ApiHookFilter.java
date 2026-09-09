@@ -191,6 +191,9 @@ public class ApiHookFilter implements PerRequestFilter {
     }
 
     private Response applyBlockingResult(HookExecutionResult result, Response response, Request request) {
+        request.addAttribute("paprika.hook.fired", result.hooksRan());
+        request.addAttribute("paprika.hook.blocked", !result.continueOperation() && result.hooksRan());
+
         if (!result.continueOperation()) {
             return HookResponseHelper.toErrorResponse(request, result, requestLogService);
         }
