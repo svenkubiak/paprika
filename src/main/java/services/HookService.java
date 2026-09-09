@@ -511,6 +511,16 @@ public class HookService {
             JsonNode root = JsonUtils.getMapper().readTree(responseBody);
             boolean continueOperation = !root.has("continue") || root.get("continue").asBoolean(true);
             if (!continueOperation) {
+                if (hook.event() == HookEvent.beforeLogin) {
+                    JsonNode issueTokenFor = root.get("issueTokenFor");
+                    if (issueTokenFor != null && issueTokenFor.hasNonNull("userId")) {
+                        String userId = issueTokenFor.get("userId").asText();
+                        if (!userId.isBlank()) {
+                            return HookExecutionResult.issueTokenFor(userId);
+                        }
+                    }
+                }
+
                 int status = Math.max(response.statusCode(), 400);
                 String errorBody = responseBody;
 

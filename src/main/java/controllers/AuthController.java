@@ -133,6 +133,9 @@ public class AuthController {
 
             HookExecutionResult pre = hookService.runAuthBefore(ctx, HookEvent.beforeLogin, request, body);
             if (!pre.continueOperation()) {
+                if (pre.issueTokenForUserId() != null) {
+                    return issueTokenForUser(ctx, pre.issueTokenForUserId(), request);
+                }
                 return HookResponseHelper.toErrorResponse(pre);
             }
         }
@@ -256,6 +259,18 @@ public class AuthController {
             return baseUrl.replace("{token}", token);
         }
         return baseUrl + (baseUrl.contains("?") ? "&" : "?") + "token=" + token;
+    }
+
+    private Response issueTokenForUser(TenantContext ctx, String userId, Request request) {
+        Optional<AuthContext> auth = tenantUserService.resolveUser(ctx, userId);
+        if (auth.isEmpty()) {
+            return Response.notFound().bodyJson(Map.of("error", "User not found"));
+        }
+
+        AuthContext resolved = auth.get();
+        Response response = authResponseService.toTokenResponse(authService.createTokenPair(resolved));
+        fireAfterForUser(resolved, HookEvent.afterLogin, request, null);
+        return response;
     }
 
     private void fireAfterForUser(AuthContext auth, HookEvent event, Request request, String username) {
