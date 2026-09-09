@@ -10,11 +10,7 @@ Please do **not** report suspected security vulnerabilities through public issue
 
 Instead, report security vulnerabilities privately to:
 
-[SECURITY EMAIL]
-
-If available, you may also use:
-
-[PRIVATE SECURITY REPORTING URL]
+sk@svenkubiak.de
 
 Please include as much relevant information as possible.
 
