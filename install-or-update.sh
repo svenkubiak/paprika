@@ -287,6 +287,17 @@ else
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # ── MongoDB ───────────────────────────────────
+#  Paprika does not create the database or user itself. Before
+#  starting the service, manually create a database named "paprika"
+#  and a user with readWrite access to it, authenticated against
+#  the "admin" database (authSource=admin), e.g. via mongosh:
+#
+#    use admin
+#    db.createUser({
+#      user: "paprika",
+#      pwd: "<a-strong-password>",
+#      roles: [ { role: "readWrite", db: "paprika" } ]
+#    })
 PERSISTENCE_MONGO_HOST=CHANGE_ME
 PERSISTENCE_MONGO_PORT=27017
 PERSISTENCE_MONGO_USERNAME=CHANGE_ME
@@ -348,7 +359,10 @@ EOF
     echo "✅ .env written to ${ENV_FILE}"
     echo ""
     echo "  ⚠️  ACTION REQUIRED before starting Paprika:"
-    echo "  Replace all CHANGE_ME values with your MongoDB connection details:"
+    echo "  1. Manually create a MongoDB database named 'paprika' and a user"
+    echo "     with readWrite access to it, authenticated against the 'admin'"
+    echo "     database (authSource=admin) — Paprika does not create these itself."
+    echo "  2. Replace all CHANGE_ME values with your MongoDB connection details:"
     echo ""
     echo "    nano ${ENV_FILE}"
     echo ""
@@ -484,12 +498,22 @@ else
     echo " 📂 Installed to: ${INSTALL_DIR}"
     echo ""
     echo " Next steps:"
-    echo "   1. ✏️  Edit ${ENV_FILE}"
+    echo "   1. 🍃 Manually create a MongoDB database named 'paprika' and a"
+    echo "      user with readWrite access to it, authenticated against the"
+    echo "      'admin' database (authSource=admin). Paprika does not create"
+    echo "      these itself."
+    echo ""
+    echo "   2. ✏️  Edit ${ENV_FILE}"
     echo "      Replace all CHANGE_ME values with your"
     echo "      MongoDB connection details."
     echo ""
-    echo "   2. ▶️  Start Paprika when ready:"
+    echo "   3. ▶️  Start Paprika when ready:"
     echo "      systemctl start ${APP_NAME}"
+    echo ""
+    echo "   4. 🔑 Find the one-time superadmin setup link in the logs:"
+    echo "      journalctl -u ${APP_NAME} -f | grep --line-buffered setup"
+    echo "      It's printed once on first start against a fresh database"
+    echo "      and is valid for 30 minutes."
     echo ""
     echo " 📋 Check service status:"
     echo "   systemctl status ${APP_NAME}"
