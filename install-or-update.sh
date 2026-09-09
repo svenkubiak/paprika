@@ -45,11 +45,11 @@ if [ "${1:-}" = "--uninstall" ]; then
     INSTALLED_VERSION=""
     [ -f "$VERSION_FILE" ] && INSTALLED_VERSION=$(cat "$VERSION_FILE")
 
-    echo "Uninstalling Paprika from ${INSTALL_DIR} ..."
+    echo "🗑️  Uninstalling Paprika from ${INSTALL_DIR} ..."
     [ -n "$INSTALLED_VERSION" ] && echo "  Version: ${INSTALLED_VERSION}"
     echo ""
 
-    echo "Stopping and disabling service..."
+    echo "⏹️  Stopping and disabling service..."
     systemctl stop "$APP_NAME" 2>/dev/null || true
     systemctl disable "$APP_NAME" 2>/dev/null || true
 
@@ -63,9 +63,9 @@ if [ "${1:-}" = "--uninstall" ]; then
         echo "System user '${APP_NAME}' removed."
     fi
 
-    rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib"
+    rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/share"
     rm -f "${INSTALL_DIR}/.env" "${INSTALL_DIR}/.version"
-    echo "Application files removed."
+    echo "✅ Application files removed."
 
     if [ -d "${INSTALL_DIR}/storage" ]; then
         DELETE_STORAGE=false
@@ -88,7 +88,7 @@ if [ "${1:-}" = "--uninstall" ]; then
 
     echo ""
     echo "────────────────────────────────────────────"
-    echo " Paprika uninstalled."
+    echo " 🫑  Paprika uninstalled."
     if [ -d "${INSTALL_DIR}/storage" ]; then
         echo ""
         echo " Storage kept at: ${INSTALL_DIR}/storage"
@@ -127,20 +127,17 @@ echo "Architecture:     ${ARCH} (${DEB_ARCH})"
 # ── Determine install or update ───────────────────────────────────────────────
 
 IS_UPDATE=false
-IS_PARTIAL=false
 CURRENT_VERSION=""
 
 if [ -f "$VERSION_FILE" ]; then
     IS_UPDATE=true
     CURRENT_VERSION=$(cat "$VERSION_FILE")
-elif [ -f "$ENV_FILE" ] && ! grep -q "CHANGE_ME" "$ENV_FILE" 2>/dev/null; then
-    IS_PARTIAL=true
 fi
 
 # ── Download latest release ───────────────────────────────────────────────────
 
 echo ""
-echo "Fetching latest release information from GitHub..."
+echo "🔍 Fetching latest release information from GitHub..."
 
 RELEASE_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
 
@@ -174,13 +171,13 @@ DEB_FILE=$(mktemp /tmp/paprika-XXXXXX.deb)
 EXTRACT_TMP=$(mktemp -d /tmp/paprika-extract-XXXXXX)
 trap 'rm -rf "$DEB_FILE" "$EXTRACT_TMP"' EXIT
 
-echo "Downloading: ${DOWNLOAD_URL}"
+echo "⬇️  Downloading: ${DOWNLOAD_URL}"
 curl -fsSL --progress-bar -o "$DEB_FILE" "$DOWNLOAD_URL"
 
 # ── Checksum verification ─────────────────────────────────────────────────────
 
 if [ -n "$CHECKSUM_URL" ]; then
-    echo "Verifying checksum..."
+    echo "🔒 Verifying checksum..."
     EXPECTED=$(curl -fsSL "$CHECKSUM_URL" | awk '{print $1}')
     ACTUAL=$(sha256sum "$DEB_FILE" | awk '{print $1}')
     if [ "$EXPECTED" != "$ACTUAL" ]; then
@@ -189,7 +186,7 @@ if [ -n "$CHECKSUM_URL" ]; then
         echo "  Actual:   ${ACTUAL}" >&2
         exit 1
     fi
-    echo "Checksum OK."
+    echo "✅ Checksum OK."
 else
     echo "Warning: No .sha256 file found in this release – skipping integrity check." >&2
 fi
@@ -210,14 +207,7 @@ fi
 
 # ── Branch: Install vs. Update ────────────────────────────────────────────────
 
-if [ "$IS_PARTIAL" = true ]; then
-
-    # ── Resume partial install ─────────────────────────────────────────────────
-
-    echo ""
-    echo "Resuming installation (using existing configuration in ${ENV_FILE})..."
-
-elif [ "$IS_UPDATE" = true ]; then
+if [ "$IS_UPDATE" = true ]; then
 
     # ── Update ────────────────────────────────────────────────────────────────
 
@@ -251,14 +241,15 @@ elif [ "$IS_UPDATE" = true ]; then
     fi
 
     echo ""
-    echo "Stopping service..."
+    echo "⏹️  Stopping service..."
     systemctl stop "$APP_NAME" || true
 
     # Replace only the app directories from the new package.
     # .env, .version and storage/ are not part of the .deb and remain untouched.
-    rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib"
+    rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/share"
     cp -a "${EXTRACTED_APP}/bin" "${INSTALL_DIR}/bin"
     cp -a "${EXTRACTED_APP}/lib" "${INSTALL_DIR}/lib"
+    [ -d "${EXTRACTED_APP}/share" ] && cp -a "${EXTRACTED_APP}/share" "${INSTALL_DIR}/share"
 
 else
 
@@ -266,7 +257,7 @@ else
 
     echo ""
     echo "No existing installation found."
-    echo "Installing version ${NEW_VERSION} to ${INSTALL_DIR} ..."
+    echo "📦 Installing version ${NEW_VERSION} to ${INSTALL_DIR} ..."
     echo ""
 
     mkdir -p "$INSTALL_DIR"
@@ -277,7 +268,7 @@ else
     gen_secret() { openssl rand -hex 32; }  # 64 hex chars
     gen_key()    { openssl rand -hex 32; }  # 64 hex chars
 
-    echo "Generating secure environment configuration..."
+    echo "🔑 Generating secure environment configuration..."
 
     OLD_UMASK=$(umask)
     umask 077
@@ -297,15 +288,13 @@ else
 
 # ── MongoDB ───────────────────────────────────
 PERSISTENCE_MONGO_HOST=CHANGE_ME
+PERSISTENCE_MONGO_PORT=27017
 PERSISTENCE_MONGO_USERNAME=CHANGE_ME
 PERSISTENCE_MONGO_PASSWORD=CHANGE_ME
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  OPTIONAL – change if needed
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-# ── MongoDB ───────────────────────────────────
-PERSISTENCE_MONGO_PORT=27017
 
 # ── HTTP Connector ────────────────────────────
 #  By default Paprika only listens on loopback.
@@ -356,32 +345,14 @@ EOF
 
     umask "$OLD_UMASK"
 
-    echo ".env written to ${ENV_FILE}"
+    echo "✅ .env written to ${ENV_FILE}"
     echo ""
-    echo "  ┌─────────────────────────────────────────────────────────────┐"
-    echo "  │  ACTION REQUIRED before continuing:                         │"
-    echo "  │                                                             │"
-    echo "  │    nano ${ENV_FILE}"
-    echo "  │                                                             │"
-    echo "  │  Replace all CHANGE_ME values with your MongoDB             │"
-    echo "  │  connection details.                                        │"
-    echo "  └─────────────────────────────────────────────────────────────┘"
+    echo "  ⚠️  ACTION REQUIRED before starting Paprika:"
+    echo "  Replace all CHANGE_ME values with your MongoDB connection details:"
+    echo ""
+    echo "    nano ${ENV_FILE}"
     echo ""
 
-    if grep -q "CHANGE_ME" "$ENV_FILE"; then
-        if [ ! -t 0 ]; then
-            echo ""
-            echo "  Script is running non-interactively (piped from curl)."
-            echo "  Edit ${ENV_FILE}, then run the script again to complete setup."
-            exit 0
-        fi
-        while grep -q "CHANGE_ME" "$ENV_FILE"; do
-            read -r -p "  Press ENTER once all CHANGE_ME values have been replaced..."
-            if grep -q "CHANGE_ME" "$ENV_FILE"; then
-                echo "  Still found CHANGE_ME in ${ENV_FILE} – please complete the configuration."
-            fi
-        done
-    fi
 
 fi
 
@@ -495,20 +466,33 @@ systemctl daemon-reload
 systemctl enable "$APP_NAME"
 
 if [ "$IS_UPDATE" = true ]; then
-    systemctl restart "$APP_NAME" || true
     echo ""
     echo "────────────────────────────────────────────"
-    echo " Update complete: ${CURRENT_VERSION} → ${NEW_VERSION}"
+    echo " 🫑  Update complete: ${CURRENT_VERSION} → ${NEW_VERSION}"
+    echo ""
+    echo " ▶️  Start the service when ready:"
+    echo "   systemctl start ${APP_NAME}"
+    echo ""
+    echo " 📋 Check service status:"
+    echo "   systemctl status ${APP_NAME}"
+    echo "   journalctl -u ${APP_NAME} -f"
+    echo "────────────────────────────────────────────"
 else
-    systemctl start "$APP_NAME" || true
     echo ""
     echo "────────────────────────────────────────────"
-    echo " Installation complete: ${NEW_VERSION}"
-    echo " Installed to: ${INSTALL_DIR}"
+    echo " 🫑  Installation complete: ${NEW_VERSION}"
+    echo " 📂 Installed to: ${INSTALL_DIR}"
+    echo ""
+    echo " Next steps:"
+    echo "   1. ✏️  Edit ${ENV_FILE}"
+    echo "      Replace all CHANGE_ME values with your"
+    echo "      MongoDB connection details."
+    echo ""
+    echo "   2. ▶️  Start Paprika when ready:"
+    echo "      systemctl start ${APP_NAME}"
+    echo ""
+    echo " 📋 Check service status:"
+    echo "   systemctl status ${APP_NAME}"
+    echo "   journalctl -u ${APP_NAME} -f"
+    echo "────────────────────────────────────────────"
 fi
-
-echo ""
-echo " Check service status:"
-echo "   systemctl status ${APP_NAME}"
-echo "   journalctl -u ${APP_NAME} -f"
-echo "────────────────────────────────────────────"
