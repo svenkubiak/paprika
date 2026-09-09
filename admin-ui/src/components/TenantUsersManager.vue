@@ -199,17 +199,6 @@ async function deleteUserAction() {
     </div>
 
     <UCard v-if="hasActiveTenant" :ui="{ body: 'p-0 sm:p-0' }">
-      <template #header>
-        <div>
-          <h2 class="font-semibold">Tenant users</h2>
-          <p class="text-sm text-muted">
-            Users for
-            <span class="font-medium text-default">{{ activeTenant?.name }}</span>
-            — password hashes are never shown.
-          </p>
-        </div>
-      </template>
-
       <UTable :data="users" :columns="columns" :loading="loading" @select="openEdit">
         <template #userId-cell="{ row }">
           <code class="text-sm">{{ row.original.id }}</code>

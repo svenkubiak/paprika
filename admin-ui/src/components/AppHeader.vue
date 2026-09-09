@@ -88,10 +88,18 @@ function toggleColorMode() {
             Tenant-wide beforeRequest hooks for collections and auth flows
           </p>
           <p v-else-if="route.name === 'request-logs'" class="text-sm text-muted">
-            Tenant API request history without payloads
+            <template v-if="bootstrap?.activeTenant">
+              API requests for
+              <span class="font-medium text-default">{{ bootstrap.activeTenant.name }}</span>
+              — no payloads
+            </template>
+            <template v-else>Select a tenant to view request logs</template>
           </p>
           <p v-else-if="route.name === 'tenant-users'" class="text-sm text-muted">
             Manage tenant users and self-registration
+          </p>
+          <p v-else-if="route.name === 'superadmins'" class="text-sm text-muted">
+            Manage superadmin accounts and invites
           </p>
           <p v-else-if="route.name === 'user-settings'" class="text-sm text-muted">
             Self-registration, password reset, and email verification for tenant users

@@ -148,26 +148,10 @@ function statusColor(code: number) {
     />
 
     <UCard>
-      <template #header>
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 class="font-semibold">Logs</h2>
-            <p v-if="hasActiveTenant" class="text-sm text-muted">
-              API requests for tenant
-              <span class="font-medium text-default">{{ bootstrap?.activeTenant?.name }}</span>
-              — metadata only, no payloads.
-            </p>
-            <p v-else class="text-sm text-muted">
-              API request metadata per tenant — no payloads.
-            </p>
-          </div>
-          <p class="text-sm text-muted">{{ summary }}</p>
-        </div>
-      </template>
-
       <template v-if="hasActiveTenant">
         <div class="mb-4 flex flex-col gap-3">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
             <UInput
               v-model="search"
               class="w-full sm:max-w-md"
@@ -228,6 +212,8 @@ function statusColor(code: number) {
                 Hook blocked
               </UButton>
             </div>
+          </div>
+            <p class="shrink-0 text-sm text-muted">{{ summary }}</p>
           </div>
         </div>
 

@@ -44,13 +44,6 @@ async function confirmImport() {
 <template>
   <div class="space-y-4">
     <UCard>
-      <template #header>
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-archive" class="size-5 text-primary" />
-          <h2 class="font-semibold">Backup & Restore</h2>
-        </div>
-      </template>
-
       <div class="space-y-6">
         <div class="space-y-2">
           <h3 class="font-medium">Export backup</h3>
