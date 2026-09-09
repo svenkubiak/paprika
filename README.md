@@ -1,5 +1,10 @@
 [![Latest](https://img.shields.io/github/v/tag/svenkubiak/paprika?label=ghcr.io&sort=semver)](https://ghcr.io/svenkubiak/paprika/paprika)
+[![Release](https://img.shields.io/github/v/release/svenkubiak/paprika?label=release)](https://github.com/svenkubiak/paprika/releases/latest)
 ![SemVer](https://img.shields.io/badge/SemVer-2.0.0-green)
+[![Release Build](https://github.com/svenkubiak/paprika/actions/workflows/release.yml/badge.svg)](https://github.com/svenkubiak/paprika/actions/workflows/release.yml)
+[![Docs](https://img.shields.io/badge/docs-online-blue?logo=readthedocs&logoColor=white)](https://svenkubiak.github.io/paprika/)
+[![Status](https://img.shields.io/badge/status-beta-orange)](https://github.com/svenkubiak/paprika#-paprika)
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](https://github.com/svenkubiak/paprika/blob/main/LICENSING.md)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-%F0%9F%8D%BA-yellow)](https://buymeacoffee.com/svenkubiak)
 
 # 🫑 Paprika
