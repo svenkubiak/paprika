@@ -125,10 +125,6 @@ function onSlugInput() {
               <UInput :model-value="tenant.databaseName" icon="i-lucide-database" class="w-full" disabled />
             </UFormField>
 
-            <UFormField label="Status" class="w-full">
-              <UInput :model-value="tenant.status" icon="i-lucide-activity" class="w-full" disabled />
-            </UFormField>
-
             <UCard variant="subtle" :ui="{ body: 'p-4 sm:p-4' }">
               <div class="flex items-start justify-between gap-4">
                 <div>
