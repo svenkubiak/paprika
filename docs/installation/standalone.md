@@ -8,23 +8,30 @@ The standalone package installs Paprika as a hardened systemd service on Ubuntu 
 - `amd64` or `arm64` architecture (the script detects this automatically via `uname -m`)
 - `curl`, `openssl`, `sha256sum`, and `dpkg-deb` available on the host
 - A running MongoDB instance reachable from this host — if you don't have one yet, [install MongoDB](https://www.mongodb.com/docs/manual/installation/) first and make sure it's reachable before proceeding
-- A manually created database named `paprika` on that instance, plus a user with `readWrite` access to it (see [MongoDB setup](#mongodb-setup) below) — Paprika does not create the database or user itself
+- A user on that instance with the scoped role Paprika needs (see [MongoDB setup](#mongodb-setup) below) — Paprika does not create this user itself
 - Root access (the script must run via `sudo`)
 
 ## MongoDB setup
 
-Paprika expects a database named exactly `paprika` and a user authenticated against the `admin` database (`authSource=admin`) with `readWrite` access to it. Create both before starting the service, e.g. via `mongosh`:
+Paprika creates its own database (holding tenants, settings, and the superadmin account) plus a **separate MongoDB database per tenant**, provisioned on demand whenever a tenant is created — the database names aren't known ahead of time, so a role scoped to a single named database isn't enough. Instead, create a user authenticated against the `admin` database (`authSource=admin`) with `readWriteAnyDatabase` and `dbAdminAnyDatabase` — read/write plus the ability to create, index, and drop databases and collections across the deployment, without the user-management or server-administration rights a `root` account would also carry. Create it before starting the service, e.g. via `mongosh`:
 
 ```js
 use admin
 db.createUser({
   user: "paprika",
   pwd: "<a-strong-password>",
-  roles: [ { role: "readWrite", db: "paprika" } ]
+  roles: [
+    { role: "readWriteAnyDatabase", db: "admin" },
+    { role: "dbAdminAnyDatabase", db: "admin" }
+  ]
 })
 ```
 
 You'll enter this username and password into `.env` as `PERSISTENCE_MONGO_USERNAME` / `PERSISTENCE_MONGO_PASSWORD` further down.
+
+::: warning This is still a broadly-scoped account
+`readWriteAnyDatabase`/`dbAdminAnyDatabase` cover every database on the instance, not just Paprika's — tenant isolation in Paprika is enforced entirely in the application, not by MongoDB roles. Run MongoDB as its own instance dedicated to this Paprika installation if you can, rather than sharing it with unrelated applications or data.
+:::
 
 ## Install
 

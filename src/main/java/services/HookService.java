@@ -9,6 +9,8 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import constants.GlobalHooks;
 import constants.SystemCollections;
+import de.svenkubiak.http.Http;
+import de.svenkubiak.http.Result;
 import hooks.*;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
@@ -23,13 +25,11 @@ import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import utils.DbUtils;
 
+import java.io.IOException;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -41,10 +41,10 @@ public class HookService {
     private static final Logger LOG = LogManager.getLogger(HookService.class);
     private static final int ENVELOPE_VERSION = 1;
     private static final int MAX_TIMEOUT_MS = 30_000;
+    private static final Set<String> ALLOWED_METHODS = Set.of("GET", "POST", "PUT", "PATCH", "DELETE");
     private final TenantCollectionService tenantCollections;
     private final RealtimeService realtimeService;
     private final TenantService tenantService;
-    private final HttpClient httpClient;
     private final ExecutorService asyncExecutor;
 
     @Inject
@@ -55,12 +55,6 @@ public class HookService {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                // Never follow redirects: a hook pointed at an allowed public host could otherwise
-                // be redirected to an internal/private target at delivery time, bypassing validateNoSsrf.
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
         this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -148,6 +142,11 @@ public class HookService {
         if (timeout > MAX_TIMEOUT_MS) {
             throw new IllegalArgumentException("Hook timeout must not exceed " + MAX_TIMEOUT_MS + " ms");
         }
+
+        if (!ALLOWED_METHODS.contains(hook.methodOrDefault())) {
+            throw new IllegalArgumentException(
+                    "Hook method must be one of " + ALLOWED_METHODS + ", got: " + hook.method());
+        }
     }
 
     public HookTestResult testHook(TenantContext ctx, String collection, HookDefinition hook) {
@@ -189,14 +188,25 @@ public class HookService {
         long started = System.currentTimeMillis();
 
         try {
-            HttpResponse<String> response = sendRequest(ctx, normalized, envelope, signature);
+            Result result = sendRequest(ctx, normalized, envelope, signature);
             long latency = System.currentTimeMillis() - started;
+            if (result.status() == -1) {
+                return new HookTestResult(
+                        envelope.deliveryId(),
+                        envelope.payload(),
+                        signature,
+                        0,
+                        null,
+                        latency,
+                        result.error()
+                );
+            }
             return new HookTestResult(
                     envelope.deliveryId(),
                     envelope.payload(),
                     signature,
-                    response.statusCode(),
-                    response.body(),
+                    result.status(),
+                    result.body(),
                     latency,
                     null
             );
@@ -436,8 +446,11 @@ public class HookService {
                     hook.includeSchema(),
                     HookRequestUtils.extractRequestHeaders(request));
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
-            HttpResponse<String> response = sendRequest(ctx, hook, envelope, signature);
-            return parseBlockingResponse(response, hook);
+            Result result = sendRequest(ctx, hook, envelope, signature);
+            if (result.status() == -1) {
+                throw new IOException(result.error());
+            }
+            return parseBlockingResponse(result, hook);
         } catch (Exception e) {
             LOG.warn("Blocking hook {} failed for {}: {}", hook.name(), event, e.getMessage());
             if (hook.failOpenOrDefault()) {
@@ -470,7 +483,10 @@ public class HookService {
                     hook.includeSchema(),
                     HookRequestUtils.extractRequestHeaders(request));
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
-            sendRequest(ctx, hook, envelope, signature);
+            Result result = sendRequest(ctx, hook, envelope, signature);
+            if (result.status() == -1) {
+                throw new IOException(result.error());
+            }
         } catch (Exception e) {
             LOG.warn("Async hook {} failed for {}: {}", hook.name(), event, e.getMessage());
         }
@@ -535,31 +551,43 @@ public class HookService {
         return tenantService.findById(ctx.effectiveTenantId()).orElse(null);
     }
 
-    private HttpResponse<String> sendRequest(
-            TenantContext ctx, HookDefinition hook, HookEnvelope envelope, String signature) throws Exception {
+    private Result sendRequest(
+            TenantContext ctx, HookDefinition hook, HookEnvelope envelope, String signature) {
         validateNoSsrf(URI.create(hook.url().trim()), resolveTenant(ctx));
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(hook.url().trim()))
-                .timeout(Duration.ofMillis(hook.timeoutOrDefault()))
-                .header("Content-Type", "application/json")
-                .header("X-Paprika-Event", hook.event().name())
-                .header("X-Paprika-Collection", hook.collection())
-                .header("X-Paprika-Delivery-Id", envelope.deliveryId())
-                .header("X-Paprika-Signature", signature);
+        Http request = httpFor(hook.methodOrDefault(), hook.url().trim())
+                .withTimeout(Duration.ofMillis(hook.timeoutOrDefault()))
+                .withHeader("Content-Type", "application/json")
+                .withHeader("X-Paprika-Event", hook.event().name())
+                .withHeader("X-Paprika-Collection", hook.collection())
+                .withHeader("X-Paprika-Delivery-Id", envelope.deliveryId())
+                .withHeader("X-Paprika-Signature", signature)
+                .withBody(envelope.payload());
 
         if (hook.headers() != null) {
-            hook.headers().forEach(builder::header);
+            hook.headers().forEach(request::withHeader);
         }
 
-        HttpRequest httpRequest = builder
-                .method(hook.methodOrDefault(), HttpRequest.BodyPublishers.ofString(envelope.payload()))
-                .build();
-
-        return httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        return request.send();
     }
 
-    private HookExecutionResult parseBlockingResponse(HttpResponse<String> response, HookDefinition hook) throws Exception {
+    /**
+     * simple-http exposes GET/POST/PUT/PATCH/DELETE as separate factory methods rather than
+     * an arbitrary method string. validate() rejects anything outside ALLOWED_METHODS, so this
+     * should only ever see one of those five.
+     */
+    private static Http httpFor(String method, String url) {
+        return switch (method) {
+            case "GET" -> Http.get(url);
+            case "POST" -> Http.post(url);
+            case "PUT" -> Http.put(url);
+            case "PATCH" -> Http.patch(url);
+            case "DELETE" -> Http.delete(url);
+            default -> throw new IllegalStateException("Unsupported hook method: " + method);
+        };
+    }
+
+    private HookExecutionResult parseBlockingResponse(Result response, HookDefinition hook) throws Exception {
         String responseBody = response.body();
 
         if (responseBody != null && !responseBody.isBlank()) {
@@ -576,7 +604,7 @@ public class HookService {
                     }
                 }
 
-                int status = Math.max(response.statusCode(), 400);
+                int status = Math.max(response.status(), 400);
                 String errorBody = responseBody;
 
                 if (root.has("error")) {
@@ -590,11 +618,11 @@ public class HookService {
                 return HookExecutionResult.abortWithBody(status, errorBody);
             }
 
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            if (response.status() < 200 || response.status() >= 300) {
                 if (hook.failOpenOrDefault()) {
                     return HookExecutionResult.proceedUnchanged();
                 }
-                return HookExecutionResult.abort(502, "Hook returned HTTP " + response.statusCode());
+                return HookExecutionResult.abort(502, "Hook returned HTTP " + response.status());
             }
 
             JsonNode data = root.get("data");
@@ -605,11 +633,11 @@ public class HookService {
             return HookExecutionResult.proceedUnchanged();
         }
 
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+        if (response.status() < 200 || response.status() >= 300) {
             if (hook.failOpenOrDefault()) {
                 return HookExecutionResult.proceedUnchanged();
             }
-            return HookExecutionResult.abort(502, "Hook returned HTTP " + response.statusCode());
+            return HookExecutionResult.abort(502, "Hook returned HTTP " + response.status());
         }
 
         return HookExecutionResult.proceedUnchanged();

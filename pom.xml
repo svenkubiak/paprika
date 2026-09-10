@@ -313,6 +313,11 @@
 			<version>${mangooio.version}</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>de.svenkubiak</groupId>
+			<artifactId>simple-http</artifactId>
+			<version>3.0.0</version>
+		</dependency>
 	</dependencies>
 	<profiles>
 		<profile>
