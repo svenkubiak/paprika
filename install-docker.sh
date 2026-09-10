@@ -15,6 +15,7 @@ set -euo pipefail
 GITHUB_RAW="https://raw.githubusercontent.com/svenkubiak/paprika/main"
 ENV_FILE=".env"
 COMPOSE_FILE="compose.yml"
+MONGO_INIT_FILE="mongo-init.js"
 
 # ── Preflight checks ──────────────────────────────────────────────────────────
 
@@ -109,8 +110,12 @@ if [ ! -f "$ENV_FILE" ]; then
 #  Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 #
 #  All secrets are auto-generated.
-#  MONGO_USERNAME / MONGO_PASSWORD are used both by MongoDB
-#  (as the root admin user) and by the Paprika app.
+#  MONGO_ROOT_USERNAME / MONGO_ROOT_PASSWORD bootstrap the MongoDB
+#  container only (mongo-init.js uses them to create the scoped
+#  user below); they are never passed to the Paprika app.
+#  MONGO_USERNAME / MONGO_PASSWORD are the scoped user
+#  (readWriteAnyDatabase + dbAdminAnyDatabase, no user/server
+#  administration rights) the Paprika app actually authenticates as.
 # ─────────────────────────────────────────────────────────────
 
 # ── Host port (external) ──────────────────────────────────────
@@ -136,6 +141,8 @@ AUTHENTICATION_COOKIE_SECRET=$(gen_secret)
 AUTHENTICATION_COOKIE_KEY=$(gen_key)
 
 # ── MongoDB ───────────────────────────────────────────────────
+MONGO_ROOT_USERNAME=root
+MONGO_ROOT_PASSWORD=$(gen_secret)
 MONGO_USERNAME=paprika
 MONGO_PASSWORD=$(gen_secret)
 
@@ -165,8 +172,9 @@ mkdir -p storage mongodb
 # ── Download compose file ─────────────────────────────────────────────────────
 
 echo ""
-echo "Downloading ${COMPOSE_FILE}..."
+echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE}..."
 curl -fsSL -o "$COMPOSE_FILE" "${GITHUB_RAW}/${COMPOSE_FILE}"
+curl -fsSL -o "$MONGO_INIT_FILE" "${GITHUB_RAW}/${MONGO_INIT_FILE}"
 
 # ── Start stack ───────────────────────────────────────────────────────────────
 

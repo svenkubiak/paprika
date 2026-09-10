@@ -49,10 +49,18 @@ services:
     container_name: paprika-mongodb
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      # Bootstrap-only root credential: creates the database and runs mongo-init.js on first
+      # start, but is never handed to the paprika container. mongo-init.js creates the scoped
+      # MONGO_USERNAME/MONGO_PASSWORD user paprika actually authenticates as (readWriteAnyDatabase
+      # + dbAdminAnyDatabase — everything Paprika's per-tenant database provisioning needs, without
+      # the user-management or server-administration rights a root account would also carry).
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_APP_USERNAME: ${MONGO_USERNAME}
+      MONGO_APP_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongodb-data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({ping:1})'"]
       interval: 10s
