@@ -26,7 +26,7 @@ class AuthControllerTest {
     @BeforeEach
     void disableRegistrationOnDefaultTenant() {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
-        Application.getInstance(TenantService.class).update(tenant.id(), null, null, null, false, null, null, null, null, null);
+        Application.getInstance(TenantService.class).update(tenant.id(), null, null, null, false, null, null, null, null, null, null);
     }
 
     @Test
@@ -157,7 +157,7 @@ class AuthControllerTest {
     @Test
     void registerCreatesUserWhenEnabledForTenant() {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
-        Application.getInstance(TenantService.class).update(tenant.id(), null, null, null, true, null, null, null, null, null);
+        Application.getInstance(TenantService.class).update(tenant.id(), null, null, null, true, null, null, null, null, null, null);
 
         TestResponse response = TestRequest.post("/api/auth/register")
                 .withStringBody(registerBody(tenant.slug(), "registered-user", "secret-password-123", "reg@example.com"))

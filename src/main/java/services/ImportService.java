@@ -132,8 +132,16 @@ public class ImportService {
                         Boolean.TRUE.equals(doc.get("emailVerificationEnabled")),
                         Boolean.TRUE.equals(doc.get("emailVerificationRequired")),
                         (String) doc.get("passwordResetUrl"),
-                        (String) doc.get("emailVerificationUrl")))
+                        (String) doc.get("emailVerificationUrl"),
+                        parseWebhookAllowlist(doc.get("webhookAllowlist"))))
                 .toList();
+    }
+
+    private static List<String> parseWebhookAllowlist(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream().map(String::valueOf).toList();
     }
 
     private void restoreSystemDatabase(Map<String, byte[]> entries) throws IOException {

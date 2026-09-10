@@ -17,7 +17,9 @@ Every response includes the three [system fields](/concepts/collections#system-f
 
 ## Authentication
 
-A separate card documents `/api/auth/register`, `/api/auth/login`, and `/api/auth/refresh` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access).
+A separate card documents `/api/auth/register`, `/api/auth/login`, and `/api/auth/refresh` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).
+
+The same card documents `GET /api/auth/me`, which returns the calling tenant user's own record from just the bearer token — no id or call to `/api/collections/users` needed. It bypasses collection rules and never returns `passwordHash`, `passwordSalt`, or `role`.
 
 The same card also lists the optional recovery endpoints: `/api/auth/password/forgot` and `/api/auth/password/reset`, plus `/api/auth/verify/request` and `/api/auth/verify/confirm`. These are off unless the tenant has [Password reset or email verification](/admin-ui/tenant-users#password-reset-and-email-verification) enabled, and the link is emailed by Paprika over the instance SMTP settings, built from the tenant's configured link URL.
 

@@ -134,6 +134,7 @@ export interface TenantDefinition {
   emailVerificationRequired?: boolean
   passwordResetUrl?: string | null
   emailVerificationUrl?: string | null
+  webhookAllowlist?: string[]
 }
 
 export interface TenantUser {

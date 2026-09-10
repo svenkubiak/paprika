@@ -19,6 +19,7 @@ const passwordResetUrl = ref('')
 const emailVerificationEnabled = ref(false)
 const emailVerificationUrl = ref('')
 const emailVerificationRequired = ref(false)
+const webhookAllowlist = ref('')
 
 onMounted(async () => {
   await load()
@@ -47,6 +48,7 @@ function syncFromTenant() {
     emailVerificationEnabled.value = false
     emailVerificationUrl.value = ''
     emailVerificationRequired.value = false
+    webhookAllowlist.value = ''
     return
   }
   registrationEnabled.value = tenant.registrationEnabled ?? false
@@ -55,6 +57,7 @@ function syncFromTenant() {
   emailVerificationEnabled.value = tenant.emailVerificationEnabled ?? false
   emailVerificationUrl.value = tenant.emailVerificationUrl ?? ''
   emailVerificationRequired.value = tenant.emailVerificationRequired ?? false
+  webhookAllowlist.value = (tenant.webhookAllowlist ?? []).join(', ')
 }
 
 async function save() {
@@ -69,7 +72,11 @@ async function save() {
       passwordResetUrl: passwordResetEnabled.value ? passwordResetUrl.value || null : null,
       emailVerificationEnabled: emailVerificationEnabled.value,
       emailVerificationUrl: emailVerificationEnabled.value ? emailVerificationUrl.value || null : null,
-      emailVerificationRequired: emailVerificationRequired.value
+      emailVerificationRequired: emailVerificationRequired.value,
+      webhookAllowlist: webhookAllowlist.value
+        .split(',')
+        .map((host) => host.trim())
+        .filter(Boolean)
     })
     await load(true)
     toast.add({
@@ -185,6 +192,23 @@ async function save() {
             </div>
             <USwitch v-model="emailVerificationRequired" />
           </div>
+        </UCard>
+
+        <UCard :ui="{ body: 'p-4 sm:p-4' }">
+          <p class="font-medium">Webhook allowlist</p>
+          <p class="mt-1 text-sm text-muted">
+            Loopback and private-network addresses are blocked as webhook targets by default. List
+            <code class="text-xs">host:port</code> combinations this tenant's hooks may target,
+            separated by commas.
+          </p>
+          <UFormField class="mt-3 w-full">
+            <UInput
+              v-model="webhookAllowlist"
+              icon="i-lucide-shield-check"
+              class="w-full font-mono"
+              placeholder="127.0.0.1:8092, 192.168.1.10:9000"
+            />
+          </UFormField>
         </UCard>
 
         <div class="flex justify-end">

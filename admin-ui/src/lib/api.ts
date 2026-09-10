@@ -149,6 +149,7 @@ export const api = {
       emailVerificationRequired?: boolean
       passwordResetUrl?: string | null
       emailVerificationUrl?: string | null
+      webhookAllowlist?: string[]
     }
   ): Promise<TenantDefinition> {
     return request(`/api/meta/tenants/${encodeURIComponent(id)}`, {

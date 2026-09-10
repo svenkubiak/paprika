@@ -17,6 +17,7 @@ import jakarta.inject.Singleton;
 import models.CollectionDefinition;
 import models.HookDefinition;
 import models.HookEvent;
+import models.TenantDefinition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -41,13 +42,18 @@ public class HookService {
     private static final int MAX_TIMEOUT_MS = 30_000;
     private final TenantCollectionService tenantCollections;
     private final RealtimeService realtimeService;
+    private final TenantService tenantService;
     private final HttpClient httpClient;
     private final ExecutorService asyncExecutor;
 
     @Inject
-    public HookService(TenantCollectionService tenantCollections, RealtimeService realtimeService) {
+    public HookService(
+            TenantCollectionService tenantCollections,
+            RealtimeService realtimeService,
+            TenantService tenantService) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
+        this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
@@ -92,7 +98,7 @@ public class HookService {
         return tenantCollections.deleteHook(ctx, id);
     }
 
-    public void validate(HookDefinition hook) {
+    public void validate(HookDefinition hook, TenantContext ctx) {
         if (hook.name() == null || hook.name().isBlank()) {
             throw new IllegalArgumentException("Hook name is required");
         }
@@ -132,7 +138,7 @@ public class HookService {
         if (uri.getScheme() == null || (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme()))) {
             throw new IllegalArgumentException("Hook URL must use http or https");
         }
-        validateNoSsrf(uri);
+        validateNoSsrf(uri, resolveTenant(ctx));
 
         int timeout = hook.timeoutOrDefault();
         if (timeout > MAX_TIMEOUT_MS) {
@@ -152,7 +158,7 @@ public class HookService {
         HookDefinition normalized = normalizeHook(hook, collection);
 
         try {
-            validate(normalized);
+            validate(normalized, ctx);
         } catch (IllegalArgumentException e) {
             return new HookTestResult(null, null, null, 0, null, 0, e.getMessage());
         }
@@ -179,7 +185,7 @@ public class HookService {
         long started = System.currentTimeMillis();
 
         try {
-            HttpResponse<String> response = sendRequest(normalized, envelope, signature);
+            HttpResponse<String> response = sendRequest(ctx, normalized, envelope, signature);
             long latency = System.currentTimeMillis() - started;
             return new HookTestResult(
                     envelope.deliveryId(),
@@ -246,6 +252,7 @@ public class HookService {
         for (HookDefinition hook : hooks) {
             anyHookRan = true;
             HookExecutionResult result = executeBlocking(
+                    ctx,
                     hook,
                     definition,
                     event,
@@ -287,6 +294,7 @@ public class HookService {
         for (HookDefinition hook : hooks) {
             anyHookRan = true;
             HookExecutionResult result = executeBlocking(
+                    ctx,
                     hook,
                     definition,
                     HookEvent.beforeRequest,
@@ -322,7 +330,7 @@ public class HookService {
 
         List<HookDefinition> hooks = findEnabledHooks(ctx, definition.name(), event);
         for (HookDefinition hook : hooks) {
-            asyncExecutor.submit(() -> executeAsync(hook, definition, event, request, body, record, recordId));
+            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId));
         }
         realtimeService.broadcast(ctx, definition, event, record, recordId);
     }
@@ -338,7 +346,7 @@ public class HookService {
 
         JsonNode currentBody = body;
         for (HookDefinition hook : hooks) {
-            HookExecutionResult result = executeBlocking(hook, definition, event, request, currentBody, null, null);
+            HookExecutionResult result = executeBlocking(ctx, hook, definition, event, request, currentBody, null, null);
 
             if (!result.continueOperation()) {
                 return result;
@@ -370,7 +378,7 @@ public class HookService {
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, SystemCollections.USERS);
         List<HookDefinition> hooks = findEnabledHooks(ctx, SystemCollections.USERS, event);
         for (HookDefinition hook : hooks) {
-            asyncExecutor.submit(() -> executeAsync(hook, definition, event, request, body, record, recordId));
+            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId));
         }
     }
 
@@ -402,6 +410,7 @@ public class HookService {
     }
 
     private HookExecutionResult executeBlocking(
+            TenantContext ctx,
             HookDefinition hook,
             CollectionDefinition definition,
             HookEvent event,
@@ -423,7 +432,7 @@ public class HookService {
                     hook.includeSchema(),
                     HookRequestUtils.extractRequestHeaders(request));
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
-            HttpResponse<String> response = sendRequest(hook, envelope, signature);
+            HttpResponse<String> response = sendRequest(ctx, hook, envelope, signature);
             return parseBlockingResponse(response, hook);
         } catch (Exception e) {
             LOG.warn("Blocking hook {} failed for {}: {}", hook.name(), event, e.getMessage());
@@ -435,6 +444,7 @@ public class HookService {
     }
 
     private void executeAsync(
+            TenantContext ctx,
             HookDefinition hook,
             CollectionDefinition definition,
             HookEvent event,
@@ -456,13 +466,18 @@ public class HookService {
                     hook.includeSchema(),
                     HookRequestUtils.extractRequestHeaders(request));
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
-            sendRequest(hook, envelope, signature);
+            sendRequest(ctx, hook, envelope, signature);
         } catch (Exception e) {
             LOG.warn("Async hook {} failed for {}: {}", hook.name(), event, e.getMessage());
         }
     }
 
-    private static void validateNoSsrf(URI uri) {
+    /**
+     * Loopback/private/link-local/multicast targets are blocked unless the tenant has explicitly
+     * allowlisted that exact {@code host:port}, closing the SSRF hole a shared multi-tenant instance
+     * would otherwise have if any tenant could point a hook at another tenant's internal services.
+     */
+    private static void validateNoSsrf(URI uri, TenantDefinition tenant) {
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("Hook URL must contain a valid host");
@@ -470,12 +485,18 @@ public class HookService {
         try {
             InetAddress[] addresses = InetAddress.getAllByName(host);
             for (InetAddress address : addresses) {
-                if (address.isLoopbackAddress()
-                        || address.isLinkLocalAddress()
-                        || address.isSiteLocalAddress()
-                        || address.isAnyLocalAddress()
-                        || address.isMulticastAddress()) {
-                    throw new IllegalArgumentException("Hook URL must not target internal or private addresses");
+                if (isLoopbackOrPrivate(address)) {
+                    String hostPort = host + ":" + resolvePort(uri);
+                    List<String> allowlist = tenant != null && tenant.webhookAllowlist() != null
+                            ? tenant.webhookAllowlist()
+                            : List.of();
+                    if (allowlist.contains(hostPort)) {
+                        return;
+                    }
+                    String tenantLabel = tenant != null ? tenant.slug() : "unknown";
+                    throw new IllegalArgumentException(
+                            "Webhook target '" + uri + "' is not allowed for tenant '" + tenantLabel + "'. "
+                            + "Add '" + hostPort + "' to the tenant's webhook allowlist in the admin UI.");
                 }
             }
         } catch (UnknownHostException e) {
@@ -483,7 +504,32 @@ public class HookService {
         }
     }
 
-    private HttpResponse<String> sendRequest(HookDefinition hook, HookEnvelope envelope, String signature) throws Exception {
+    private static boolean isLoopbackOrPrivate(InetAddress address) {
+        return address.isLoopbackAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isAnyLocalAddress()
+                || address.isMulticastAddress();
+    }
+
+    private static int resolvePort(URI uri) {
+        if (uri.getPort() != -1) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    private TenantDefinition resolveTenant(TenantContext ctx) {
+        if (ctx == null || ctx.effectiveTenantId() == null) {
+            return null;
+        }
+        return tenantService.findById(ctx.effectiveTenantId()).orElse(null);
+    }
+
+    private HttpResponse<String> sendRequest(
+            TenantContext ctx, HookDefinition hook, HookEnvelope envelope, String signature) throws Exception {
+        validateNoSsrf(URI.create(hook.url().trim()), resolveTenant(ctx));
+
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(hook.url().trim()))
                 .timeout(Duration.ofMillis(hook.timeoutOrDefault()))

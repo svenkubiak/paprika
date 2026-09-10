@@ -117,12 +117,12 @@ class TenantAuthRecoveryIntegrationTest {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
         TenantService tenantService = Application.getInstance(TenantService.class);
 
-        tenantService.update(tenant.id(), null, null, null, null, null, true, true, null, null);
+        tenantService.update(tenant.id(), null, null, null, null, null, true, true, null, null, null);
         assertThat(tenantService.findById(tenant.id()).orElseThrow().emailVerificationRequired(), is(true));
 
         // Disabling verification implicitly drops the login requirement too - it can never be
         // satisfied once the verify endpoints are gated off.
-        tenantService.update(tenant.id(), null, null, null, null, null, false, null, null, null);
+        tenantService.update(tenant.id(), null, null, null, null, null, false, null, null, null, null);
         assertThat(tenantService.findById(tenant.id()).orElseThrow().emailVerificationRequired(), is(false));
 
         setFlags(null, false, null);
@@ -132,7 +132,7 @@ class TenantAuthRecoveryIntegrationTest {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
         Application.getInstance(TenantService.class)
                 .update(tenant.id(), null, null, null, null, passwordReset, emailVerification,
-                        emailVerificationRequired, null, null);
+                        emailVerificationRequired, null, null, null);
     }
 
     private TestResponse forgot(String tenantSlug, String email) {

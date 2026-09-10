@@ -1,5 +1,7 @@
 package models;
 
+import java.util.List;
+
 public record TenantDefinition(
         String id,
         String name,
@@ -12,7 +14,8 @@ public record TenantDefinition(
         boolean emailVerificationEnabled,
         boolean emailVerificationRequired,
         String passwordResetUrl,
-        String emailVerificationUrl) {
+        String emailVerificationUrl,
+        List<String> webhookAllowlist) {
 
     public static final String COLLECTION = "tenants";
     public static final String STATUS_ACTIVE = "active";

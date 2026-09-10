@@ -53,7 +53,7 @@ public class MetaHooksController {
         );
 
         try {
-            hookService.validate(hook);
+            hookService.validate(hook, ctx);
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
@@ -89,7 +89,7 @@ public class MetaHooksController {
         );
 
         try {
-            hookService.validate(updated);
+            hookService.validate(updated, ctx);
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }

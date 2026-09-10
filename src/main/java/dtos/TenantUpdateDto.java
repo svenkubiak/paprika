@@ -2,6 +2,8 @@ package dtos;
 
 import jakarta.validation.constraints.Pattern;
 
+import java.util.List;
+
 public record TenantUpdateDto(
         String name,
 
@@ -18,5 +20,7 @@ public record TenantUpdateDto(
 
         String passwordResetUrl,
 
-        String emailVerificationUrl) {
+        String emailVerificationUrl,
+
+        List<String> webhookAllowlist) {
 }

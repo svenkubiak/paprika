@@ -84,7 +84,8 @@ public class TenantService {
                 false,
                 false,
                 null,
-                null
+                null,
+                List.of()
         );
 
         resolver.systemCollection(TenantDefinition.COLLECTION).insertOne(toDocument(tenant));
@@ -137,7 +138,8 @@ public class TenantService {
             Boolean emailVerificationEnabled,
             Boolean emailVerificationRequired,
             String passwordResetUrl,
-            String emailVerificationUrl) {
+            String emailVerificationUrl,
+            List<String> webhookAllowlist) {
         TenantDefinition current = findById(id).orElse(null);
         if (current == null) {
             return Optional.empty();
@@ -165,6 +167,9 @@ public class TenantService {
         String newEmailVerificationUrl = emailVerificationUrl != null
                 ? (emailVerificationUrl.isBlank() ? null : emailVerificationUrl.trim())
                 : current.emailVerificationUrl();
+        List<String> newWebhookAllowlist = webhookAllowlist != null
+                ? normalizeWebhookAllowlist(webhookAllowlist)
+                : current.webhookAllowlist();
 
         if (!current.slug().equals(newSlug) && findBySlug(newSlug).isPresent()) {
             throw new IllegalArgumentException("Tenant slug already exists");
@@ -182,7 +187,8 @@ public class TenantService {
                 newEmailVerificationEnabled,
                 newEmailVerificationRequired,
                 newPasswordResetUrl,
-                newEmailVerificationUrl
+                newEmailVerificationUrl,
+                newWebhookAllowlist
         );
 
         resolver.systemCollection(TenantDefinition.COLLECTION)
@@ -312,6 +318,15 @@ public class TenantService {
         }
     }
 
+    private static List<String> normalizeWebhookAllowlist(List<String> hosts) {
+        return hosts.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(host -> !host.isEmpty())
+                .distinct()
+                .toList();
+    }
+
     private void validateSlug(String slug) {
         if (StringUtils.isBlank(slug)) {
             throw new IllegalArgumentException("Tenant slug is required");
@@ -334,10 +349,12 @@ public class TenantService {
                 .append("emailVerificationEnabled", tenant.emailVerificationEnabled())
                 .append("emailVerificationRequired", tenant.emailVerificationRequired())
                 .append("passwordResetUrl", tenant.passwordResetUrl())
-                .append("emailVerificationUrl", tenant.emailVerificationUrl());
+                .append("emailVerificationUrl", tenant.emailVerificationUrl())
+                .append("webhookAllowlist", tenant.webhookAllowlist());
     }
 
     private TenantDefinition fromDocument(Document doc) {
+        List<String> webhookAllowlist = doc.getList("webhookAllowlist", String.class);
         return new TenantDefinition(
                 doc.getString("id"),
                 doc.getString("name"),
@@ -350,7 +367,8 @@ public class TenantService {
                 doc.getBoolean("emailVerificationEnabled", false),
                 doc.getBoolean("emailVerificationRequired", false),
                 doc.getString("passwordResetUrl"),
-                doc.getString("emailVerificationUrl")
+                doc.getString("emailVerificationUrl"),
+                webhookAllowlist != null ? webhookAllowlist : List.of()
         );
     }
 }

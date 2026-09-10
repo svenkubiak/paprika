@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -43,6 +44,7 @@ class AuthIssueTokenForIntegrationTest {
 
         HttpServer server = startHookServer(200,
                 "{\"continue\": false, \"issueTokenFor\": {\"userId\": \"" + userId + "\"}}");
+        allowWebhookHost(server);
         HookDefinition hook = beforeLoginHook(server);
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
@@ -60,6 +62,7 @@ class AuthIssueTokenForIntegrationTest {
         } finally {
             collections.deleteHook(ctx, hook.id());
             server.stop(0);
+            resetWebhookAllowlist();
         }
     }
 
@@ -67,6 +70,7 @@ class AuthIssueTokenForIntegrationTest {
     void issueTokenForUnknownUserIdReturns404() throws IOException {
         HttpServer server = startHookServer(200,
                 "{\"continue\": false, \"issueTokenFor\": {\"userId\": \"does-not-exist\"}}");
+        allowWebhookHost(server);
         HookDefinition hook = beforeLoginHook(server);
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
@@ -82,17 +86,19 @@ class AuthIssueTokenForIntegrationTest {
         } finally {
             collections.deleteHook(ctx, hook.id());
             server.stop(0);
+            resetWebhookAllowlist();
         }
     }
 
     @Test
     void issueTokenForIgnoredOnBeforeRegister() throws IOException {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
-        Application.getInstance(TenantService.class)
-                .update(tenant.id(), null, null, null, true, null, null, null, null, null);
-
         HttpServer server = startHookServer(200,
                 "{\"continue\": false, \"issueTokenFor\": {\"userId\": \"irrelevant\"}}");
+        Application.getInstance(TenantService.class).update(
+                tenant.id(), null, null, null, true, null, null, null, null, null,
+                List.of("127.0.0.1:" + server.getAddress().getPort()));
+
         HookDefinition hook = new HookDefinition(
                 DbUtils.id(),
                 "issue-token-for-register-test",
@@ -134,7 +140,7 @@ class AuthIssueTokenForIntegrationTest {
             collections.deleteHook(ctx, hook.id());
             server.stop(0);
             Application.getInstance(TenantService.class)
-                    .update(tenant.id(), null, null, null, false, null, null, null, null, null);
+                    .update(tenant.id(), null, null, null, false, null, null, null, null, null, List.of());
         }
     }
 
@@ -146,6 +152,7 @@ class AuthIssueTokenForIntegrationTest {
 
         HttpServer server = startHookServer(200,
                 "{\"issueTokenFor\": {\"userId\": \"" + userId + "\"}}");
+        allowWebhookHost(server);
         HookDefinition hook = beforeLoginHook(server);
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
@@ -161,6 +168,7 @@ class AuthIssueTokenForIntegrationTest {
         } finally {
             collections.deleteHook(ctx, hook.id());
             server.stop(0);
+            resetWebhookAllowlist();
         }
     }
 
@@ -168,6 +176,7 @@ class AuthIssueTokenForIntegrationTest {
     void continueFalseWithErrorStillRejectsLogin() throws IOException {
         HttpServer server = startHookServer(200,
                 "{\"continue\": false, \"error\": {\"status\": 422, \"message\": \"Custom rejection\"}}");
+        allowWebhookHost(server);
         HookDefinition hook = beforeLoginHook(server);
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
@@ -184,6 +193,7 @@ class AuthIssueTokenForIntegrationTest {
         } finally {
             collections.deleteHook(ctx, hook.id());
             server.stop(0);
+            resetWebhookAllowlist();
         }
     }
 
@@ -223,5 +233,22 @@ class AuthIssueTokenForIntegrationTest {
 
     private static String hookUrl(HttpServer server) {
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/hook";
+    }
+
+    /**
+     * The test hook server binds to a loopback port, which HookService now blocks by default (SSRF
+     * guard) unless the tenant's webhook allowlist explicitly permits it.
+     */
+    private static void allowWebhookHost(HttpServer server) {
+        TenantDefinition tenant = TenantTestUtils.defaultTenant();
+        Application.getInstance(TenantService.class).update(
+                tenant.id(), null, null, null, null, null, null, null, null, null,
+                List.of("127.0.0.1:" + server.getAddress().getPort()));
+    }
+
+    private static void resetWebhookAllowlist() {
+        TenantDefinition tenant = TenantTestUtils.defaultTenant();
+        Application.getInstance(TenantService.class).update(
+                tenant.id(), null, null, null, null, null, null, null, null, null, List.of());
     }
 }

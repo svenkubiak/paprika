@@ -45,3 +45,11 @@ The full flow:
 ### Mobile and native apps
 
 The verification link URL works with deep links. Set it to a Universal Link (iOS) or App Link (Android) that your app is registered to handle, or a custom URL scheme (`myapp://verify?token={token}`). The app extracts the token and calls `POST /api/auth/verify/confirm` — the API call itself is a plain HTTP request that works identically on any platform.
+
+## Webhook allowlist
+
+By default, [collection hooks](/admin-ui/collection-hooks) and [global hooks](/admin-ui/global-hooks) can't target loopback, link-local, private/site-local, or multicast addresses (`localhost`, `127.0.0.1`, `192.168.x.x`, etc.) — this prevents one tenant's hooks from reaching another tenant's or the host's internal services on a shared instance.
+
+If a tenant genuinely needs to reach a local or internal endpoint (a sidecar service, a receiver running on the same network), list its exact `host:port` here. Entries are per-tenant: allowlisting a host for one tenant has no effect on any other tenant's hooks. The check applies both when a hook is saved and every time it fires, so shrinking the allowlist takes effect on the next dispatch even for hooks that were already saved.
+
+There's no format enforcement — a malformed entry simply never matches, it doesn't break saving.

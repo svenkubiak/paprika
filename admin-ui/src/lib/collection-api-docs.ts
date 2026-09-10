@@ -482,7 +482,9 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
         '200 OK',
         `{
   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
+  "tokenType": "Bearer",
+  "expiresIn": 3600
 }`
       ),
       errorBlock(
@@ -526,13 +528,46 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
         '200 OK',
         `{
   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…"
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
+  "tokenType": "Bearer",
+  "expiresIn": 3600
 }`
       ),
       errorBlock(
         '401 Unauthorized',
         'Invalid or expired refresh token',
         '{\n  "error": "Invalid refresh token"\n}'
+      )
+    ]
+  },
+  {
+    id: 'me',
+    method: 'GET',
+    path: '/api/auth/me',
+    summary:
+      'Return the authenticated tenant user\'s own record, identified only by the bearer token — no id or /api/collections/users call needed. Bypasses collection rules; never returns passwordHash, passwordSalt, or role.',
+    examples: [
+      {
+        title: 'Request',
+        code: `GET /api/auth/me
+Authorization: Bearer <accessToken>`
+      },
+      successBlock(
+        'Response',
+        '200 OK',
+        `{
+  "id": "${EXAMPLE_ID}",
+  "username": "user@example.com",
+  "email": "user@example.com",
+  "createdAt": "${SYSTEM_TIMESTAMP_EXAMPLE}",
+  "updatedAt": "${SYSTEM_TIMESTAMP_EXAMPLE}"
+}`
+      ),
+      commonErrors.unauthorized,
+      errorBlock(
+        '404 Not Found',
+        "User no longer exists (rare — a deleted user's bearer token is normally already rejected as unauthorized)",
+        '{\n  "error": "User not found"\n}'
       )
     ]
   },
