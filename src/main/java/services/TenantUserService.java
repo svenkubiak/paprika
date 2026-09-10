@@ -297,6 +297,32 @@ public class TenantUserService {
         return Optional.of(AuthContext.of(userId, user.getString("role"), ctx.effectiveTenantId()));
     }
 
+    /**
+     * Privileged lookup for {@code GET /api/auth/me}: bypasses the rule engine (the validated
+     * bearer token itself is the authorization), and strips {@code role} in addition to the
+     * credential fields the data-plane already hides, since role is not an app-facing concept here.
+     * {@code apple_sub} is stripped defensively even though no such field exists yet, so it can
+     * never leak if a future Sign in with Apple integration adds it.
+     */
+    public Optional<Document> findOwnUserRecord(TenantContext ctx) {
+        if (!ctx.hasTenantContext() || StringUtils.isBlank(ctx.userId())) {
+            return Optional.empty();
+        }
+
+        Document user = resolver.tenantDataCollection(ctx, SystemCollections.USERS)
+                .find(eq("id", ctx.userId()))
+                .projection(UserRecordUtils.recordProjection())
+                .first();
+
+        if (user == null) {
+            return Optional.empty();
+        }
+
+        user.remove(UserRecordUtils.ROLE);
+        user.remove("apple_sub");
+        return Optional.of(user);
+    }
+
     public Optional<AuthContext> resolveActiveUser(AuthContext auth) {
         if (auth == null || StringUtils.isBlank(auth.id()) || StringUtils.isBlank(auth.tenantId())) {
             return Optional.empty();

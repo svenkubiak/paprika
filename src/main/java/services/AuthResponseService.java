@@ -6,11 +6,13 @@ import jakarta.inject.Inject;
 import models.TokenPair;
 import results.TenantLoginResult;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 public class AuthResponseService {
     private static final String INVALID_CREDENTIALS = "Invalid username or password";
+    private static final String TOKEN_TYPE = "Bearer";
     private final AuthService authService;
     @Inject
     public AuthResponseService(AuthService authService) {
@@ -38,7 +40,11 @@ public class AuthResponseService {
     }
 
     public Response toTokenResponse(TokenPair tokens) {
-        return Response.ok()
-                .bodyJson(Map.of("accessToken", tokens.accessToken(), "refreshToken", tokens.refreshToken()));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("accessToken", tokens.accessToken());
+        body.put("refreshToken", tokens.refreshToken());
+        body.put("tokenType", TOKEN_TYPE);
+        body.put("expiresIn", authService.resolveExpiresIn(tokens.accessToken()));
+        return Response.ok().bodyJson(body);
     }
 }

@@ -181,6 +181,17 @@ public class AuthController {
         return response;
     }
 
+    public Response me(Request request) {
+        TenantContext ctx = TenantContextHolder.get(request);
+        if (!hasTenant(ctx) || !ctx.hasAuthenticatedUser() || ctx.isSuperAdmin()) {
+            return Response.unauthorized().bodyJson(Map.of("error", "Unauthorized"));
+        }
+
+        return tenantUserService.findOwnUserRecord(ctx)
+                .map(user -> Response.ok().bodyJson(user))
+                .orElseGet(() -> Response.notFound().bodyJson(Map.of("error", "User not found")));
+    }
+
     public Response forgotPassword(@Valid ForgotPasswordDto dto, Request request) {
         TenantDefinition tenant = activeTenant(dto.tenant());
 

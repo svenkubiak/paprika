@@ -145,6 +145,26 @@ public class AuthService {
         return createToken(auth, TYPE_ACCESS, ACCESS_TTL_SECONDS);
     }
 
+    /**
+     * Reads {@code exp}/{@code iat} back off a freshly issued access token rather than assuming the
+     * configured TTL, so the value stays correct if the TTL or claim handling ever changes.
+     */
+    public long resolveExpiresIn(String accessToken) {
+        JwtUtils.JwtData jwtData = JwtUtils.jwtData()
+                .withSecret(tokenSecret)
+                .withKey(tokenKey)
+                .withIssuer(ISSUER)
+                .withAudience(AUDIENCE)
+                .withTtlSeconds(ACCESS_TTL_SECONDS);
+
+        try {
+            JWTClaimsSet claims = JwtUtils.parseJwt(accessToken, jwtData);
+            return (claims.getExpirationTime().getTime() - claims.getIssueTime().getTime()) / 1000L;
+        } catch (MangooJwtException e) {
+            throw new IllegalStateException("Failed to parse freshly issued access token", e);
+        }
+    }
+
     private String createRefreshToken(AuthContext auth) {
         return createToken(auth, TYPE_REFRESH, REFRESH_TTL_SECONDS);
     }

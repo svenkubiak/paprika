@@ -46,6 +46,82 @@ class AuthControllerTest {
     }
 
     @Test
+    void loginResponseIncludesTokenTypeAndExpiresIn() {
+        UserService userService = Application.getInstance(UserService.class);
+        userService.createUser("ttl-user", null, "secret-password-123");
+
+        TestResponse response = TestRequest.post("/api/auth/login")
+                .withStringBody(TenantTestUtils.loginBody("ttl-user", "secret-password-123"))
+                .withContentType("application/json")
+                .execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(response.getContent(), containsString("\"tokenType\":\"Bearer\""));
+        assertThat(response.getContent(), containsString("\"expiresIn\":3600"));
+    }
+
+    @Test
+    void refreshResponseIncludesTokenTypeAndExpiresIn() {
+        UserService userService = Application.getInstance(UserService.class);
+        userService.createUser("ttl-refresh-user", null, "secret-password-123");
+
+        TestResponse login = TestRequest.post("/api/auth/login")
+                .withStringBody(TenantTestUtils.loginBody("ttl-refresh-user", "secret-password-123"))
+                .withContentType("application/json")
+                .execute();
+        String refreshToken = extractJsonString(login.getContent(), "refreshToken");
+
+        TestResponse refresh = TestRequest.post("/api/auth/refresh")
+                .withStringBody("{\"refreshToken\":\"" + refreshToken + "\"}")
+                .withContentType("application/json")
+                .execute();
+
+        assertThat(refresh.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(refresh.getContent(), containsString("\"tokenType\":\"Bearer\""));
+        assertThat(refresh.getContent(), containsString("\"expiresIn\":3600"));
+    }
+
+    @Test
+    void meReturnsAuthenticatedUserRecord() {
+        UserService userService = Application.getInstance(UserService.class);
+        Map<String, Object> user = userService.createUser("me-user", "me@example.com", "secret-password-123");
+
+        TestResponse login = TestRequest.post("/api/auth/login")
+                .withStringBody(TenantTestUtils.loginBody("me-user", "secret-password-123"))
+                .withContentType("application/json")
+                .execute();
+        String accessToken = extractJsonString(login.getContent(), "accessToken");
+
+        TestResponse me = TestRequest.get("/api/auth/me")
+                .withHeader("Authorization", "Bearer " + accessToken)
+                .execute();
+
+        assertThat(me.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(me.getContent(), containsString("\"id\":\"" + user.get("id") + "\""));
+        assertThat(me.getContent(), containsString("\"username\":\"me-user\""));
+        assertThat(me.getContent(), not(containsString("passwordHash")));
+        assertThat(me.getContent(), not(containsString("passwordSalt")));
+        assertThat(me.getContent(), not(containsString("\"role\"")));
+        assertThat(me.getContent(), not(containsString("apple_sub")));
+    }
+
+    @Test
+    void meRejectsMissingToken() {
+        TestResponse response = TestRequest.get("/api/auth/me").execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
+    }
+
+    @Test
+    void meRejectsInvalidToken() {
+        TestResponse response = TestRequest.get("/api/auth/me")
+                .withHeader("Authorization", "Bearer not-a-valid-token")
+                .execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
+    }
+
+    @Test
     void refreshRejectsDeletedUser() {
         UserService userService = Application.getInstance(UserService.class);
         Map<String, Object> user = userService.createUser("deleted-refresh-user", null, "secret-password-123");
