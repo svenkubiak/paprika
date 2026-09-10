@@ -71,6 +71,7 @@ class HookServiceSsrfTest {
         HookDefinition hook = new HookDefinition(
                 "test",
                 "SSRF test hook",
+                null,
                 "hooks_ssrf_test",
                 HookEvent.afterCreate,
                 url,

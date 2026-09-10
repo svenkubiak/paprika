@@ -39,6 +39,7 @@ public class MetaGlobalHooksController {
         HookDefinition hook = new HookDefinition(
                 DbUtils.id(),
                 hookDefinition.name(),
+                hookDefinition.description(),
                 GlobalHooks.COLLECTION,
                 HookEvent.beforeRequest,
                 hookDefinition.url(),
@@ -74,6 +75,7 @@ public class MetaGlobalHooksController {
         HookDefinition updated = new HookDefinition(
                 current.id(),
                 hookDefinition.name() != null ? hookDefinition.name() : current.name(),
+                hookDefinition.description() != null ? hookDefinition.description() : current.description(),
                 GlobalHooks.COLLECTION,
                 HookEvent.beforeRequest,
                 hookDefinition.url() != null ? hookDefinition.url() : current.url(),

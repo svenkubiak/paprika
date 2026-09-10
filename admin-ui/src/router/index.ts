@@ -71,6 +71,12 @@ const router = createRouter({
       meta: { title: 'Global hooks', requiresTenant: true, requiresSuperAdmin: true }
     },
     {
+      path: '/admin/tenant-settings',
+      name: 'tenant-settings',
+      component: () => import('@/pages/TenantSettingsPage.vue'),
+      meta: { title: 'Schema', requiresTenant: true, requiresSuperAdmin: true }
+    },
+    {
       path: '/admin/backup',
       name: 'backup',
       component: () => import('@/pages/BackupPage.vue'),

@@ -102,6 +102,7 @@ class AuthIssueTokenForIntegrationTest {
         HookDefinition hook = new HookDefinition(
                 DbUtils.id(),
                 "issue-token-for-register-test",
+                null,
                 SystemCollections.USERS,
                 HookEvent.beforeRegister,
                 hookUrl(server),
@@ -201,6 +202,7 @@ class AuthIssueTokenForIntegrationTest {
         return new HookDefinition(
                 DbUtils.id(),
                 "issue-token-for-login-test",
+                null,
                 SystemCollections.USERS,
                 HookEvent.beforeLogin,
                 hookUrl(server),

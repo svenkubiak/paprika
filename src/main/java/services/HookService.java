@@ -758,6 +758,7 @@ public class HookService {
         return new HookDefinition(
                 hook.id() != null ? hook.id() : "test",
                 hook.name() != null ? hook.name() : "Test hook",
+                hook.description(),
                 collection,
                 hook.event(),
                 hook.url(),

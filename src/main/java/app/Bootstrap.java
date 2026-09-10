@@ -44,6 +44,7 @@ public class Bootstrap implements MangooBootstrap {
                 On.get().to("/admin/tenants").respondeWith("admin"),
                 On.get().to("/admin/settings").respondeWith("admin"),
                 On.get().to("/admin/global-hooks").respondeWith("admin"),
+                On.get().to("/admin/tenant-settings").respondeWith("admin"),
                 On.get().to("/admin/logs").respondeWith("admin"),
                 On.get().to("/admin/users").respondeWith("admin"),
                 On.get().to("/admin/collections/{collection}/data").respondeWith("admin"),
@@ -133,6 +134,11 @@ public class Bootstrap implements MangooBootstrap {
 
         Bind.controller(RequestLogsController.class).withRoutes(
                 On.get().to("/api/admin/request-logs").respondeWith("list")
+        );
+
+        Bind.controller(MetaSchemaController.class).withRoutes(
+                On.get().to("/api/meta/schema/export").respondeWith("export"),
+                On.post().to("/api/meta/schema/import").respondeWith("importSchema")
         );
 
         Bind.controller(BackupController.class).withRoutes(

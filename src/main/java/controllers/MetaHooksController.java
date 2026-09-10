@@ -37,6 +37,7 @@ public class MetaHooksController {
         HookDefinition hook = new HookDefinition(
                 DbUtils.id(),
                 hookDefinition.name(),
+                hookDefinition.description(),
                 collection,
                 hookDefinition.event(),
                 hookDefinition.url(),
@@ -73,6 +74,7 @@ public class MetaHooksController {
         HookDefinition updated = new HookDefinition(
                 current.id(),
                 hookDefinition.name() != null ? hookDefinition.name() : current.name(),
+                hookDefinition.description() != null ? hookDefinition.description() : current.description(),
                 collection,
                 hookDefinition.event() != null ? hookDefinition.event() : current.event(),
                 hookDefinition.url() != null ? hookDefinition.url() : current.url(),

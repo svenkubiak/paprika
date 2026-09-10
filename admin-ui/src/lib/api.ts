@@ -462,6 +462,25 @@ export const api = {
     })
   },
 
+  exportSchema(): void {
+    window.location.href = '/api/meta/schema/export'
+  },
+
+  async importSchema(file: File): Promise<{ collectionsCreated: number; collectionsUpdated: number; hooksRestored: number }> {
+    const text = await file.text()
+    const response = await fetch('/api/meta/schema/import', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: text
+    })
+    const body = await response.text()
+    if (!response.ok) {
+      throw new ApiError(parseErrorMessage(body, 'Schema import failed'), response.status)
+    }
+    return JSON.parse(body)
+  },
+
   exportBackup(): void {
     window.location.href = '/api/admin/backup/export'
   },
