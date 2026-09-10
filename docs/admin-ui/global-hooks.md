@@ -17,7 +17,7 @@ The collection scope above only matters for collection operations. For `login`/`
 
 ## Configuration
 
-The same fields as collection hooks — URL, method, timeout, HMAC secret, priority, enabled flag, include-schema option, fail-open behavior — configured once and applied across the chosen scope. See [Collection Hooks](/admin-ui/collection-hooks#configuring-a-hook) for what each option means, including the URL restrictions (no `localhost`/private-network targets unless allowlisted per tenant, see [Auth settings](/admin-ui/auth-settings#webhook-allowlist)) and the 30-second timeout ceiling.
+The same fields as collection hooks — URL, method, timeout, HMAC secret, priority, enabled flag, include-schema option, fail-open behavior — configured once and applied across the chosen scope. See [Collection Hooks](/admin-ui/collection-hooks#configuring-a-hook) for what each option means, including the URL restrictions (no `localhost`/private-network targets unless allowlisted per tenant, see [Tenants → Editing a tenant](/admin-ui/tenants#editing-a-tenant)) and the 30-second timeout ceiling.
 
 Since these hooks also gate auth flows, the [request/response envelope](/admin-ui/collection-hooks#the-request-paprika-sends) looks slightly different for a login/register/refresh delivery: `context.collection` and `context.recordId` are `null`, and `data.body` is the raw login/register/refresh payload instead of a collection record body.
 

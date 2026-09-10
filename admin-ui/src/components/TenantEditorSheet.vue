@@ -9,6 +9,7 @@ export type TenantEditorMode = 'add' | 'edit'
 export interface TenantEditorForm {
   name: string
   slug: string
+  webhookAllowlist: string
 }
 
 const props = defineProps<{
@@ -108,6 +109,19 @@ function onSlugInput() {
           <template v-if="mode === 'edit' && tenant">
             <UFormField label="Database" class="w-full">
               <UInput :model-value="tenant.databaseName" icon="i-lucide-database" class="w-full" disabled />
+            </UFormField>
+
+            <UFormField
+              label="Webhook allowlist"
+              help="Loopback and private-network addresses are blocked as webhook targets by default. List host:port combinations this tenant's hooks may target, separated by commas."
+              class="w-full"
+            >
+              <UInput
+                v-model="form.webhookAllowlist"
+                icon="i-lucide-shield-check"
+                class="w-full font-mono"
+                placeholder="127.0.0.1:8092, 192.168.1.10:9000"
+              />
             </UFormField>
           </template>
         </form>

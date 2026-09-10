@@ -59,6 +59,13 @@ class HookServiceSsrfTest {
         assertThrows(IllegalArgumentException.class, () -> validate(ctx, "http://localhost:8092/hook"));
     }
 
+    @Test
+    void ipv6UniqueLocalAddressIsBlockedWhenNotAllowlisted() {
+        TenantContext ctx = tenantWithAllowlist("ssrf-ipv6-ula-blocked-test", List.of());
+
+        assertThrows(IllegalArgumentException.class, () -> validate(ctx, "http://[fd12:3456:789a::1]:8092/hook"));
+    }
+
     private static void validate(TenantContext ctx, String url) {
         HookService hookService = Application.getInstance(HookService.class);
         HookDefinition hook = new HookDefinition(

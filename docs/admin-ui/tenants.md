@@ -12,20 +12,16 @@ Lists every tenant with its name, slug, database name, and status. Clicking a ro
 
 - **Name** — display name.
 - **Slug** — normalized automatically as you type to lowercase letters, numbers, and hyphens (matching the backend's validation); used for login/registration. Must be unique across the whole instance, not just within this tenant.
-- **Self-registration** — whether `POST /api/auth/register` is open for this tenant (can also be toggled later from [Tenant Users](/admin-ui/tenant-users)).
 
 Creating a tenant also creates its dedicated MongoDB database and seeds it with the tenant's internal `users` collection.
 
 ## Editing a tenant
 
-The same fields (name, slug, self-registration) can be changed later. The database name is derived from the tenant's id and is not editable.
+Name and slug can be changed later. The database name is derived from the tenant's id and is not editable.
 
-The editor also has two per-tenant recovery switches, both **off by default**:
+- **Webhook allowlist** — `host:port` combinations (comma-separated) this tenant's [collection hooks](/admin-ui/collection-hooks) and [global hooks](/admin-ui/global-hooks) may target even though they're loopback or private-network addresses, which are blocked by default to prevent one tenant's hooks from reaching another tenant's or the host's internal services. There's no format enforcement — a malformed entry simply never matches, it doesn't break saving. The check applies both when a hook is saved and every time it fires, so shrinking the allowlist takes effect on the next dispatch even for hooks that were already saved.
 
-- **Password reset**: enables `POST /api/auth/password/forgot` and `/reset` for this tenant.
-- **Email verification**: enables `POST /api/auth/verify/request` and `/confirm` for this tenant.
-
-Each switch, when on, reveals a **link URL** field: the page in your own app the emailed link points at (Paprika appends `?token=…`, or substitutes a `{token}` placeholder). Paprika sends the email itself over the instance [SMTP settings](/operations/going-to-production#email-smtp), so both a working SMTP config and the link URL need to be in place for anything to be delivered. The full flow, including the `emailVerified` flag and the no-enumeration behavior, is described under [Tenant Users → Password reset and email verification](/admin-ui/tenant-users#password-reset-and-email-verification).
+Self-registration, password reset, and email verification are **not** configured here — they're per-tenant toggles on the [Auth settings](/admin-ui/auth-settings) page, available once you've switched into that tenant.
 
 ## Switching tenants
 

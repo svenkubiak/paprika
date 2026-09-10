@@ -33,7 +33,8 @@ const isDeletingDefaultTenant = computed(
 
 const form = ref<TenantEditorForm>({
   name: '',
-  slug: ''
+  slug: '',
+  webhookAllowlist: ''
 })
 
 const columns = [
@@ -76,7 +77,7 @@ async function loadDefaultTenantId() {
 }
 
 function resetForm() {
-  form.value = { name: '', slug: '' }
+  form.value = { name: '', slug: '', webhookAllowlist: '' }
   editingTenant.value = null
 }
 
@@ -87,7 +88,11 @@ function openCreate() {
 }
 
 function tenantToForm(tenant: TenantDefinition): TenantEditorForm {
-  return { name: tenant.name, slug: tenant.slug }
+  return {
+    name: tenant.name,
+    slug: tenant.slug,
+    webhookAllowlist: (tenant.webhookAllowlist ?? []).join(', ')
+  }
 }
 
 function openEdit(_event: Event, tableRow: { original: TenantDefinition }) {
@@ -116,7 +121,14 @@ async function saveTenant() {
       await api.createTenant(name, slug)
       toast.add({ title: 'Tenant created', color: 'success', icon: 'i-lucide-circle-check' })
     } else if (editingTenant.value) {
-      await api.updateTenant(editingTenant.value.id, { name, slug })
+      await api.updateTenant(editingTenant.value.id, {
+        name,
+        slug,
+        webhookAllowlist: form.value.webhookAllowlist
+          .split(',')
+          .map((host) => host.trim())
+          .filter(Boolean)
+      })
       toast.add({ title: 'Tenant updated', color: 'success', icon: 'i-lucide-circle-check' })
     }
 

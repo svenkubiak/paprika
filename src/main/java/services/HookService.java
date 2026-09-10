@@ -23,6 +23,7 @@ import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import utils.DbUtils;
 
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -56,6 +57,9 @@ public class HookService {
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
+                // Never follow redirects: a hook pointed at an allowed public host could otherwise
+                // be redirected to an internal/private target at delivery time, bypassing validateNoSsrf.
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
@@ -505,11 +509,16 @@ public class HookService {
     }
 
     private static boolean isLoopbackOrPrivate(InetAddress address) {
-        return address.isLoopbackAddress()
+        if (address.isLoopbackAddress()
                 || address.isLinkLocalAddress()
                 || address.isSiteLocalAddress()
                 || address.isAnyLocalAddress()
-                || address.isMulticastAddress();
+                || address.isMulticastAddress()) {
+            return true;
+        }
+        // isSiteLocalAddress() only recognizes the deprecated IPv6 fec0::/10 range, not the
+        // fc00::/7 Unique Local Address range in actual use today (RFC 4193).
+        return address instanceof Inet6Address && (address.getAddress()[0] & 0xfe) == 0xfc;
     }
 
     private static int resolvePort(URI uri) {
