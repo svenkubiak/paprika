@@ -25,17 +25,9 @@ Each has a dropdown with four levels:
 
 The **Presets** card applies all five rules at once for a common pattern (e.g. "Public" makes everything public; "Own records" makes everything owner-scoped). Apply a preset first, then fine-tune individual rules if one operation needs a different level than the rest.
 
-## Beyond the four presets: custom expressions
+## No custom expressions
 
-The dropdowns only offer **No access / Public / Signed in / Own records**, but the underlying rule value is actually a small expression language — comparisons, `and`/`or`/`not`, `in (...)`, and access to `record.*`, `auth.*`, and (for create rules) `body.*` fields. See [Roles & Permissions → Custom expressions](/concepts/roles-and-permissions#custom-expressions) for the full grammar and examples like `record.status = "published"` or `record.age >= 18`.
-
-To use a custom expression, set it via the collection's meta API (`PATCH /api/meta/collections/{collection}/{id}`, superadmin-authenticated) directly on the `rules` object's `listRule`/`viewRule`/`createRule`/`updateRule`/`deleteRule` fields — it's then honored by the API exactly like a preset.
-
-::: danger Don't open and save this tab for a collection with a custom rule
-The Rules tab only recognizes the four presets. It detects them with a simple heuristic (exactly `*`, exactly/starting with `auth`, or a value that happens to contain both `record.` and `auth.id`) — anything else, including most genuinely custom expressions, is shown as **No access**. If you then click **Save rules** on that screen, it overwrites the custom expression with `null` (locked), silently destroying it.
-
-If a collection has a custom rule expression set via the API, manage that rule through the API going forward and avoid saving changes from this tab — check the current value with `GET /api/meta/collections/{collection}` first if you're unsure what's configured.
-:::
+Unlike PocketBase, Paprika deliberately does not expose a custom rule expression syntax. The four presets — **No access / Public / Signed in / Own records** — are the only values the API accepts for `listRule`/`viewRule`/`createRule`/`updateRule`/`deleteRule`; anything else sent via the collection's meta API (`PATCH /api/meta/collections/{collection}/{id}`) is rejected with an error. This keeps rule configuration simple and fully representable in the admin UI, at the cost of not supporting more specific per-field or conditional access patterns.
 
 ## Owner field
 

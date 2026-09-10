@@ -30,43 +30,11 @@ For everything a **tenant user** (not a superadmin) can do against `/api/collect
 | `auth` | `EXPRESSION` → `auth.id != null` | Any authenticated tenant user (valid JWT) can perform this operation. |
 | `owner` | `EXPRESSION` → `record.<ownerField> = auth.id` | Only the tenant user referenced by the record's owner field can perform this operation. |
 
-These four correspond directly to the **presets** shown in the admin UI: *No access*, *Public*, *Signed in*, *Own records*. A rule can also be a raw custom expression instead of one of these four keywords, evaluated by the same rule parser.
+These four correspond directly to the **presets** shown in the admin UI: *No access*, *Public*, *Signed in*, *Own records*. These are the only values the API accepts — anything else is rejected on save with `RuleParseException`. Paprika deliberately keeps the rule engine to these four presets instead of exposing a full custom expression syntax like PocketBase's.
 
 **Owner rules** need an **owner field**: a `RELATION → users` field on the collection (see [Collections](/concepts/collections)) that stores which tenant user owns each record. On create, Paprika automatically fills this field with the authenticated user's id, so client apps don't need to send it themselves. If a collection has no such relation field yet, the admin UI falls back to a plain field named `owner`.
 
 List rules do double duty: besides gating whether the list endpoint is callable at all, they also filter *which* records come back — an `owner` list rule only returns the calling user's own records, never the whole collection.
-
-## Custom expressions
-
-`*`, `auth`, and `owner` are shortcuts for the three most common cases, but any rule field actually accepts a small expression language, evaluated per-request and (for list rules) also translated into a MongoDB filter. This is what the admin UI's [Rules tab](/admin-ui/collection-rules) falls back to whenever you need something more specific than the four presets.
-
-**Operators**: `=`, `!=`, `>`, `>=`, `<`, `<=`, `in (a, b, c)`, boolean `and` / `or` / `not`, and parentheses for grouping.
-
-**Literals**: numbers, quoted strings (`"..."` or `'...'`), `true`, `false`, `null`.
-
-**Field access**, via a `prefix.name` identifier (the prefix can be omitted for record fields):
-
-| Prefix | Resolves to | Available on |
-|---|---|---|
-| `record.<field>` or bare `<field>` | A field on the record being read/written | All rules |
-| `auth.id`, `auth.role`, `auth.tenantId` | The calling tenant user's JWT claims | All rules |
-| `body.<field>` | A field from the raw request body being submitted | Mainly useful on `createRule`, where the record doesn't exist yet |
-
-**Examples:**
-
-```
-record.status = "published"
-record.age >= 18 and record.age <= 65
-record.category in ("news", "sports", "tech")
-auth.id != null and record.archived != true
-not (record.visibility = "private")
-```
-
-The `owner` preset itself is just sugar for `record.<ownerField> = auth.id`, and `auth` is sugar for `auth.id != null` — writing them out is equivalent to picking the preset.
-
-::: tip List rules are translated into a MongoDB filter
-The same expression is used to build the query filter for `listRule` (comparisons, `in`, `and`/`or`/`not` all map onto MongoDB filters). `body.<field>` references don't apply here — there's no submitted body on a list request — so keep list/view rules to `record.*` and `auth.*` fields.
-:::
 
 ## Worked example
 

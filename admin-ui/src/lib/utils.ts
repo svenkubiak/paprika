@@ -38,10 +38,8 @@ export function ruleLevel(rule: string | null | undefined): '' | '*' | 'auth' | 
   if (!rule?.trim()) return ''
   const normalized = rule.trim().toLowerCase()
   if (normalized === '*') return '*'
-  if (normalized === 'auth' || normalized.startsWith('auth.')) return 'auth'
-  if (normalized === 'owner' || (normalized.includes('record.') && normalized.includes('auth.id'))) {
-    return 'owner'
-  }
+  if (normalized === 'auth') return 'auth'
+  if (normalized === 'owner') return 'owner'
   return ''
 }
 
