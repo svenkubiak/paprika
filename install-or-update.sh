@@ -287,17 +287,24 @@ else
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # ── MongoDB ───────────────────────────────────
-#  Paprika does not create the database or user itself. Before
-#  starting the service, manually create a database named "paprika"
-#  and a user with readWrite access to it, authenticated against
-#  the "admin" database (authSource=admin), e.g. via mongosh:
+#  Bring your own reachable MongoDB instance — this installer does
+#  not install or provision one. Paprika creates its own database
+#  plus a separate database per tenant on demand, so a role scoped
+#  to a single database isn't enough. Create a user authenticated
+#  against the "admin" database (authSource=admin) with
+#  readWriteAnyDatabase and dbAdminAnyDatabase, e.g. via mongosh:
 #
 #    use admin
 #    db.createUser({
 #      user: "paprika",
 #      pwd: "<a-strong-password>",
-#      roles: [ { role: "readWrite", db: "paprika" } ]
+#      roles: [
+#        { role: "readWriteAnyDatabase", db: "admin" },
+#        { role: "dbAdminAnyDatabase", db: "admin" }
+#      ]
 #    })
+#
+#  See: https://svenkubiak.github.io/paprika/installation/standalone#mongodb-setup
 PERSISTENCE_MONGO_HOST=CHANGE_ME
 PERSISTENCE_MONGO_PORT=27017
 PERSISTENCE_MONGO_USERNAME=CHANGE_ME
@@ -358,15 +365,6 @@ EOF
 
     echo "✅ .env written to ${ENV_FILE}"
     echo ""
-    echo "  ⚠️  ACTION REQUIRED before starting Paprika:"
-    echo "  1. Manually create a MongoDB database named 'paprika' and a user"
-    echo "     with readWrite access to it, authenticated against the 'admin'"
-    echo "     database (authSource=admin) — Paprika does not create these itself."
-    echo "  2. Replace all CHANGE_ME values with your MongoDB connection details:"
-    echo ""
-    echo "    nano ${ENV_FILE}"
-    echo ""
-
 
 fi
 
@@ -498,10 +496,13 @@ else
     echo " 📂 Installed to: ${INSTALL_DIR}"
     echo ""
     echo " Next steps:"
-    echo "   1. 🍃 Manually create a MongoDB database named 'paprika' and a"
-    echo "      user with readWrite access to it, authenticated against the"
-    echo "      'admin' database (authSource=admin). Paprika does not create"
-    echo "      these itself."
+    echo "   1. 🍃 Provide a reachable MongoDB instance yourself — this script"
+    echo "      does not install or configure MongoDB. Paprika creates its own"
+    echo "      database plus a separate database per tenant on demand, so a"
+    echo "      role scoped to a single database isn't enough: create a user"
+    echo "      authenticated against 'admin' (authSource=admin) with the"
+    echo "      readWriteAnyDatabase and dbAdminAnyDatabase roles."
+    echo "      See: https://svenkubiak.github.io/paprika/installation/standalone#mongodb-setup"
     echo ""
     echo "   2. ✏️  Edit ${ENV_FILE}"
     echo "      Replace all CHANGE_ME values with your"

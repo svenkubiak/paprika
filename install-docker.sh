@@ -93,6 +93,15 @@ if [ -f "$ENV_FILE" ]; then
     read -r -p "Overwrite and regenerate all secrets? [y/N] " confirm
     if [[ ! "${confirm:-n}" =~ ^[yY] ]]; then
         echo "Keeping existing .env."
+        if ! grep -q "^MONGO_ROOT_USERNAME=" "$ENV_FILE"; then
+            echo "Adding missing MONGO_ROOT_USERNAME/MONGO_ROOT_PASSWORD (MongoDB now bootstraps with a separate root user)..."
+            {
+                echo ""
+                echo "# ── MongoDB root bootstrap (added by installer on update) ─────"
+                echo "MONGO_ROOT_USERNAME=root"
+                echo "MONGO_ROOT_PASSWORD=$(gen_secret)"
+            } >> "$ENV_FILE"
+        fi
     else
         rm "$ENV_FILE"
     fi
