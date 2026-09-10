@@ -63,7 +63,7 @@ function onTenantChange(value: string) {
       <AppLogo show-text />
     </div>
 
-    <nav class="flex-1 space-y-4 overflow-auto p-3">
+    <nav class="flex-1 space-y-3 overflow-auto p-3">
       <section>
         <UCollapsible v-model:open="generalOpen" :unmount-on-hide="false" class="w-full">
           <button
@@ -96,96 +96,105 @@ function onTenantChange(value: string) {
         </UCollapsible>
       </section>
 
-      <section v-if="bootstrap?.isSuperAdmin" class="border-t border-default pt-4">
-        <label class="mb-2 block px-2 text-xs font-medium uppercase tracking-wide text-muted">
-          Active tenant
-        </label>
-        <USelect
-          :model-value="activeTenantId || SELECT_EMPTY"
-          :items="[{ label: 'No tenant selected', value: SELECT_EMPTY }, ...tenantItems]"
-          placeholder="Select tenant"
-          icon="i-lucide-globe"
-          :ui="selectMenuUi"
-          :content="selectContentProps"
-          class="w-full"
-          @update:model-value="onTenantChange"
-        />
-      </section>
+      <div class="rounded-lg bg-elevated p-2 space-y-4">
+        <section v-if="bootstrap?.isSuperAdmin">
+          <label class="mb-2 block px-2 text-xs font-medium uppercase tracking-wide text-muted">
+            Active tenant
+          </label>
+          <USelect
+            :model-value="activeTenantId || SELECT_EMPTY"
+            :items="[{ label: 'No tenant selected', value: SELECT_EMPTY }, ...tenantItems]"
+            placeholder="Select tenant"
+            icon="i-lucide-globe"
+            :ui="selectMenuUi"
+            :content="selectContentProps"
+            class="w-full"
+            @update:model-value="onTenantChange"
+          />
+        </section>
 
-      <section class="border-t border-default pt-4">
-        <UCollapsible v-model:open="tenantSettingsOpen" :unmount-on-hide="false" class="w-full">
-          <button
-            type="button"
-            class="flex w-full items-center justify-between px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted transition-colors hover:text-default"
-          >
-            <span>Tenant settings</span>
-            <UIcon
-              :name="tenantSettingsOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-              class="size-4"
-            />
-          </button>
+        <section>
+          <div class="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted">
+            Collections
+          </div>
 
-          <template #content>
-            <div class="space-y-1 pt-2">
+          <template v-if="bootstrap?.hasActiveTenant">
+            <div class="space-y-1">
               <UButton
-                v-for="item in tenantNavItems"
-                :key="item.to"
-                :to="item.to"
-                :icon="item.icon"
-                :variant="item.active ? 'subtle' : 'ghost'"
-                :color="item.active ? 'neutral' : 'neutral'"
+                icon="i-lucide-plus"
                 block
-                :class="['justify-start', item.active ? 'font-medium ring-1 ring-inset ring-default' : '']"
+                class="justify-start"
+                @click="emit('newCollection')"
               >
-                {{ item.label }}
+                New collection
+              </UButton>
+
+              <UButton
+                v-for="collection in bootstrap.collections"
+                :key="collection"
+                :to="`/admin/collections/${collection}/data`"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-database"
+                block
+                :class="[
+                  'justify-start font-mono text-sm',
+                  activeCollection === collection
+                    ? 'font-medium bg-default hover:bg-default'
+                    : 'hover:bg-muted'
+                ]"
+              >
+                {{ collection }}
               </UButton>
             </div>
           </template>
-        </UCollapsible>
-      </section>
 
-      <section class="border-t border-default pt-4">
-        <div class="px-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted">
-          Tenant collections
-        </div>
+          <p v-else class="px-2 text-sm text-muted">
+            {{
+              bootstrap?.isSuperAdmin
+                ? 'Select a tenant above to manage collections.'
+                : 'No tenant context available.'
+            }}
+          </p>
+        </section>
 
-        <template v-if="bootstrap?.hasActiveTenant">
-          <div class="space-y-1">
-            <UButton
-              icon="i-lucide-plus"
-              block
-              class="justify-start"
-              @click="emit('newCollection')"
+        <section>
+          <UCollapsible v-model:open="tenantSettingsOpen" :unmount-on-hide="false" class="w-full">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted transition-colors hover:text-default"
             >
-              New collection
-            </UButton>
+              <span>Settings</span>
+              <UIcon
+                :name="tenantSettingsOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                class="size-4"
+              />
+            </button>
 
-            <UButton
-              v-for="collection in bootstrap.collections"
-              :key="collection"
-              :to="`/admin/collections/${collection}/data`"
-              :variant="activeCollection === collection ? 'subtle' : 'ghost'"
-              color="neutral"
-              icon="i-lucide-database"
-              block
-              :class="[
-                'justify-start font-mono text-sm',
-                activeCollection === collection ? 'font-medium ring-1 ring-inset ring-default' : ''
-              ]"
-            >
-              {{ collection }}
-            </UButton>
-          </div>
-        </template>
-
-        <p v-else class="px-2 text-sm text-muted">
-          {{
-            bootstrap?.isSuperAdmin
-              ? 'Select a tenant above to manage collections.'
-              : 'No tenant context available.'
-          }}
-        </p>
-      </section>
+            <template #content>
+              <div class="space-y-1 pt-2">
+                <UButton
+                  v-for="item in tenantNavItems"
+                  :key="item.to"
+                  :to="item.to"
+                  :icon="item.icon"
+                  variant="ghost"
+                  color="neutral"
+                  block
+                  :class="[
+                    'justify-start',
+                    item.active
+                      ? 'font-medium bg-default hover:bg-default'
+                      : 'hover:bg-muted'
+                  ]"
+                >
+                  {{ item.label }}
+                </UButton>
+              </div>
+            </template>
+          </UCollapsible>
+        </section>
+      </div>
     </nav>
 
     <div class="mt-auto border-t border-default p-3">
