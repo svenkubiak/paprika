@@ -8,6 +8,7 @@ import { selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
 
 export interface GlobalHookEditorForm {
   name: string
+  description: string
   url: string
   method: string
   timeoutMs: number
@@ -102,6 +103,15 @@ watch(
                 placeholder="Request gate"
                 class="w-full"
                 autofocus
+              />
+            </UFormField>
+
+            <UFormField label="Description" class="w-full">
+              <UTextarea
+                v-model="form.description"
+                placeholder="What does this hook do?"
+                :rows="2"
+                class="w-full"
               />
             </UFormField>
 

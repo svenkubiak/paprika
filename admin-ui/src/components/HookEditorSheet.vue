@@ -10,6 +10,7 @@ import type { HookEvent } from '@/types'
 
 export interface HookEditorForm {
   name: string
+  description: string
   event: HookEvent
   url: string
   method: string
@@ -114,6 +115,15 @@ watch(
                 placeholder="Post slug generator"
                 class="w-full"
                 autofocus
+              />
+            </UFormField>
+
+            <UFormField label="Description" class="w-full">
+              <UTextarea
+                v-model="form.description"
+                placeholder="What does this hook do?"
+                :rows="2"
+                class="w-full"
               />
             </UFormField>
 

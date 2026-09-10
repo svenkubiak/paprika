@@ -65,6 +65,7 @@ function scopeLabel(hook: HookDefinition) {
 function hookToForm(hook: HookDefinition) {
   return {
     name: hook.name,
+    description: hook.description || '',
     url: hook.url,
     method: hook.method || 'POST',
     timeoutMs: hook.timeoutMs ?? 5000,
@@ -110,6 +111,7 @@ async function saveHook() {
   try {
     const payload = {
       name: editorForm.value.name,
+      description: editorForm.value.description,
       url: editorForm.value.url,
       method: editorForm.value.method,
       timeoutMs: editorForm.value.timeoutMs,
@@ -204,7 +206,10 @@ async function runTest(hook: HookDefinition) {
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <UTable :data="hooks" :columns="columns" :loading="loading" @select="openEdit">
         <template #name-cell="{ row }">
-          <span class="font-medium">{{ row.original.name }}</span>
+          <div>
+            <span class="font-medium">{{ row.original.name }}</span>
+            <p v-if="row.original.description" class="mt-0.5 text-xs text-muted">{{ row.original.description }}</p>
+          </div>
         </template>
         <template #scope-cell="{ row }">
           <span class="text-sm">{{ scopeLabel(row.original) }}</span>

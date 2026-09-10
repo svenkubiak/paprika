@@ -87,6 +87,7 @@ export type HookEvent =
 export interface HookDefinition {
   id: string
   name: string
+  description?: string | null
   collection: string
   event: HookEvent
   url: string

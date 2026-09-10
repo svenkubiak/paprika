@@ -11,6 +11,8 @@ public record HookDefinition(
         @Required
         String name,
 
+        String description,
+
         @Required
         String collection,
 

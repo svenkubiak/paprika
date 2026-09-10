@@ -51,6 +51,7 @@ async function loadHooks() {
 function hookToForm(hook: HookDefinition) {
   return {
     name: hook.name,
+    description: hook.description || '',
     event: hook.event,
     url: hook.url,
     method: hook.method || 'POST',
@@ -207,7 +208,10 @@ const testSucceeded = computed(() => testResult.value !== null && !testResult.va
 
       <UTable :data="hooks" :columns="columns" :loading="loading" @select="openEditHook">
         <template #name-cell="{ row }">
-          <span class="font-medium">{{ row.original.name }}</span>
+          <div>
+            <span class="font-medium">{{ row.original.name }}</span>
+            <p v-if="row.original.description" class="mt-0.5 text-xs text-muted">{{ row.original.description }}</p>
+          </div>
         </template>
         <template #event-cell="{ row }">
           <UBadge variant="soft" color="primary">{{ hookEventLabel(row.original.event) }}</UBadge>

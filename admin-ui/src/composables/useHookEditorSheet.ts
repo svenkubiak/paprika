@@ -19,6 +19,7 @@ function cloneForm(form: HookEditorForm): HookEditorForm {
 export function emptyHookForm(): HookEditorForm {
   return {
     name: '',
+    description: '',
     event: 'beforeCreate',
     url: '',
     method: 'POST',

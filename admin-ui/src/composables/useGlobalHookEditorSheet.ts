@@ -22,6 +22,7 @@ function cloneForm(form: GlobalHookEditorForm): GlobalHookEditorForm {
 export function emptyGlobalHookForm(): GlobalHookEditorForm {
   return {
     name: '',
+    description: '',
     url: '',
     method: 'POST',
     timeoutMs: 5000,
