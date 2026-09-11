@@ -446,7 +446,7 @@ export const api = {
     })
   },
 
-  confirmTwoFactor(code: string): Promise<{ twoFactorEnabled: boolean }> {
+  confirmTwoFactor(code: string): Promise<{ twoFactorEnabled: boolean; fallbackCode: string }> {
     return request('/api/admin/settings/2fa/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

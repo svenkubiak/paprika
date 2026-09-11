@@ -126,16 +126,15 @@ function backToCredentials() {
           variant="soft"
           icon="i-lucide-shield-check"
           title="Two-factor authentication"
-          description="Open your authenticator app and enter the current 6-digit code."
+          description="Open your authenticator app and enter the current 6-digit code, or use your fallback code if you no longer have access to it."
         />
 
-        <UFormField label="Verification code" required class="w-full">
+        <UFormField label="Verification or fallback code" required class="w-full">
           <UInput
             v-model="totpCode"
             class="w-full"
-            inputmode="numeric"
             autocomplete="one-time-code"
-            maxlength="6"
+            maxlength="32"
             icon="i-lucide-key-round"
             autofocus
           />

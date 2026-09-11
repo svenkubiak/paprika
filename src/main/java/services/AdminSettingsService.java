@@ -167,9 +167,13 @@ public class AdminSettingsService {
         }
 
         systemUserService.setTotpSecret(auth.get().id(), pendingSecret.get());
+        String fallbackCode = systemUserService.generateTotpFallbackCode(auth.get().id());
         PendingTwoFactorSession.clear(request);
 
-        return AdminSettingsResult.ok(Map.of("twoFactorEnabled", true));
+        return AdminSettingsResult.ok(Map.of(
+                "twoFactorEnabled", true,
+                "fallbackCode", fallbackCode
+        ));
     }
 
     public AdminSettingsResult disableTwoFactor(Request request, TwoFactorSetupDto dto) {

@@ -58,7 +58,7 @@ public class AdminLoginService {
             return AdminLoginResult.noPendingLogin();
         }
 
-        if (!matchesPendingCode(userId.get(), dto.code())) {
+        if (!verifyTwoFactorCode(userId.get(), dto.code())) {
             return AdminLoginResult.invalidCode();
         }
 
@@ -75,7 +75,7 @@ public class AdminLoginService {
             return AdminLoginResult.noPendingLogin();
         }
 
-        if (!matchesPendingCode(userId.get(), dto.code())) {
+        if (!verifyTwoFactorCode(userId.get(), dto.code())) {
             return AdminLoginResult.invalidCode();
         }
 
@@ -123,9 +123,15 @@ public class AdminLoginService {
         return systemUserService.findTotpSecret(auth.id()).isPresent();
     }
 
-    private boolean matchesPendingCode(String userId, String code) {
-        return systemUserService.findTotpSecret(userId)
+    /**
+     * Accepts either the current TOTP code or the user's one-time fallback code.
+     * The fallback code is consumed on successful use and cannot be reused.
+     */
+    private boolean verifyTwoFactorCode(String userId, String code) {
+        boolean matchesTotp = systemUserService.findTotpSecret(userId)
                 .filter(secret -> twoFactorService.verifyCode(secret, code))
                 .isPresent();
+
+        return matchesTotp || systemUserService.consumeTotpFallbackCode(userId, code);
     }
 }

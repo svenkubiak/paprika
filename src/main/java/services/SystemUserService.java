@@ -28,6 +28,7 @@ import static com.mongodb.client.model.Updates.*;
 public class SystemUserService {
     public static final int MIN_PASSWORD_LENGTH = 16;
     private static final int PASSWORD_SALT_LENGTH = 22;
+    private static final int FALLBACK_CODE_LENGTH = 32;
     private static final int SETUP_TOKEN_BYTES = 32;
     private static final Duration SETUP_TOKEN_TTL = Duration.ofMinutes(30);
     private static final Logger LOG = LogManager.getLogger(SystemUserService.class);
@@ -250,7 +251,7 @@ public class SystemUserService {
     public void clearTotpSecret(String userId) {
         resolver.systemCollection(CollectionName.USERS).updateOne(
                 eq("id", userId),
-                new Document("$unset", new Document("totpSecret", ""))
+                combine(unset("totpSecret"), unset("totpFallbackCodeHash"))
         );
     }
 
@@ -264,6 +265,44 @@ public class SystemUserService {
             return Optional.empty();
         }
         return Optional.of(secret);
+    }
+
+    /**
+     * Generates a new long, single-use fallback code for signing in when the superadmin's
+     * authenticator is unavailable, and stores its hash. The plaintext code is only ever
+     * returned here and must be shown to the user immediately, as it cannot be retrieved again.
+     */
+    public String generateTotpFallbackCode(String userId) {
+        String fallbackCode = CommonUtils.randomString(FALLBACK_CODE_LENGTH);
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                set("totpFallbackCodeHash", hashFallbackCode(fallbackCode))
+        );
+        return fallbackCode;
+    }
+
+    /**
+     * Verifies a fallback code and, if valid, consumes it so it cannot be used again.
+     */
+    public boolean consumeTotpFallbackCode(String userId, String code) {
+        if (StringUtils.isBlank(code)) {
+            return false;
+        }
+
+        Document user = findById(userId);
+        String hash = user == null ? null : user.getString("totpFallbackCodeHash");
+        if (StringUtils.isBlank(hash)
+                || !MessageDigest.isEqual(
+                        hashFallbackCode(code.trim()).getBytes(StandardCharsets.UTF_8),
+                        hash.getBytes(StandardCharsets.UTF_8))) {
+            return false;
+        }
+
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                new Document("$unset", new Document("totpFallbackCodeHash", ""))
+        );
+        return true;
     }
 
     public Optional<AuthContext> verifyPassword(String username, String password) {
@@ -365,9 +404,17 @@ public class SystemUserService {
     }
 
     private String hashSetupToken(String token) {
+        return sha256(token);
+    }
+
+    private String hashFallbackCode(String code) {
+        return sha256(code);
+    }
+
+    private String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is not available", e);

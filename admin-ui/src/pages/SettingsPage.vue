@@ -35,13 +35,19 @@ const setupLoading = ref(false)
 const setupData = ref<TwoFactorSetupResult | null>(null)
 const setupCode = ref('')
 const setupQrCode = ref('')
+const setupFallbackCode = ref('')
 
 const disableOpen = ref(false)
 const disablePassword = ref('')
 const disableCode = ref('')
 const disableLoading = ref(false)
 
-const setupStep = computed(() => (setupData.value ? 'verify' : 'password'))
+const setupStep = computed(() => {
+  if (setupFallbackCode.value) {
+    return 'fallback'
+  }
+  return setupData.value ? 'verify' : 'password'
+})
 
 watch(setupData, async (value) => {
   if (value?.uri) {
@@ -81,7 +87,13 @@ function openSetup() {
   setupPassword.value = ''
   setupCode.value = ''
   setupData.value = null
+  setupFallbackCode.value = ''
   setupOpen.value = true
+}
+
+function finishSetup() {
+  setupFallbackCode.value = ''
+  setupOpen.value = false
 }
 
 function openDisable() {
@@ -108,9 +120,9 @@ async function beginSetup() {
 async function confirmSetup() {
   setupLoading.value = true
   try {
-    await api.confirmTwoFactor(setupCode.value)
+    const result = await api.confirmTwoFactor(setupCode.value)
     twoFactorEnabled.value = true
-    setupOpen.value = false
+    setupFallbackCode.value = result.fallbackCode
     toast.add({
       title: 'Two-factor authentication enabled',
       color: 'success',
@@ -435,16 +447,41 @@ async function savePassword() {
     </UCard>
   </div>
 
-  <UModal v-model:open="setupOpen" :ui="modalUi">
+  <UModal v-model:open="setupOpen" :dismissible="setupStep !== 'fallback'" :ui="modalUi">
     <template #content>
       <UCard>
         <template #header>
           <h3 class="font-semibold">
-            {{ setupStep === 'password' ? 'Confirm password' : 'Set up authenticator' }}
+            {{
+              setupStep === 'password'
+                ? 'Confirm password'
+                : setupStep === 'verify'
+                  ? 'Set up authenticator'
+                  : 'Save your fallback code'
+            }}
           </h3>
         </template>
 
-        <div v-if="setupStep === 'password'" class="space-y-4">
+        <div v-if="setupStep === 'fallback'" class="space-y-4">
+          <UAlert
+            color="warning"
+            variant="soft"
+            icon="i-lucide-triangle-alert"
+            title="This code is shown only once"
+            description="Store it somewhere safe. It lets you sign in if you lose access to your authenticator app, and can be used only a single time."
+          />
+
+          <UFormField label="Fallback code" class="w-full">
+            <UInput
+              :model-value="setupFallbackCode"
+              readonly
+              class="w-full font-mono text-xs"
+              icon="i-lucide-key-round"
+            />
+          </UFormField>
+        </div>
+
+        <div v-else-if="setupStep === 'password'" class="space-y-4">
           <p class="text-sm text-muted">
             Enter your current password to begin two-factor authentication setup.
           </p>
@@ -490,23 +527,32 @@ async function savePassword() {
 
         <template #footer>
           <div class="flex justify-end gap-2">
-            <UButton variant="ghost" color="neutral" @click="setupOpen = false">Cancel</UButton>
             <UButton
-              v-if="setupStep === 'password'"
-              :loading="setupLoading"
-              :disabled="!setupPassword"
-              @click="beginSetup"
+              v-if="setupStep === 'fallback'"
+              icon="i-lucide-check"
+              @click="finishSetup"
             >
-              Continue
+              I've saved this code
             </UButton>
-            <UButton
-              v-else
-              :loading="setupLoading"
-              :disabled="setupCode.trim().length < 6"
-              @click="confirmSetup"
-            >
-              Enable 2FA
-            </UButton>
+            <template v-else>
+              <UButton variant="ghost" color="neutral" @click="setupOpen = false">Cancel</UButton>
+              <UButton
+                v-if="setupStep === 'password'"
+                :loading="setupLoading"
+                :disabled="!setupPassword"
+                @click="beginSetup"
+              >
+                Continue
+              </UButton>
+              <UButton
+                v-else
+                :loading="setupLoading"
+                :disabled="setupCode.trim().length < 6"
+                @click="confirmSetup"
+              >
+                Enable 2FA
+              </UButton>
+            </template>
           </div>
         </template>
       </UCard>
