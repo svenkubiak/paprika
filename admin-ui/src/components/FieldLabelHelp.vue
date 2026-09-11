@@ -8,7 +8,12 @@ defineProps<{
 <template>
   <span class="inline-flex items-center gap-1.5">
     <span>{{ label }}</span>
-    <UTooltip v-if="hint" :text="hint">
+    <UTooltip
+      v-if="hint"
+      :text="hint"
+      :content="{ side: 'top' }"
+      :ui="{ content: 'bg-black text-white', arrow: 'fill-black stroke-black' }"
+    >
       <button
         type="button"
         class="inline-flex rounded-sm text-muted transition-colors hover:text-default focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
