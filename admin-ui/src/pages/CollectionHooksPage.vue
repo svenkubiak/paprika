@@ -192,7 +192,7 @@ const testSucceeded = computed(() => testResult.value !== null && !testResult.va
       variant="soft"
       icon="i-lucide-webhook"
       title="HTTP hooks"
-      description="Configure tenant-specific HTTP endpoints that run before or after CRUD operations. Blocking hooks can mutate request data; async hooks run after the operation succeeds."
+      description="Configure tenant-specific HTTP endpoints for CRUD lifecycle events. 'before' hooks run synchronously and can mutate the request body; 'after' hooks run asynchronously once the operation has already succeeded."
     />
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
