@@ -59,6 +59,14 @@ public class AdminController {
     }
 
     public Response authenticate(Form form, Authentication authentication, Request request) {
+        form.expectValue("username");
+        form.expectValue("password");
+        form.expectMinLength("password", SystemUserService.MIN_PASSWORD_LENGTH);
+
+        if (form.hasErrors()) {
+            return Response.redirect("/login?error=1");
+        }
+
         return AdminLoginResponseHelper.toRedirectResponse(
                 adminLoginService.login(form.get("username"), form.get("password"), authentication, request));
     }
