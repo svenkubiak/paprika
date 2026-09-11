@@ -21,8 +21,9 @@ const pageTitle = computed(() => {
   if (route.name === 'backup') return 'Backup'
   if (route.name === 'global-hooks') return 'Global hooks'
   if (route.name === 'request-logs') return 'Logs'
-  if (route.name === 'tenant-users') return 'Users'
   if (route.name === 'user-settings') return 'Auth'
+  if (route.name === 'superadmins') return 'Superadmins'
+  if (route.name === 'tenant-settings') return 'Schema import & export'
   if (collectionName.value) return collectionName.value
   return 'Paprika'
 })
@@ -94,9 +95,6 @@ function toggleColorMode() {
               — no payloads
             </template>
             <template v-else>Select a tenant to view request logs</template>
-          </p>
-          <p v-else-if="route.name === 'tenant-users'" class="text-sm text-muted">
-            Manage tenant users and self-registration
           </p>
           <p v-else-if="route.name === 'superadmins'" class="text-sm text-muted">
             Manage superadmin accounts and invites
