@@ -39,12 +39,10 @@ import static org.hamcrest.Matchers.*;
  * written so that a regression is visible rather than flaky: the requests are released together by
  * a latch, and the assertion is on the number of successes, not on timing.
  * <p>
- * The rejected attempts are only checked for "not accepted" rather than for a specific status,
- * because mangoo I/O 10.12.1 occasionally answers 500 on concurrent requests: its attachment key is
- * created lazily on an unsynchronized static field ({@code RequestUtils#getAttachmentKey}), so two
- * threads racing the first initialization can end up with two different keys and the handler chain
- * then reads a null attachment. That is a framework issue and fails closed - it never turns into a
- * second successful redemption, which is what these tests guard.
+ * The rejected attempts are required to answer with a client error: concurrency must not turn into
+ * a server error either. Up to mangoo I/O 10.12.1 that was not the case - its attachment key was
+ * built lazily on an unsynchronized static field, so parallel requests sporadically produced a 500.
+ * Fixed in 10.12.2, which is why this can be asserted strictly now.
  */
 @ExtendWith({TestRunner.class})
 class SingleUseTokenConcurrencyTest {
@@ -80,8 +78,10 @@ class SingleUseTokenConcurrencyTest {
                 .getStatusCode());
 
         assertThat("exactly one redemption may succeed: " + statuses, count(statuses, 200), equalTo(1));
-        assertThat("no other attempt may be accepted: " + statuses,
-                statuses.stream().filter(status -> status >= 200 && status < 300).count(), equalTo(1L));
+        assertThat("every rejection must be a client error, never a server error: " + statuses,
+                statuses.stream().filter(status -> status >= 500).count(), equalTo(0L));
+        assertThat("and every other attempt must be rejected: " + statuses,
+                count(statuses, 400), equalTo(PARALLEL_ATTEMPTS - 1));
 
         // Exactly one of the attempted passwords is now valid, and the old one is gone
         assertThat(login(username, PASSWORD).getStatusCode(), equalTo(401));
@@ -111,8 +111,10 @@ class SingleUseTokenConcurrencyTest {
                 .getStatusCode());
 
         assertThat("exactly one confirmation may succeed: " + statuses, count(statuses, 200), equalTo(1));
-        assertThat("no other attempt may be accepted: " + statuses,
-                statuses.stream().filter(status -> status >= 200 && status < 300).count(), equalTo(1L));
+        assertThat("every rejection must be a client error, never a server error: " + statuses,
+                statuses.stream().filter(status -> status >= 500).count(), equalTo(0L));
+        assertThat("and every other attempt must be rejected: " + statuses,
+                count(statuses, 400), equalTo(PARALLEL_ATTEMPTS - 1));
     }
 
     @Test

@@ -32,10 +32,10 @@ import static org.hamcrest.Matchers.*;
  * resolves its rules through - with two definitions under one name, an admin editing the rules may
  * be editing the one that is not being served.
  * <p>
- * A note on the expected statuses: rejected attempts are required to be "not created" rather than a
- * specific code, because mangoo I/O 10.12.1 sporadically answers 500 on concurrent requests (its
- * attachment key is built lazily on an unsynchronized static field). That fails closed and never
- * produces a second creation, which is what is asserted here.
+ * Losing such a race must read like a detected conflict - a client error, never a server error.
+ * That also covers the framework: up to mangoo I/O 10.12.1 parallel requests sporadically produced
+ * a 500 because its attachment key was built lazily on an unsynchronized static field (fixed in
+ * 10.12.2).
  */
 @ExtendWith({TestRunner.class})
 class ConcurrentCreationIntegrationTest {
@@ -63,6 +63,8 @@ class ConcurrentCreationIntegrationTest {
                 .getStatusCode());
 
         assertThat("exactly one registration may be created: " + statuses, created(statuses), equalTo(1L));
+        assertThat("a lost race is a client error, never a server error: " + statuses,
+                serverErrors(statuses), equalTo(0L));
         assertThat("and exactly one user may exist",
                 Application.getInstance(TenantCollectionService.class)
                         .dataCollection(TenantTestUtils.defaultTenantContext(), "users")
@@ -81,6 +83,8 @@ class ConcurrentCreationIntegrationTest {
                 .getStatusCode());
 
         assertThat("exactly one creation may succeed: " + statuses, created(statuses), equalTo(1L));
+        assertThat("a lost race is a client error, never a server error: " + statuses,
+                serverErrors(statuses), equalTo(0L));
         assertThat("two definitions under one name would make the effective rules non deterministic",
                 Application.getInstance(TenantCollectionService.class)
                         .metaCollections(TenantTestUtils.defaultTenantContext())
@@ -98,6 +102,8 @@ class ConcurrentCreationIntegrationTest {
                 .getStatusCode());
 
         assertThat("exactly one tenant may be created: " + statuses, created(statuses), equalTo(1L));
+        assertThat("a lost race is a client error, never a server error: " + statuses,
+                serverErrors(statuses), equalTo(0L));
         assertThat(Application.getInstance(TenantService.class).listAll().stream()
                         .filter(tenant -> slug.equals(tenant.slug())).count(),
                 equalTo(1L));
@@ -138,6 +144,10 @@ class ConcurrentCreationIntegrationTest {
 
     private static long created(List<Integer> statuses) {
         return statuses.stream().filter(status -> status >= 200 && status < 300).count();
+    }
+
+    private static long serverErrors(List<Integer> statuses) {
+        return statuses.stream().filter(status -> status >= 500).count();
     }
 
     /** Releases all attempts at once, so they genuinely overlap instead of running in sequence. */

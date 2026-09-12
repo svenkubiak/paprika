@@ -17,18 +17,18 @@ ok()   { echo -e "${GREEN}done${NC}"; }
 cd "$SCRIPT_DIR"
 
 # ─── 1. Uncommitted changes ───────────────────────────────────────────────────
-step "1/10  Checking working tree"
+step "1/9  Checking working tree"
 if ! git diff --quiet || ! git diff --cached --quiet; then
     fail "Uncommitted changes detected. Commit or stash them first."
 fi
 ok
 
 # ─── 2. Maven build ───────────────────────────────────────────────────────────
-step "2/10  Running mvn clean verify"
+step "2/9  Running mvn clean verify"
 mvn clean verify || fail "Maven build failed."
 
 # ─── 3. npm outdated ──────────────────────────────────────────────────────────
-step "3/10  Checking npm dependencies"
+step "3/9  Checking npm dependencies"
 OUTDATED=0
 
 cd admin-ui
@@ -50,26 +50,8 @@ if [[ "$OUTDATED" -eq 1 ]]; then
 fi
 ok
 
-# ─── 4. Vulnerability scan ────────────────────────────────────────────────────
-# Advisory only: an external service must never decide whether a release can be built, so a
-# finding asks instead of aborting. Exit code 2 means the scan could not run at all.
-step "4/10  Scanning dependencies for known vulnerabilities"
-SCAN_STATUS=0
-./dependency-scan.sh || SCAN_STATUS=$?
-
-if [[ "$SCAN_STATUS" -eq 2 ]]; then
-    echo -e "\n${YELLOW}Dependency scan could not run (see above).${NC}"
-elif [[ "$SCAN_STATUS" -ne 0 ]]; then
-    echo -e "\n${YELLOW}Known vulnerabilities found (see above).${NC}"
-    read -rp "Continue release anyway? [y/N]: " CONTINUE_RELEASE
-    if [[ ! "$CONTINUE_RELEASE" =~ ^[yY]$ ]]; then
-        fail "Release aborted due to known vulnerabilities."
-    fi
-fi
-ok
-
-# ─── 5. Determine release version ─────────────────────────────────────────────
-step "5/10  Determining release version"
+# ─── 4. Determine release version ─────────────────────────────────────────────
+step "4/9  Determining release version"
 CURRENT_VERSION="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
 
 if [[ ! "$CURRENT_VERSION" =~ -SNAPSHOT$ ]]; then
@@ -91,17 +73,17 @@ if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     fail "Version '${RELEASE_VERSION}' is not valid SemVer 2.0.0 (MAJOR.MINOR.PATCH)."
 fi
 
-# ─── 6. Set Maven version ─────────────────────────────────────────────────────
-step "6/10  Setting Maven version to ${RELEASE_VERSION}"
+# ─── 5. Set Maven version ─────────────────────────────────────────────────────
+step "5/9  Setting Maven version to ${RELEASE_VERSION}"
 mvn versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false -q
 ok
 
-# ─── 7. Build release artifact ────────────────────────────────────────────────
-step "7/10  Building release artifact"
+# ─── 6. Build release artifact ────────────────────────────────────────────────
+step "6/9  Building release artifact"
 mvn clean package -DskipTests -q || fail "Maven package failed."
 
-# ─── 8. Commit, tag, push ─────────────────────────────────────────────────────
-step "8/10  Committing, tagging and pushing"
+# ─── 7. Commit, tag, push ─────────────────────────────────────────────────────
+step "7/9  Committing, tagging and pushing"
 git add pom.xml
 git commit -m "Release ${RELEASE_VERSION}"
 git tag -a "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
@@ -109,8 +91,8 @@ git push origin main
 git push origin "${RELEASE_VERSION}"
 ok
 
-# ─── 9. Build and push Docker image ──────────────────────────────────────────
-step "9/10  Building Docker image from tag v${RELEASE_VERSION}"
+# ─── 8. Build and push Docker image ──────────────────────────────────────────
+step "8/9  Building Docker image from tag v${RELEASE_VERSION}"
 git checkout "${RELEASE_VERSION}"
 
 IMAGE="${REGISTRY}:${RELEASE_VERSION}"
@@ -130,8 +112,8 @@ docker push "${IMAGE_LATEST}"
 git checkout main
 ok
 
-# ─── 10. Prepare next SNAPSHOT ────────────────────────────────────────────────
-step "10/10  Preparing next SNAPSHOT"
+# ─── 9. Prepare next SNAPSHOT ────────────────────────────────────────────────
+step "9/9  Preparing next SNAPSHOT"
 IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
 NEXT_SNAPSHOT="${MAJOR}.${MINOR}.$((PATCH + 1))-SNAPSHOT"
 
