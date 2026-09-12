@@ -161,7 +161,7 @@ class CollectionOwnerIntegrationTest {
                 .execute();
 
         assertThat(create.getStatusCode(), not(equalTo(StatusCodes.CREATED)));
-        assertThat(create.getStatusCode(), isOneOf(StatusCodes.UNAUTHORIZED, StatusCodes.FORBIDDEN));
+        assertThat(create.getStatusCode(), is(oneOf(StatusCodes.UNAUTHORIZED, StatusCodes.FORBIDDEN)));
     }
 
     @Test
