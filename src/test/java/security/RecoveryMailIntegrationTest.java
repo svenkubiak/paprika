@@ -110,13 +110,11 @@ class RecoveryMailIntegrationTest {
      * nobody owns must not produce a mail at all, and must not be distinguishable from one that
      * does (the endpoint answers 200 either way, so accounts cannot be probed).
      * <p>
-     * Note the current lookup behaviour, verified below: the address is matched exactly (only
-     * trimmed, not lowercased). A user who registered with mixed case has to type it the same way
-     * to receive a mail. That fails closed - no mail is sent to anyone else - but it is a usability
-     * trap worth knowing about.
+     * The lookup ignores case and surrounding whitespace, because mail addresses are not case
+     * sensitive in practice and a user must not lose access to recovery over how they typed it.
      */
     @Test
-    void anAddressNobodyOwnsProducesNoMail() throws Exception {
+    void anAddressNobodyOwnsProducesNoMailWhileCasingDoesNotMatter() throws Exception {
         greenMail.purgeEmailFromAllMailboxes();
 
         assertThat(forgotPassword("attacker@evil.test").getStatusCode(), equalTo(200));
@@ -125,14 +123,12 @@ class RecoveryMailIntegrationTest {
 
         assertThat(forgotPassword("  " + email.toUpperCase(java.util.Locale.ROOT) + "  ").getStatusCode(),
                 equalTo(200));
-        assertThat("the lookup is exact, so a differently cased address matches no user",
-                greenMail.waitForIncomingEmail(1000, 1), is(false));
 
-        // The exact address still works, so the endpoint is not broken for the legitimate user
-        assertThat(forgotPassword(email).getStatusCode(), equalTo(200));
         MimeMessage message = awaitSingleMail();
-        assertThat(message.getAllRecipients().length, equalTo(1));
-        assertThat(message.getAllRecipients()[0].toString(), equalTo(email));
+        assertThat("a differently cased address must still reach the same user",
+                message.getAllRecipients().length, equalTo(1));
+        assertThat("and the recipient is always the stored address",
+                message.getAllRecipients()[0].toString(), equalTo(email));
     }
 
     @Test

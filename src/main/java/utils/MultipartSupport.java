@@ -136,7 +136,50 @@ public final class MultipartSupport {
             uploads = uploadsFromMangooForm(mangooForm.get(), formData);
         }
 
+        rejectDroppedFileParts(formData, uploads);
+
         return new ParsedMultipart(Map.copyOf(textFields), Map.copyOf(uploads));
+    }
+
+    /**
+     * Fails when fewer files were read than the request actually contained.
+     * <p>
+     * Depending on which parser handled the request, a field may yield only one file even though the
+     * client sent several - mangoo's form keeps a single value per field name. Silently continuing
+     * would store some files and drop the rest while still answering 201, so the caller would never
+     * learn that data was lost. The request is rejected instead, and the field limits are enforced
+     * afterwards on the complete picture.
+     */
+    private static void rejectDroppedFileParts(FormData formData, Map<String, List<UploadedFile>> uploads) {
+        if (formData == null) {
+            return;
+        }
+
+        for (Map.Entry<String, Integer> entry : fileParts(formData).entrySet()) {
+            int read = uploads.getOrDefault(entry.getKey(), List.of()).size();
+            if (read < entry.getValue()) {
+                throw new IllegalArgumentException(
+                        "Only " + read + " of " + entry.getValue() + " uploaded files could be read for field "
+                                + entry.getKey() + "; send one file per field or upload them one at a time");
+            }
+        }
+    }
+
+    /** How many file parts the request carries per field name, regardless of what was read. */
+    private static Map<String, Integer> fileParts(FormData formData) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String name : formData) {
+            int files = 0;
+            for (FormData.FormValue value : formData.get(name)) {
+                if (value.isFileItem()) {
+                    files++;
+                }
+            }
+            if (files > 0) {
+                counts.put(name, files);
+            }
+        }
+        return counts;
     }
 
     public static Map<String, List<UploadedFile>> parseUploads(Request request) throws IOException {

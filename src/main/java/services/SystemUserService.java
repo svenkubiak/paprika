@@ -3,6 +3,8 @@ package services;
 import auth.AuthContext;
 import constants.CollectionName;
 import enums.Role;
+import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.ReturnDocument;
 import io.mangoo.utils.CommonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -20,6 +22,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.util.Locale;
 
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Updates.*;
@@ -285,24 +288,23 @@ public class SystemUserService {
      * Verifies a fallback code and, if valid, consumes it so it cannot be used again.
      */
     public boolean consumeTotpFallbackCode(String userId, String code) {
-        if (StringUtils.isBlank(code)) {
+        if (StringUtils.isBlank(code) || StringUtils.isBlank(userId)) {
             return false;
         }
 
-        Document user = findById(userId);
-        String hash = user == null ? null : user.getString("totpFallbackCodeHash");
-        if (StringUtils.isBlank(hash)
-                || !MessageDigest.isEqual(
-                        hashFallbackCode(code.trim()).getBytes(StandardCharsets.UTF_8),
-                        hash.getBytes(StandardCharsets.UTF_8))) {
-            return false;
-        }
+        // Matching the code and clearing it has to be one operation. Two logins racing on the same
+        // fallback code would otherwise both pass the check before either clears it, which would
+        // turn a one-time code into a reusable one for as long as the race window lasts.
+        //
+        // The comparison happens inside the query on the stored hash rather than in memory: an
+        // attacker cannot derive the code from timing differences on a SHA-256 hash lookup, and
+        // atomicity is worth more here than the constant time comparison it replaces.
+        Document claimed = resolver.systemCollection(CollectionName.USERS).findOneAndUpdate(
+                and(eq("id", userId), eq("totpFallbackCodeHash", hashFallbackCode(code.trim()))),
+                new Document("$unset", new Document("totpFallbackCodeHash", "")),
+                new FindOneAndUpdateOptions().returnDocument(ReturnDocument.BEFORE));
 
-        resolver.systemCollection(CollectionName.USERS).updateOne(
-                eq("id", userId),
-                new Document("$unset", new Document("totpFallbackCodeHash", ""))
-        );
-        return true;
+        return claimed != null;
     }
 
     public Optional<AuthContext> verifyPassword(String username, String password) {
@@ -421,10 +423,15 @@ public class SystemUserService {
         }
     }
 
+    /**
+     * Superadmin addresses are stored the same way as tenant user addresses: trimmed and
+     * lowercased. They are only used to send invites today, but keeping both paths identical avoids
+     * the case sensitive lookup trap the tenant side had, should this address ever be looked up.
+     */
     private String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {
             return null;
         }
-        return email.trim();
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 }

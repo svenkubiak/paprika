@@ -144,14 +144,12 @@ class FileUploadAuthorizationIntegrationTest {
     }
 
     /**
-     * The per field limit must hold no matter how many parts a client sends. Note the current
-     * behaviour: surplus parts are silently dropped rather than rejected (a client sending two
-     * files for a maxSelect=1 field gets a 201 and only the first file is stored). That is safe -
-     * the limit is never exceeded and no extra file reaches the disk - but it hides data loss from
-     * the caller. Tracked as an observation, not as a security defect.
+     * More file parts than a field allows are rejected outright. Partially storing them and
+     * answering 201 would hide the loss from the caller, so the request fails instead - and nothing
+     * is written to disk.
      */
     @Test
-    void neverStoresMoreFilesThanTheFieldAllows() throws IOException {
+    void moreFilesThanTheFieldAllowsAreRejectedAndNothingIsStored() throws IOException {
         String collection = "upload_count_" + DbUtils.id();
         TenantTestUtils.seedCollection(
                 collection,
@@ -164,16 +162,14 @@ class FileUploadAuthorizationIntegrationTest {
                 filePart("attachment", "one.txt", "text/plain", "one"),
                 filePart("attachment", "two.txt", "text/plain", "two"));
 
-        assertThat(create.getStatusCode(), anyOf(equalTo(201), equalTo(400)));
-        assertThat("at most maxSelect files may ever reach the disk",
-                storedFiles() - filesBefore, lessThanOrEqualTo(1L));
-
-        Document stored = Application.getInstance(TenantCollectionService.class)
-                .dataCollection(context(), collection).find(eq("title", "too many")).first();
-        if (stored != null) {
-            assertThat("a single select field must not hold a list of files",
-                    stored.get("attachment"), not(instanceOf(List.class)));
-        }
+        assertThat(create.getStatusCode(), equalTo(400));
+        assertThat("the caller has to learn why, rather than getting a 201 for half the upload",
+                create.getContent(), anyOf(containsString("could be read"), containsString("Too many files")));
+        assertThat(storedFiles(), equalTo(filesBefore));
+        assertThat("nothing may be persisted for a rejected upload",
+                Application.getInstance(TenantCollectionService.class)
+                        .dataCollection(context(), collection).find(eq("title", "too many")).first(),
+                nullValue());
     }
 
     /** A file field can only be written through multipart, never through plain json. */

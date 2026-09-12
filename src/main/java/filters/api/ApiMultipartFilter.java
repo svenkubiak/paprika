@@ -42,6 +42,11 @@ public class ApiMultipartFilter implements PerRequestFilter {
         } catch (IOException e) {
             return requestLogService.track(request, Response.badRequest().bodyJson(
                     java.util.Map.of("error", "Failed to parse multipart request")).end());
+        } catch (IllegalArgumentException e) {
+            // Parts that could not be read at all: answer with what went wrong instead of
+            // continuing with an incomplete upload
+            return requestLogService.track(request, Response.badRequest().bodyJson(
+                    java.util.Map.of("error", e.getMessage())).end());
         }
 
         return response;

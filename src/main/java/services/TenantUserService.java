@@ -2,6 +2,10 @@ package services;
 
 import auth.AuthContext;
 import auth.TenantContext;
+import com.mongodb.client.model.Collation;
+import com.mongodb.client.model.CollationStrength;
+import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.ReturnDocument;
 import constants.CollectionName;
 import constants.SystemCollections;
 import constants.SystemFields;
@@ -18,11 +22,17 @@ import utils.DbUtils;
 import utils.UserRecordUtils;
 
 import java.util.*;
+import java.util.Locale;
 
 import static com.mongodb.client.model.Filters.eq;
 
 @Singleton
 public class TenantUserService {
+    /** Strength 2 compares case and diacritic insensitively, which is what mail addresses need. */
+    private static final Collation CASE_INSENSITIVE = Collation.builder()
+            .locale("en")
+            .collationStrength(CollationStrength.SECONDARY)
+            .build();
     private static final int PASSWORD_SALT_LENGTH = 22;
     private static final int MIN_PASSWORD_LENGTH = SystemUserService.MIN_PASSWORD_LENGTH;
     private final TenantDatabaseResolver resolver;
@@ -184,23 +194,50 @@ public class TenantUserService {
             return false;
         }
 
-        String hash = AuthTokens.hash(token);
-        Document user = usersCollection(tenant).find(eq(UserRecordUtils.RESET_TOKEN_HASH, hash)).first();
-        if (user == null || !AuthTokens.isActive(user.getString(UserRecordUtils.RESET_TOKEN_EXPIRES_AT))) {
+        Document user = consumeToken(
+                tenant,
+                AuthTokens.hash(token),
+                UserRecordUtils.RESET_TOKEN_HASH,
+                UserRecordUtils.RESET_TOKEN_EXPIRES_AT);
+
+        if (user == null) {
             return false;
         }
 
         String salt = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
-        Document set = new Document("passwordSalt", salt)
-                .append("passwordHash", CommonUtils.hashArgon2(newPassword, salt))
-                .append(SystemFields.UPDATED_AT, SystemFields.timestamp());
-        Document unset = new Document(UserRecordUtils.RESET_TOKEN_HASH, "")
-                .append(UserRecordUtils.RESET_TOKEN_EXPIRES_AT, "");
         usersCollection(tenant).updateOne(
                 eq("id", user.getString("id")),
-                new Document("$set", set).append("$unset", unset));
+                new Document("$set", new Document("passwordSalt", salt)
+                        .append("passwordHash", CommonUtils.hashArgon2(newPassword, salt))
+                        .append(SystemFields.UPDATED_AT, SystemFields.timestamp())));
 
         return true;
+    }
+
+    /**
+     * Claims a single use token and returns the user it belonged to, or null when the token is
+     * unknown, already used or expired.
+     * <p>
+     * Reading the token and clearing it afterwards would be two steps, and two requests arriving at
+     * the same time would both pass the check before either clears it - a reset link forwarded or
+     * leaked could then be redeemed more than once. The token is therefore removed in the same
+     * operation that finds it, so exactly one caller can ever win, and the expiry is evaluated on
+     * the document as it was before that write.
+     * <p>
+     * An expired token is consumed as well: it is worthless either way, and clearing it keeps stale
+     * hashes from lingering on the record.
+     */
+    private Document consumeToken(TenantDefinition tenant, String hash, String hashField, String expiresAtField) {
+        Document claimed = usersCollection(tenant).findOneAndUpdate(
+                eq(hashField, hash),
+                new Document("$unset", new Document(hashField, "").append(expiresAtField, "")),
+                new FindOneAndUpdateOptions().returnDocument(ReturnDocument.BEFORE));
+
+        if (claimed == null || !AuthTokens.isActive(claimed.getString(expiresAtField))) {
+            return null;
+        }
+
+        return claimed;
     }
 
     /**
@@ -230,28 +267,44 @@ public class TenantUserService {
             return false;
         }
 
-        String hash = AuthTokens.hash(token);
-        Document user = usersCollection(tenant).find(eq(UserRecordUtils.VERIFY_TOKEN_HASH, hash)).first();
-        if (user == null || !AuthTokens.isActive(user.getString(UserRecordUtils.VERIFY_TOKEN_EXPIRES_AT))) {
+        Document user = consumeToken(
+                tenant,
+                AuthTokens.hash(token),
+                UserRecordUtils.VERIFY_TOKEN_HASH,
+                UserRecordUtils.VERIFY_TOKEN_EXPIRES_AT);
+
+        if (user == null) {
             return false;
         }
 
-        Document set = new Document(UserRecordUtils.EMAIL_VERIFIED, true)
-                .append(SystemFields.UPDATED_AT, SystemFields.timestamp());
-        Document unset = new Document(UserRecordUtils.VERIFY_TOKEN_HASH, "")
-                .append(UserRecordUtils.VERIFY_TOKEN_EXPIRES_AT, "");
         usersCollection(tenant).updateOne(
                 eq("id", user.getString("id")),
-                new Document("$set", set).append("$unset", unset));
+                new Document("$set", new Document(UserRecordUtils.EMAIL_VERIFIED, true)
+                        .append(SystemFields.UPDATED_AT, SystemFields.timestamp())));
 
         return true;
     }
 
+    /**
+     * Looks a user up by email address, ignoring case.
+     * <p>
+     * Mail domains are case insensitive and mailbox providers treat the local part that way too, so
+     * a user who registered as {@code User@example.com} expects {@code user@example.com} to work
+     * when asking for a password reset. A case sensitive match would deny them recovery without any
+     * distinguishable answer, because these endpoints deliberately respond uniformly.
+     * <p>
+     * New and updated records are stored lowercased (see {@link #normalizeEmail}); the secondary
+     * collation strength additionally covers records written before that normalization existed.
+     */
     private Document findByEmail(TenantDefinition tenant, String email) {
         if (StringUtils.isBlank(email)) {
             return null;
         }
-        return usersCollection(tenant).find(eq("email", email.trim())).first();
+
+        return usersCollection(tenant)
+                .find(eq("email", normalizeEmail(email)))
+                .collation(CASE_INSENSITIVE)
+                .first();
     }
 
     public boolean deleteUser(TenantDefinition tenant, String userId) {
@@ -395,10 +448,11 @@ public class TenantUserService {
         }
     }
 
+    /** Addresses are stored lowercased, so that a lookup is a plain equality match. */
     private String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {
             return null;
         }
-        return email.trim();
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 }
