@@ -7,6 +7,11 @@ import java.util.List;
 import java.util.Objects;
 
 public final class RuleEvaluator {
+    // Marks an auth value that cannot be known for the current caller, e.g. auth.id of a guest.
+    // Kept distinct from null so that a missing record field never compares equal to it:
+    // Objects.equals(null, null) would otherwise let a guest match an ownerless record.
+    private static final Object UNKNOWN = new Object();
+
     private RuleEvaluator() {
     }
 
@@ -43,6 +48,12 @@ public final class RuleEvaluator {
         Object leftValue = resolveNodeValue(left, context);
         Object rightValue = resolveNodeValue(right, context);
 
+        // An unknown operand makes every comparison fail, including "!=", so that a rule can
+        // never be satisfied by the absence of an authenticated caller.
+        if (leftValue == UNKNOWN || rightValue == UNKNOWN) {
+            return false;
+        }
+
         return switch (operator) {
             case "=" -> Objects.equals(leftValue, rightValue);
             case "!=" -> !Objects.equals(leftValue, rightValue);
@@ -56,6 +67,9 @@ public final class RuleEvaluator {
 
     private static boolean evaluateIn(RuleNode left, List<Object> values, RuleEvaluationContext context) {
         Object leftValue = resolveNodeValue(left, context);
+        if (leftValue == UNKNOWN) {
+            return false;
+        }
         return values.stream().anyMatch(value -> Objects.equals(leftValue, value));
     }
 
@@ -69,7 +83,8 @@ public final class RuleEvaluator {
 
     private static Object resolveValue(String prefix, String name, RuleEvaluationContext context) {
         if ("auth".equals(prefix)) {
-            return context.auth().getField(name);
+            Object value = context.auth().getField(name);
+            return value != null ? value : UNKNOWN;
         }
         if ("body".equals(prefix)) {
             return context.body() != null ? context.body().get(name) : null;
@@ -105,6 +120,9 @@ public final class RuleEvaluator {
     }
 
     private static boolean toBoolean(Object value) {
+        if (value == UNKNOWN) {
+            return false;
+        }
         if (value instanceof Boolean bool) {
             return bool;
         }

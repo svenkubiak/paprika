@@ -74,7 +74,7 @@ X-Paprika-Signature: sha256=<hex-hmac>  (see below)
     "collection": "posts",
     "recordId": "0198a3f2-7b1c-7d4e-9f0a-1c2d3e4f5a6b",
     "auth": { "id": "user-abc", "role": "user" },
-    "http": { "method": "PATCH", "path": "/api/collections/posts/0198a3f2-...", "headers": { "...": ["..."] } }
+    "http": { "method": "PATCH", "path": "/api/collections/posts/0198a3f2-...", "headers": { "Content-Type": ["application/json"] } }
   },
   "data": {
     "body": { "title": "New title" },
@@ -88,6 +88,7 @@ X-Paprika-Signature: sha256=<hex-hmac>  (see below)
 - **`data.record`** is the record as it stood *before* this operation for before-hooks (`null` for `beforeCreate`/`beforeList`, since nothing exists yet); for after-hooks it's the record *after* the change (the just-created, just-updated, or just-deleted record).
 - **`context.recordId`** is populated even for `beforeCreate` — Paprika assigns the record's id before running before-hooks and includes it in both `context.recordId` and `data.body.id`, so a `beforeCreate` hook already knows the final id of the record about to be inserted.
 - **`schema`** is `null` unless **Include schema** is enabled on the hook.
+- **`context.http.headers`** only contains a fixed, non-sensitive subset of the incoming request headers: `Content-Type`, `User-Agent`, `Accept`, `Accept-Language` and `X-Request-Id`. Credential-carrying headers such as `Cookie`, `Authorization` and `X-Api-Key` are never forwarded, since a hook URL may point at a third party. If your endpoint needs a secret, configure it as a static outgoing header on the hook instead.
 
 ### Verifying the signature
 

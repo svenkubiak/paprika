@@ -38,4 +38,40 @@ class RuleEvaluatorTest {
         assertThat(ruleService.resolveMode("*"), is(RuleMode.PUBLIC));
         assertThat(ruleService.canAccess("*", "owner", AuthContext.guest(), null, null), is(true));
     }
+
+    @Test
+    void ownerRuleDeniesGuestOnRecordWithoutOwner() {
+        RuleNode node = RuleParser.parse(ruleService.normalizeRule("owner", "owner"));
+        Document ownerless = new Document("title", "created via admin ui");
+
+        // Both sides resolve to "no value"; treating that as a match would hand every ownerless
+        // record to anonymous callers.
+        assertThat(RuleEvaluator.evaluate(node, RuleEvaluationContext.of(AuthContext.guest(), ownerless)), is(false));
+        assertThat(RuleEvaluator.evaluate(node, RuleEvaluationContext.of(AuthContext.guest(), null)), is(false));
+    }
+
+    @Test
+    void ownerRuleDeniesGuestThroughCanAccess() {
+        Document ownerless = new Document("title", "created via admin ui");
+        Document owned = new Document("owner", "u1");
+
+        assertThat(ruleService.canAccess("owner", "owner", AuthContext.guest(), ownerless, null), is(false));
+        assertThat(ruleService.canAccess("owner", "owner", AuthContext.guest(), owned, null), is(false));
+        assertThat(ruleService.canAccess("owner", "owner", AuthContext.user("u1"), owned, null), is(true));
+    }
+
+    @Test
+    void ownerlessRecordStaysInaccessibleToAuthenticatedUsers() {
+        Document ownerless = new Document("title", "created via admin ui");
+
+        assertThat(ruleService.canAccess("owner", "owner", AuthContext.user("u1"), ownerless, null), is(false));
+    }
+
+    @Test
+    void expressionRulesWithNullBodyDoNotThrow() {
+        // VIEW and DELETE pass a null body, as does realtime delivery.
+        assertThat(ruleService.canAccess("auth", "owner", AuthContext.guest(), null, null), is(false));
+        assertThat(ruleService.canAccess("auth", "owner", AuthContext.user("u1"), null, null), is(true));
+        assertThat(ruleService.canAccess("owner", "owner", AuthContext.guest(), null, null), is(false));
+    }
 }

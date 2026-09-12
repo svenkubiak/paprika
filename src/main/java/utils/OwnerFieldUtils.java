@@ -96,7 +96,7 @@ public final class OwnerFieldUtils {
             Map<String, Object> body) {
 
         if (!isOwnerRule(rule) || !auth.isAuthenticated()) {
-            return body;
+            return body != null ? body : Map.of();
         }
 
         java.util.HashMap<String, Object> effective = body != null

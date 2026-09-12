@@ -84,6 +84,44 @@ class CollectionOwnerIntegrationTest {
         assertThat(create.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
     }
 
+    @Test
+    void anonymousRequestsCannotReachRecordsWithoutOwner() {
+        String collection = "notes_ownerless_" + DbUtils.id();
+        seedOwnerCollection(collection);
+
+        // Records created through the admin UI carry no owner field, since create() skips owner
+        // stamping on admin bypass.
+        String recordId = DbUtils.id();
+        Application.getInstance(TenantCollectionService.class)
+                .dataCollection(TenantTestUtils.defaultTenantContext(), collection)
+                .insertOne(new org.bson.Document()
+                        .append("id", recordId)
+                        .append("title", "SECRET"));
+
+        TestResponse read = TestRequest.get("/api/collections/" + collection + "/" + recordId).execute();
+        assertThat(read.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+
+        TestResponse update = TestRequest.patch("/api/collections/" + collection + "/" + recordId)
+                .withStringBody("{\"title\":\"overwritten\"}")
+                .withContentType("application/json")
+                .execute();
+        assertThat(update.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+
+        TestResponse delete = TestRequest.delete("/api/collections/" + collection + "/" + recordId).execute();
+        assertThat(delete.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+
+        TestResponse list = TestRequest.get("/api/collections/" + collection + "?offset=0&limit=25").execute();
+        assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(list.getContent(), not(containsString("SECRET")));
+
+        org.bson.Document stored = Application.getInstance(TenantCollectionService.class)
+                .dataCollection(TenantTestUtils.defaultTenantContext(), collection)
+                .find(com.mongodb.client.model.Filters.eq("id", recordId))
+                .first();
+        assertThat(stored, notNullValue());
+        assertThat(stored.getString("title"), equalTo("SECRET"));
+    }
+
     private void seedOwnerCollection(String collection) {
         TenantTestUtils.seedCollection(
                 collection,
