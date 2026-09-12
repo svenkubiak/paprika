@@ -1,13 +1,13 @@
 package services;
 
 import auth.AuthContext;
+import auth.AuthorizationDecision;
 import auth.TenantContext;
 import auth.TenantContextHolder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.mongodb.client.model.*;
 import constants.SystemFields;
-import filters.api.ApiAuthFilter;
 import hooks.HookRequestUtils;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
@@ -72,7 +72,7 @@ public class CollectionRecordService {
         }
 
         AuthContext auth = TenantContextHolder.auth(request);
-        boolean adminBypass = ApiAuthFilter.isAdminBypass(request);
+        boolean adminBypass = AuthorizationDecision.isAdminBypass(request);
         FileFieldService.UploadChanges uploadChanges = FileFieldService.UploadChanges.empty();
         try {
             if (!adminBypass) {
@@ -137,9 +137,14 @@ public class CollectionRecordService {
     }
 
     public RecordResult list(TenantContext ctx, String collection, Request request, int offset, int limit) {
-        // The auth filter is the only place a list rule gets evaluated; without its filter
-        // attribute there is no evidence the request was scoped, so refuse rather than list all.
-        if (!(request.getAttribute(ApiAuthFilter.LIST_FILTER_ATTRIBUTE) instanceof Bson filters)) {
+        // The auth filter is the only place a list rule gets evaluated. Without its decision, or
+        // without the scoping query that decision has to carry, there is no evidence this request
+        // was scoped at all - so refuse rather than fall back to listing everything.
+        Bson filters = AuthorizationDecision.of(request)
+                .flatMap(AuthorizationDecision::listFilter)
+                .orElse(null);
+
+        if (filters == null) {
             return RecordResult.forbidden();
         }
 

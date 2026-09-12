@@ -131,6 +131,35 @@ class RealtimeServiceTest {
         assertThat(connection.events().getLast().data(), containsString("\"subscriptions\":[\"trips\"]"));
     }
 
+    /**
+     * The client id is handed to whoever opens the stream and the stream itself carries no
+     * authentication, so a claimed client must stay bound to the user that claimed it. Otherwise a
+     * second caller could attach its own identity and subscriptions to a stream someone else reads.
+     */
+    @Test
+    void aClaimedClientCannotBeTakenOverByAnotherUser() throws Exception {
+        RealtimeService service = new RealtimeService(ruleService);
+        RecordingConnection connection = new RecordingConnection();
+        String clientId = service.onConnect(connection);
+        connection.awaitEventCount(1);
+
+        assertThat(service.subscribe(
+                clientId,
+                AuthContext.of("user-1", Role.USER, "tenant-1"),
+                List.of("trips")), is(true));
+
+        assertThat("a different user must not attach to this stream", service.subscribe(
+                clientId,
+                AuthContext.of("attacker", Role.USER, "tenant-1"),
+                List.of("secrets")), is(false));
+
+        // the original owner may still refine its own subscriptions
+        assertThat(service.subscribe(
+                clientId,
+                AuthContext.of("user-1", Role.USER, "tenant-1"),
+                List.of("trips", "bookings")), is(true));
+    }
+
     @Test
     void revokeUserClosesExistingRealtimeConnection() throws Exception {
         RealtimeService service = new RealtimeService(ruleService);

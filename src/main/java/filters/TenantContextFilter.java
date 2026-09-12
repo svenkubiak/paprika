@@ -9,6 +9,7 @@ import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import models.TenantDefinition;
 import services.AuthService;
+import services.SystemUserService;
 import services.TenantService;
 import services.TenantUserService;
 import session.AdminTenantSession;
@@ -24,15 +25,18 @@ public class TenantContextFilter implements PerRequestFilter {
     private final AuthService authService;
     private final TenantService tenantService;
     private final TenantUserService tenantUserService;
+    private final SystemUserService systemUserService;
 
     @Inject
     public TenantContextFilter(
             AuthService authService,
             TenantService tenantService,
-            TenantUserService tenantUserService) {
+            TenantUserService tenantUserService,
+            SystemUserService systemUserService) {
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.tenantUserService = Objects.requireNonNull(tenantUserService, "tenantUserService must not be null");
+        this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
     }
 
     @Override
@@ -99,8 +103,20 @@ public class TenantContextFilter implements PerRequestFilter {
     }
 
     private Optional<TenantContext> resolveSuperadminContext(AuthContext auth) {
-        if (auth.tenantId() == null || auth.tenantId().isBlank()) {
+        // A superadmin token grants the widest access there is, so the account behind it has to
+        // still exist. Without this check a deleted superadmin would keep working until the token
+        // expires, which is exactly what the tenant user path already guards against.
+        if (systemUserService.findPublicUser(auth.id()).isEmpty()) {
             return Optional.empty();
+        }
+
+        // A token is issued without a tenant and only gets one through /api/admin/switch-tenant.
+        // Such a token therefore has to resolve to a context without a tenant - the same one the
+        // admin UI session gets before a tenant is selected - instead of being rejected outright,
+        // which would leave no way of ever selecting a tenant. Routes that work on tenant data
+        // require a tenant context and still refuse it.
+        if (auth.tenantId() == null || auth.tenantId().isBlank()) {
+            return Optional.of(new TenantContext(auth.id(), auth.role(), null, null, null));
         }
 
         TenantDefinition tenant = tenantService.findById(auth.tenantId()).orElse(null);

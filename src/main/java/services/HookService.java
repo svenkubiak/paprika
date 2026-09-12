@@ -687,7 +687,7 @@ public class HookService {
 
         ObjectNode data = root.putObject("data");
         if (body != null && !body.isNull()) {
-            data.set("body", body);
+            data.set("body", HookRequestUtils.redactCredentials(body));
         } else {
             data.putNull("body");
         }

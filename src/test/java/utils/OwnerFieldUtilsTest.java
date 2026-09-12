@@ -64,6 +64,137 @@ class OwnerFieldUtilsTest {
         assertThat(document.get("owner"), nullValue());
     }
 
+    /**
+     * Which field an owner rule binds to is derived from the schema: the first relation pointing at
+     * the users collection. Getting this wrong would silently scope records by the wrong field.
+     */
+    @Test
+    void ownerFieldIsDerivedFromTheFirstUsersRelation() {
+        CollectionDefinition definition = new CollectionDefinition(
+                "id", "notes",
+                List.of(
+                        new FieldDefinition("title", FieldType.STRING, true, false, null),
+                        new FieldDefinition("category", FieldType.RELATION, false, true,
+                                FieldOptions.forRelation("categories")),
+                        new FieldDefinition("createdBy", FieldType.RELATION, false, true,
+                                FieldOptions.forRelation(SystemCollections.USERS)),
+                        new FieldDefinition("reviewedBy", FieldType.RELATION, false, true,
+                                FieldOptions.forRelation(SystemCollections.USERS))),
+                List.of(), CollectionRules.locked(), false);
+
+        assertThat(OwnerFieldUtils.ownerFieldCandidates(definition), equalTo(List.of("createdBy", "reviewedBy")));
+        assertThat(OwnerFieldUtils.defaultOwnerField(definition), equalTo("createdBy"));
+    }
+
+    @Test
+    void ownerFieldFallsBackToTheDefaultNameWithoutAUsersRelation() {
+        CollectionDefinition definition = new CollectionDefinition(
+                "id", "notes",
+                List.of(
+                        new FieldDefinition("title", FieldType.STRING, true, false, null),
+                        new FieldDefinition("category", FieldType.RELATION, false, true,
+                                FieldOptions.forRelation("categories"))),
+                List.of(), CollectionRules.locked(), false);
+
+        assertThat(OwnerFieldUtils.ownerFieldCandidates(definition), equalTo(List.of()));
+        assertThat(OwnerFieldUtils.defaultOwnerField(definition), equalTo("owner"));
+        assertThat(OwnerFieldUtils.defaultOwnerField(null), equalTo("owner"));
+        assertThat(OwnerFieldUtils.ownerFieldCandidates(null), equalTo(List.of()));
+    }
+
+    @Test
+    void aNonUsersRelationIsNeverAnOwnerField() {
+        assertThat(OwnerFieldUtils.isUsersRelationField(null), equalTo(false));
+        assertThat(OwnerFieldUtils.isUsersRelationField(
+                new FieldDefinition("owner", FieldType.STRING, false, true, null)), equalTo(false));
+        assertThat("a relation to another collection must not be treated as ownership",
+                OwnerFieldUtils.isUsersRelationField(new FieldDefinition(
+                        "category", FieldType.RELATION, false, true, FieldOptions.forRelation("categories"))),
+                equalTo(false));
+        assertThat(OwnerFieldUtils.isUsersRelationField(new FieldDefinition(
+                        "owner", FieldType.RELATION, false, true,
+                        FieldOptions.forRelation(SystemCollections.USERS))),
+                equalTo(true));
+    }
+
+    /** An owner is only assigned when a rule actually depends on ownership. */
+    @Test
+    void ownerIsOnlyAssignedWhenARuleDependsOnIt() {
+        AuthContext auth = AuthContext.of("user-1", "user", "tenant-1");
+
+        assertThat(OwnerFieldUtils.shouldAssignOwnerOnCreate(collectionWithOwnerRelation(), auth), equalTo(true));
+        assertThat("an unauthenticated caller has no id to assign",
+                OwnerFieldUtils.shouldAssignOwnerOnCreate(collectionWithOwnerRelation(), AuthContext.guest()),
+                equalTo(false));
+        assertThat(OwnerFieldUtils.shouldAssignOwnerOnCreate(null, auth), equalTo(false));
+
+        CollectionDefinition publicRules = new CollectionDefinition(
+                "id", "notes",
+                List.of(new FieldDefinition("owner", FieldType.RELATION, false, true,
+                        FieldOptions.forRelation(SystemCollections.USERS))),
+                List.of(),
+                new CollectionRules("*", "*", "*", "*", "*", "owner"),
+                false);
+        assertThat("rules that never mention ownership must not silently stamp an owner",
+                OwnerFieldUtils.shouldAssignOwnerOnCreate(publicRules, auth), equalTo(false));
+
+        CollectionDefinition authCreate = new CollectionDefinition(
+                "id", "notes",
+                List.of(new FieldDefinition("owner", FieldType.RELATION, false, true,
+                        FieldOptions.forRelation(SystemCollections.USERS))),
+                List.of(),
+                new CollectionRules("*", "*", "auth", "*", "*", "owner"),
+                false);
+        assertThat("an auth create rule still records who created the record",
+                OwnerFieldUtils.shouldAssignOwnerOnCreate(authCreate, auth), equalTo(true));
+    }
+
+    @Test
+    void usesOwnerRuleDetectsTheRuleOnEveryOperation() {
+        assertThat(OwnerFieldUtils.usesOwnerRule(null), equalTo(false));
+        assertThat(OwnerFieldUtils.usesOwnerRule(CollectionRules.locked()), equalTo(false));
+        assertThat(OwnerFieldUtils.usesOwnerRule(
+                new CollectionRules("owner", null, null, null, null, "owner")), equalTo(true));
+        assertThat(OwnerFieldUtils.usesOwnerRule(
+                new CollectionRules(null, "owner", null, null, null, "owner")), equalTo(true));
+        assertThat(OwnerFieldUtils.usesOwnerRule(
+                new CollectionRules(null, null, "owner", null, null, "owner")), equalTo(true));
+        assertThat(OwnerFieldUtils.usesOwnerRule(
+                new CollectionRules(null, null, null, "owner", null, "owner")), equalTo(true));
+        assertThat(OwnerFieldUtils.usesOwnerRule(
+                new CollectionRules(null, null, null, null, "owner", "owner")), equalTo(true));
+        assertThat("the rule name is matched case insensitively and trimmed",
+                OwnerFieldUtils.usesOwnerRule(new CollectionRules(" OWNER ", null, null, null, null, "owner")),
+                equalTo(true));
+    }
+
+    @Test
+    void effectiveCreateBodyOnlyAppliesToOwnerRules() {
+        AuthContext auth = AuthContext.of("user-1", "user", "tenant-1");
+
+        assertThat("a non owner rule leaves the body untouched",
+                OwnerFieldUtils.effectiveCreateBody("auth", "owner", auth, java.util.Map.of("title", "x")),
+                equalTo(java.util.Map.of("title", "x")));
+        assertThat("a null body never becomes null again",
+                OwnerFieldUtils.effectiveCreateBody("auth", "owner", auth, null),
+                equalTo(java.util.Map.of()));
+        assertThat(OwnerFieldUtils.effectiveCreateBody("owner", "owner", AuthContext.guest(), null),
+                equalTo(java.util.Map.of()));
+
+        assertThat("a blank owner value is filled in rather than rejected",
+                OwnerFieldUtils.effectiveCreateBody("owner", "owner", auth,
+                        new java.util.HashMap<>(java.util.Map.of("owner", "  "))).get("owner"),
+                equalTo("user-1"));
+    }
+
+    @Test
+    void effectiveCreateRecordMirrorsTheBody() {
+        assertThat(OwnerFieldUtils.effectiveCreateRecord(null), nullValue());
+        assertThat(OwnerFieldUtils.effectiveCreateRecord(java.util.Map.of()), nullValue());
+        assertThat(OwnerFieldUtils.effectiveCreateRecord(java.util.Map.of("owner", "user-1")).getString("owner"),
+                equalTo("user-1"));
+    }
+
     private CollectionDefinition collectionWithOwnerRelation() {
         return new CollectionDefinition(
                 "id",

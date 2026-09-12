@@ -1,5 +1,7 @@
 package hooks;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mangoo.routing.bindings.Request;
 import io.undertow.util.HeaderMap;
 import io.undertow.util.HeaderValues;
@@ -27,7 +29,41 @@ public final class HookRequestUtils {
             "accept-language",
             "x-request-id");
 
+    // A hook target is an arbitrary external URL, so a credential a client sent us must not be
+    // relayed to it. The auth hooks already build their payload without the plaintext password;
+    // the data-plane forwards the request body as-is, which would otherwise hand out the password
+    // of every user created or updated through /api/collections/users.
+    private static final Set<String> REDACTED_BODY_FIELDS = Set.of(
+            "password",
+            "passwordhash",
+            "passwordsalt");
+
     private HookRequestUtils() {
+    }
+
+    /**
+     * Returns a copy of the body without any credential field, or the body itself when there is
+     * nothing to redact.
+     */
+    public static JsonNode redactCredentials(JsonNode body) {
+        if (body == null || !body.isObject()) {
+            return body;
+        }
+
+        List<String> present = new ArrayList<>();
+        body.properties().forEach(entry -> {
+            if (REDACTED_BODY_FIELDS.contains(entry.getKey().toLowerCase(Locale.ROOT))) {
+                present.add(entry.getKey());
+            }
+        });
+
+        if (present.isEmpty()) {
+            return body;
+        }
+
+        ObjectNode redacted = ((ObjectNode) body).deepCopy();
+        present.forEach(redacted::remove);
+        return redacted;
     }
 
     public static String effectiveBody(Request request) {

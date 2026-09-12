@@ -121,6 +121,14 @@ public class RealtimeService {
             return false;
         }
 
+        // A client id is handed to whoever opens the stream, and the stream itself is not
+        // authenticated. Once a client has been claimed it therefore stays bound to that user:
+        // a second caller must not be able to attach its own identity - and with it its own
+        // subscriptions - to a stream someone else is reading.
+        if (client.isAuthenticated() && !auth.id().equals(client.userId())) {
+            return false;
+        }
+
         List<String> normalized = normalizeSubscriptions(subscriptions);
         client.authenticate(auth.id(), auth.role(), auth.tenantId(), normalized);
 

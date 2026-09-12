@@ -135,10 +135,15 @@
 					<execution>
 						<!--
 							Guards against reintroducing the ?id= list-rule bypass: Request.getParameter(...)
-							merges route and query parameters, so it must never be used in code that decides
-							a RuleOperation or builds request-log data. Those decisions must use
-							getPathParameter(...)/hasPathParameter(...) (trusted route values) or
-							getQueryParameter(...) (real client input) instead.
+							merges route and query parameters, so a client can supply a value for a name the
+							route never declared. It must therefore not be used anywhere in the production
+							code: use getPathParameter(...)/hasPathParameter(...) for trusted route values,
+							or getQueryParameter(...) for real client input.
+
+							Scanning all of src/main/java rather than the places the bug once appeared in:
+							a new filter, controller or helper is covered from the start instead of being
+							protected only after the next incident. There are currently no exceptions - a
+							deliberate one has to be excluded here explicitly and with a reason.
 						-->
 						<id>ban-ambiguous-request-getParameter</id>
 						<phase>validate</phase>
@@ -148,15 +153,78 @@
 						<configuration>
 							<target>
 								<fileset id="ambiguous.getparameter.files" dir="${project.basedir}/src/main/java">
-									<include name="filters/api/**/*.java" />
-									<include name="services/RequestLogService.java" />
+									<include name="**/*.java" />
 									<contains text=".getParameter(" casesensitive="true" />
 								</fileset>
 								<resourcecount property="ambiguous.getparameter.count" refid="ambiguous.getparameter.files" />
-								<fail message="Found Request.getParameter(...) in filters/api/* or RequestLogService.java. Use getPathParameter(...)/hasPathParameter(...) for trusted route values, or getQueryParameter(...) for real client input - see the ?id= list-rule bypass fix.">
+								<fail message="Found Request.getParameter(...) in src/main/java. It merges route and query parameters, so a client can forge a value for a name the route never declared. Use getPathParameter(...)/hasPathParameter(...) for trusted route values, or getQueryParameter(...) for real client input - see the ?id= list-rule bypass fix.">
 									<condition>
 										<not>
 											<equals arg1="${ambiguous.getparameter.count}" arg2="0" />
+										</not>
+									</condition>
+								</fail>
+							</target>
+						</configuration>
+					</execution>
+					<execution>
+						<!--
+							The suites below are the executable specification of who may access what and
+							of what may leave the instance. Deleting or renaming one of them would remove
+							that specification without anything turning red, so their presence is checked
+							in the validate phase - which runs even for a -DskipTests packaging build.
+
+							This cannot verify that they are executed: that is the build job's
+							responsibility, see the Jenkinsfile (mvn clean verify, never -DskipTests).
+						-->
+						<id>require-security-test-suites</id>
+						<phase>validate</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<target>
+								<fileset id="security.suites" dir="${project.basedir}/src/test/java/security">
+									<include name="AuthorizationMatrixIntegrationTest.java" />
+									<include name="TenantIsolationIntegrationTest.java" />
+									<include name="OutboundSecretLeakIntegrationTest.java" />
+									<include name="SuperadminTokenRevalidationIntegrationTest.java" />
+								</fileset>
+								<resourcecount property="security.suites.count" refid="security.suites" />
+								<fail message="A suite in src/test/java/security is missing. These are the executable specification of the access rules, the tenant isolation and the outbound secret handling - they must not be removed or renamed without replacement.">
+									<condition>
+										<not>
+											<equals arg1="${security.suites.count}" arg2="4" />
+										</not>
+									</condition>
+								</fail>
+							</target>
+						</configuration>
+					</execution>
+					<execution>
+						<!--
+							Guards against reintroducing the fail-open list: CollectionRecordService#list
+							must refuse when the AuthorizationDecision of a request carries no scoping query,
+							instead of falling back to an empty filter and returning every record of the
+							collection. Any Filters.empty() in that class is that fallback in disguise - the
+							unscoped list of the admin bypass is built in ApiAuthFilter, not here.
+						-->
+						<id>ban-fail-open-list-filter</id>
+						<phase>validate</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<target>
+								<fileset id="failopen.listfilter.files" dir="${project.basedir}/src/main/java">
+									<include name="services/CollectionRecordService.java" />
+									<contains text="Filters.empty()" casesensitive="true" />
+								</fileset>
+								<resourcecount property="failopen.listfilter.count" refid="failopen.listfilter.files" />
+								<fail message="CollectionRecordService uses Filters.empty(). A request without a scoping query in its AuthorizationDecision must be refused (fail closed), never listed unscoped - see the ?id= list-rule bypass fix.">
+									<condition>
+										<not>
+											<equals arg1="${failopen.listfilter.count}" arg2="0" />
 										</not>
 									</condition>
 								</fail>
@@ -468,6 +536,77 @@
 										<format>XML</format>
 									</formats>
 								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+		<profile>
+			<!--
+				Mutation testing for the packages that decide access: they are small, purely logical
+				and the place where a silently inverted condition has caused real access control
+				bugs. Line coverage cannot tell whether a test would notice such an inversion,
+				mutation coverage can.
+
+				Run with: mvn -P mutation test
+				Report:   target/pit-reports/index.html
+			-->
+			<id>mutation</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.pitest</groupId>
+						<artifactId>pitest-maven</artifactId>
+						<version>1.20.4</version>
+						<dependencies>
+							<dependency>
+								<groupId>org.pitest</groupId>
+								<artifactId>pitest-junit5-plugin</artifactId>
+								<version>1.2.3</version>
+							</dependency>
+						</dependencies>
+						<configuration>
+							<!--
+								The rule engine and the ownership helpers: the decision logic itself,
+								free of I/O and therefore meaningful to mutate. The filters and services
+								around them are covered by the integration suites instead, which PIT
+								cannot drive: they share one embedded MongoDB and build on each other's
+								state, so PIT's isolated re-execution reports them as failing.
+							-->
+							<targetClasses>
+								<param>rules.*</param>
+								<param>utils.OwnerFieldUtils</param>
+							</targetClasses>
+							<targetTests>
+								<param>rules.*</param>
+								<param>utils.*</param>
+							</targetTests>
+							<mutators>
+								<mutator>STRONGER</mutator>
+							</mutators>
+							<outputFormats>
+								<param>HTML</param>
+								<param>XML</param>
+							</outputFormats>
+							<timestampedReports>false</timestampedReports>
+							<threads>4</threads>
+							<!--
+								A ratchet, not a goal: set just below the score the suite reaches
+								today (67% mutation / 87% line), so that a change weakening the
+								tests around the rule engine fails the build. Raise when the score
+								improves, never lower to make a build pass.
+							-->
+							<mutationThreshold>65</mutationThreshold>
+							<coverageThreshold>85</coverageThreshold>
+						</configuration>
+						<executions>
+							<execution>
+								<id>mutation-coverage</id>
+								<phase>test</phase>
+								<goals>
+									<goal>mutationCoverage</goal>
+								</goals>
 							</execution>
 						</executions>
 					</plugin>

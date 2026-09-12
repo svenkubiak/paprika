@@ -124,6 +124,12 @@ public class AdminController {
             return Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
         }
 
+        // Issuing a fresh token pair must not be possible for an account that no longer exists,
+        // otherwise a deleted superadmin could keep renewing access from an old token
+        if (systemUserService.findPublicUser(auth.id()).isEmpty()) {
+            return Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
+        }
+
         return tenantService.findById(dto.tenantId())
                 .filter(TenantDefinition::isActive)
                 .map(tenant -> authResponseService.toTokenResponse(

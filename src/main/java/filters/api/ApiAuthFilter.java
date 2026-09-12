@@ -1,6 +1,7 @@
 package filters.api;
 
 import auth.AuthContext;
+import auth.AuthorizationDecision;
 import auth.TenantContext;
 import auth.TenantContextHolder;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -32,9 +33,12 @@ import java.util.Optional;
 import static com.mongodb.client.model.Filters.empty;
 import static com.mongodb.client.model.Filters.eq;
 
+/**
+ * Evaluates the collection rules of a request and records the outcome as an
+ * {@link AuthorizationDecision}. This is the only place such a decision is created, so anything
+ * downstream either finds one - and can trust that a rule was evaluated - or refuses.
+ */
 public class ApiAuthFilter implements PerRequestFilter {
-    public static final String LIST_FILTER_ATTRIBUTE = "paprika.listFilter";
-    public static final String ADMIN_BYPASS_ATTRIBUTE = "paprika.adminBypass";
     private static final Map<String, String> FORBIDDEN_BODY = Map.of("error", "Forbidden");
     private static final Map<String, String> UNAUTHORIZED_BODY = Map.of("error", "Unauthorized");
     private static final Map<String, String> NOT_FOUND_BODY = Map.of("error", "Collection not found");
@@ -54,10 +58,6 @@ public class ApiAuthFilter implements PerRequestFilter {
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
         this.ruleService = Objects.requireNonNull(ruleService, "ruleService must not be null");
         this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
-    }
-
-    public static boolean isAdminBypass(Request request) {
-        return Boolean.TRUE.equals(request.getAttribute(ADMIN_BYPASS_ATTRIBUTE));
     }
 
     private Response log(Request request, Response response) {
@@ -103,10 +103,9 @@ public class ApiAuthFilter implements PerRequestFilter {
 
         RuleOperation operation = resolveOperation(request);
         if (resolvedAuth.adminBypass()) {
-            request.addAttribute(ADMIN_BYPASS_ATTRIBUTE, true);
-            if (operation == RuleOperation.LIST) {
-                request.addAttribute(LIST_FILTER_ATTRIBUTE, empty());
-            }
+            AuthorizationDecision
+                    .adminBypass(operation, operation == RuleOperation.LIST ? empty() : null)
+                    .storeIn(request);
             return response;
         }
 
@@ -151,7 +150,12 @@ public class ApiAuthFilter implements PerRequestFilter {
         }
 
         Bson filter = ruleService.listFilter(rule, ownerField, auth);
-        request.addAttribute(LIST_FILTER_ATTRIBUTE, filter);
+        if (filter == null) {
+            // A rule that cannot be translated into a query must not result in an unscoped list
+            return log(request, Response.forbidden().bodyJson(FORBIDDEN_BODY).end());
+        }
+
+        AuthorizationDecision.listGranted(filter).storeIn(request);
         return response;
     }
 
@@ -171,6 +175,8 @@ public class ApiAuthFilter implements PerRequestFilter {
             }
             return log(request, Response.forbidden().bodyJson(FORBIDDEN_BODY).end());
         }
+
+        AuthorizationDecision.granted(RuleOperation.CREATE).storeIn(request);
         return response;
     }
 
@@ -198,6 +204,7 @@ public class ApiAuthFilter implements PerRequestFilter {
             return log(request, Response.notFound().end());
         }
 
+        AuthorizationDecision.granted(operation).storeIn(request);
         return response;
     }
 

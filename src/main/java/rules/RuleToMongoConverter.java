@@ -7,6 +7,7 @@ import rules.ast.RuleNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public final class RuleToMongoConverter {
     private static final Bson IMPOSSIBLE = Filters.eq("id", "__paprika_denied__");
@@ -54,6 +55,16 @@ public final class RuleToMongoConverter {
             }
         }
 
+        // A comparison between an auth value and a literal, e.g. "auth.id != null" of the "auth"
+        // rule, involves no record field at all. It is constant for the whole request and decides
+        // whether every record matches or none does. Without this, such a rule would fall through
+        // to the "no field" branch below and silently return an empty list to a caller that VIEW
+        // grants access to.
+        Bson authLiteral = authLiteralComparison(left, operator, right, auth);
+        if (authLiteral != null) {
+            return authLiteral;
+        }
+
         String field = extractRecordField(left, right);
         Object value = extractLiteralOrAuthValue(left, right, auth);
 
@@ -72,6 +83,46 @@ public final class RuleToMongoConverter {
             case "<" -> Filters.lt(field, value);
             case "<=" -> Filters.lte(field, value);
             default -> Filters.empty();
+        };
+    }
+
+    /**
+     * Evaluates a comparison of an {@code auth.*} value against a literal, or returns null when the
+     * nodes are not of that shape.
+     * <p>
+     * An auth value that cannot be resolved for the caller - {@code auth.id} of a guest - makes the
+     * comparison fail for every operator, mirroring the UNKNOWN handling of
+     * {@link RuleEvaluator}, so that a rule can never be satisfied by the absence of an
+     * authenticated caller.
+     */
+    private static Bson authLiteralComparison(RuleNode left, String operator, RuleNode right, AuthContext auth) {
+        Object authValue;
+        Object literal;
+
+        if (left instanceof RuleNode.Identifier(String prefix, String name)
+                && "auth".equals(prefix)
+                && right instanceof RuleNode.Literal(Object value)) {
+            authValue = auth.getField(name);
+            literal = value;
+        } else if (right instanceof RuleNode.Identifier(String prefix, String name)
+                && "auth".equals(prefix)
+                && left instanceof RuleNode.Literal(Object value)) {
+            authValue = auth.getField(name);
+            literal = value;
+        } else {
+            return null;
+        }
+
+        if (authValue == null) {
+            return IMPOSSIBLE;
+        }
+
+        return switch (operator) {
+            case "=" -> Objects.equals(authValue, literal) ? Filters.empty() : IMPOSSIBLE;
+            case "!=" -> Objects.equals(authValue, literal) ? IMPOSSIBLE : Filters.empty();
+            // Ordering comparisons on auth values are not part of the supported rule set,
+            // so deny rather than guess
+            default -> IMPOSSIBLE;
         };
     }
 

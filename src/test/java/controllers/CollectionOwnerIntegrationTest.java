@@ -85,6 +85,86 @@ class CollectionOwnerIntegrationTest {
     }
 
     @Test
+    void listIgnoresQueryParameterNamedLikeARouteParameter() {
+        UserService userService = Application.getInstance(UserService.class);
+        userService.createUser("bypass-a", null, "secret-password-123");
+        userService.createUser("bypass-b", null, "secret-password-456");
+
+        String tokenA = loginToken("bypass-a", "secret-password-123");
+        String tokenB = loginToken("bypass-b", "secret-password-456");
+
+        String collection = "notes_bypass_" + DbUtils.id();
+        seedOwnerCollection(collection);
+
+        String idA = createNote(collection, tokenA, "NOTE-OF-A");
+        createNote(collection, tokenB, "SECRET-OF-B");
+
+        // ?id= must stay an ordinary query parameter: the list route declares no id, so it may
+        // never downgrade the LIST rule into a per-record VIEW check.
+        TestResponse bypass = TestRequest.get(
+                        "/api/collections/" + collection + "?offset=0&limit=25&id=" + idA)
+                .withHeader("Authorization", "Bearer " + tokenA)
+                .execute();
+
+        assertThat(bypass.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(bypass.getContent(), containsString("NOTE-OF-A"));
+        assertThat(bypass.getContent(), not(containsString("SECRET-OF-B")));
+        assertThat(bypass.getContent(), containsString("\"total\":1"));
+    }
+
+    @Test
+    void listIgnoresQueryParameterNamedField() {
+        UserService userService = Application.getInstance(UserService.class);
+        userService.createUser("field-a", null, "secret-password-123");
+        userService.createUser("field-b", null, "secret-password-456");
+
+        String tokenA = loginToken("field-a", "secret-password-123");
+        String tokenB = loginToken("field-b", "secret-password-456");
+
+        String collection = "notes_field_" + DbUtils.id();
+        seedOwnerCollection(collection);
+
+        createNote(collection, tokenA, "NOTE-OF-A");
+        createNote(collection, tokenB, "SECRET-OF-B");
+
+        TestResponse list = TestRequest.get(
+                        "/api/collections/" + collection + "?offset=0&limit=25&field=title")
+                .withHeader("Authorization", "Bearer " + tokenA)
+                .execute();
+
+        assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(list.getContent(), containsString("NOTE-OF-A"));
+        assertThat(list.getContent(), not(containsString("SECRET-OF-B")));
+        assertThat(list.getContent(), containsString("\"total\":1"));
+    }
+
+    @Test
+    void anonymousCreateIsRejectedOnOwnerCollection() {
+        String collection = "notes_anoncreate_" + DbUtils.id();
+        // create = owner as well, so an anonymous create is checked against the owner rule itself
+        // rather than against the auth shorthand.
+        TenantTestUtils.seedCollection(
+                collection,
+                new CollectionRules("owner", "owner", "owner", "owner", "owner", "owner"),
+                java.util.List.of(
+                        new FieldDefinition("title", FieldType.STRING, true, false, null),
+                        new FieldDefinition(
+                                "owner",
+                                FieldType.RELATION,
+                                false,
+                                true,
+                                FieldOptions.forRelation("users"))));
+
+        TestResponse create = TestRequest.post("/api/collections/" + collection)
+                .withStringBody("{\"title\":\"anonymous\"}")
+                .withContentType("application/json")
+                .execute();
+
+        assertThat(create.getStatusCode(), not(equalTo(StatusCodes.CREATED)));
+        assertThat(create.getStatusCode(), isOneOf(StatusCodes.UNAUTHORIZED, StatusCodes.FORBIDDEN));
+    }
+
+    @Test
     void anonymousRequestsCannotReachRecordsWithoutOwner() {
         String collection = "notes_ownerless_" + DbUtils.id();
         seedOwnerCollection(collection);
@@ -120,6 +200,24 @@ class CollectionOwnerIntegrationTest {
                 .first();
         assertThat(stored, notNullValue());
         assertThat(stored.getString("title"), equalTo("SECRET"));
+    }
+
+    private String createNote(String collection, String token, String title) {
+        TestResponse create = TestRequest.post("/api/collections/" + collection)
+                .withHeader("Authorization", "Bearer " + token)
+                .withStringBody("{\"title\":\"" + title + "\"}")
+                .withContentType("application/json")
+                .execute();
+        assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
+
+        org.bson.Document stored = Application.getInstance(TenantCollectionService.class)
+                .dataCollection(TenantTestUtils.defaultTenantContext(), collection)
+                .find(com.mongodb.client.model.Filters.eq("title", title))
+                .first();
+        if (stored == null) {
+            throw new IllegalStateException("Missing record: " + title);
+        }
+        return stored.getString("id");
     }
 
     private void seedOwnerCollection(String collection) {
