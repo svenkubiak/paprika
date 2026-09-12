@@ -12,8 +12,11 @@ import jakarta.inject.Singleton;
 import models.CollectionDefinition;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import utils.DbUtils;
+import utils.DbWrites;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,7 +30,9 @@ import static com.mongodb.client.model.Filters.eq;
 
 @Singleton
 public class TenantService {
+    private static final Logger LOG = LogManager.getLogger(TenantService.class);
     private static final String SLUG_INDEX = "slug_unique";
+    private static final String COLLECTION_NAME_INDEX = "name_unique";
     private static final String DATABASE_NAME_INDEX = "databaseName_unique";
     private static final String STATUS_INDEX = "status";
     private static final String USERNAME_INDEX = "username_unique";
@@ -88,7 +93,11 @@ public class TenantService {
                 List.of()
         );
 
-        resolver.systemCollection(TenantDefinition.COLLECTION).insertOne(toDocument(tenant));
+        // Two requests can both find the slug free; the unique index decides, and losing that race
+        // has to read like the duplicate it is
+        DbWrites.rejectDuplicateAs("Tenant slug already exists",
+                () -> resolver.systemCollection(TenantDefinition.COLLECTION).insertOne(toDocument(tenant)));
+
         initializeTenantDatabase(tenant);
 
         return tenant;
@@ -224,6 +233,8 @@ public class TenantService {
     public void ensureUsersDefinitionForAllTenants() {
         for (TenantDefinition tenant : listAll()) {
             reconcileUsersDefinition(tenant);
+            // Also covers tenants created before the index existed
+            ensureCollectionNameIndex(resolver.tenantDatabase(tenant.databaseName()));
         }
     }
 
@@ -250,6 +261,7 @@ public class TenantService {
 
         var usersCollection = database.getCollection(CollectionName.tenantData(SystemCollections.USERS));
         ensureUsernameIndex(usersCollection);
+        ensureCollectionNameIndex(database);
 
         var metaCollections = database.getCollection(CollectionName.META_COLLECTIONS, CollectionDefinition.class);
         CollectionDefinition existing = metaCollections.find(eq("name", SystemCollections.USERS)).first();
@@ -283,6 +295,34 @@ public class TenantService {
 
     private void ensureUsernameIndex(com.mongodb.client.MongoCollection<Document> collection) {
         ensureIndex(collection, USERNAME_INDEX, Indexes.ascending("username"), true);
+    }
+
+    /**
+     * A collection name identifies a collection for every request, so it has to be unique in the
+     * database as well and not only in the check the API performs before inserting.
+     * <p>
+     * Two requests creating the same collection at the same time both pass that check and both
+     * insert, leaving two definitions under one name. Which of them a request then resolves is
+     * whatever Mongo returns first, so an admin editing the rules would change one definition while
+     * the other may keep serving requests. The index turns the second insert into a write error,
+     * which the API answers with a conflict.
+     * <p>
+     * Creating the index is best effort: a database that already holds duplicates from before this
+     * existed must still start. The duplicates stay visible in the admin UI and can be removed
+     * there.
+     */
+    private void ensureCollectionNameIndex(MongoDatabase database) {
+        try {
+            ensureIndex(
+                    database.getCollection(CollectionName.META_COLLECTIONS),
+                    COLLECTION_NAME_INDEX,
+                    Indexes.ascending("name"),
+                    true);
+        } catch (RuntimeException e) {
+            LOG.warn("Could not create the unique index on collection names for database {}: {}. "
+                    + "Remove duplicate collection definitions and restart to enforce uniqueness.",
+                    database.getName(), e.getMessage());
+        }
     }
 
     private void ensureIndex(

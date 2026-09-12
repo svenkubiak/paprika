@@ -78,7 +78,18 @@ public class MetaController {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
 
-        tenantCollections.insertDefinition(ctx, definition);
+        try {
+            tenantCollections.insertDefinition(ctx, definition);
+        } catch (RuntimeException e) {
+            // The existence check above can be lost to a request creating the same collection at the
+            // same time - a double click in the admin UI is enough. The unique index on the name
+            // settles it, and the second request has to read the same conflict it would have read
+            // had it checked a moment later.
+            if (utils.DbWrites.isDuplicateKey(e)) {
+                return Response.status(StatusCodes.CONFLICT);
+            }
+            throw e;
+        }
 
         for (IndexDefinition index : definition.indexes()) {
             tenantCollections.createIndex(ctx, collection, index);

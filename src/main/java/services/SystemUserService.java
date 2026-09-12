@@ -13,6 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import utils.DbUtils;
+import utils.DbWrites;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -68,7 +69,9 @@ public class SystemUserService {
                 .append("passwordSalt", salt)
                 .append("passwordHash", CommonUtils.hashArgon2(password, salt));
 
-        resolver.systemCollection(CollectionName.USERS).insertOne(user);
+        DbWrites.rejectDuplicateAs("Username already exists",
+                () -> resolver.systemCollection(CollectionName.USERS).insertOne(user));
+
         return toPublicMap(user);
     }
 
@@ -104,13 +107,17 @@ public class SystemUserService {
         }
 
         String token = generateSetupToken();
-        resolver.systemCollection(CollectionName.USERS).insertOne(new Document()
+        Document invite = new Document()
                 .append("id", DbUtils.id())
                 .append("username", username.trim())
                 .append("email", normalizeEmail(email))
                 .append("role", Role.SUPERADMIN)
                 .append("setupTokenHash", hashSetupToken(token))
-                .append("setupTokenExpiresAt", Instant.now().plus(SETUP_TOKEN_TTL).toString()));
+                .append("setupTokenExpiresAt", Instant.now().plus(SETUP_TOKEN_TTL).toString());
+
+        DbWrites.rejectDuplicateAs("Username already exists",
+                () -> resolver.systemCollection(CollectionName.USERS).insertOne(invite));
+
         return token;
     }
 

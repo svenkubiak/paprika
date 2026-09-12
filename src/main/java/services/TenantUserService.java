@@ -19,6 +19,7 @@ import org.bson.Document;
 import results.TenantLoginResult;
 import utils.AuthTokens;
 import utils.DbUtils;
+import utils.DbWrites;
 import utils.UserRecordUtils;
 
 import java.util.*;
@@ -110,7 +111,10 @@ public class TenantUserService {
                 .append(SystemFields.CREATED_AT, now)
                 .append(SystemFields.UPDATED_AT, now);
 
-        usersCollection(tenant).insertOne(user);
+        // The check above can be lost to a request arriving at the same time; the unique index on
+        // the username is what settles it, and a lost race must read like a detected duplicate
+        DbWrites.rejectDuplicateAs("Username already exists", () -> usersCollection(tenant).insertOne(user));
+
         return toPublicMap(user);
     }
 
@@ -158,7 +162,9 @@ public class TenantUserService {
         }
 
         updates.append(SystemFields.UPDATED_AT, SystemFields.timestamp());
-        usersCollection(tenant).updateOne(eq("id", normalizedUserId), new Document("$set", updates));
+        DbWrites.rejectDuplicateAs("Username already exists",
+                () -> usersCollection(tenant).updateOne(eq("id", normalizedUserId), new Document("$set", updates)));
+
         return Optional.of(toPublicMap(findById(tenant, normalizedUserId)));
     }
 
