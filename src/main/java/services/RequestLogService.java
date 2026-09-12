@@ -70,7 +70,7 @@ public class RequestLogService {
             return;
         }
 
-        String collection = request.getParameter("collection");
+        String collection = request.getPathParameter("collection");
         if (collection == null || collection.isBlank()) {
             return;
         }
@@ -218,7 +218,7 @@ public class RequestLogService {
     }
 
     private String buildUrl(Request request, String collection) {
-        String id = request.getParameter("id");
+        String id = request.getPathParameter("id");
         StringBuilder url = new StringBuilder("/api/collections/").append(collection);
         if (id != null && !id.isBlank()) {
             url.append('/').append(id);

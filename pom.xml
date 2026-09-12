@@ -9,7 +9,7 @@
 	<packaging>jar</packaging>
 	<url>https://github.com/svenkubiak/paprika</url>
 	<properties>
-		<mangooio.version>10.11.5</mangooio.version>
+		<mangooio.version>10.12.1</mangooio.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<jdk.version>25</jdk.version>
 		<node.version>v24.20.0</node.version>
@@ -129,6 +129,37 @@
 								<delete dir="${project.build.outputDirectory}/files/assets/css" quiet="true" />
 								<delete dir="${project.build.outputDirectory}/files/assets/admin" quiet="true" />
 								<delete file="${project.build.outputDirectory}/files/assets/manifest.json" quiet="true" />
+							</target>
+						</configuration>
+					</execution>
+					<execution>
+						<!--
+							Guards against reintroducing the ?id= list-rule bypass: Request.getParameter(...)
+							merges route and query parameters, so it must never be used in code that decides
+							a RuleOperation or builds request-log data. Those decisions must use
+							getPathParameter(...)/hasPathParameter(...) (trusted route values) or
+							getQueryParameter(...) (real client input) instead.
+						-->
+						<id>ban-ambiguous-request-getParameter</id>
+						<phase>validate</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<target>
+								<fileset id="ambiguous.getparameter.files" dir="${project.basedir}/src/main/java">
+									<include name="filters/api/**/*.java" />
+									<include name="services/RequestLogService.java" />
+									<contains text=".getParameter(" casesensitive="true" />
+								</fileset>
+								<resourcecount property="ambiguous.getparameter.count" refid="ambiguous.getparameter.files" />
+								<fail message="Found Request.getParameter(...) in filters/api/* or RequestLogService.java. Use getPathParameter(...)/hasPathParameter(...) for trusted route values, or getQueryParameter(...) for real client input - see the ?id= list-rule bypass fix.">
+									<condition>
+										<not>
+											<equals arg1="${ambiguous.getparameter.count}" arg2="0" />
+										</not>
+									</condition>
+								</fail>
 							</target>
 						</configuration>
 					</execution>

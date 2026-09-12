@@ -137,14 +137,16 @@ public class CollectionRecordService {
     }
 
     public RecordResult list(TenantContext ctx, String collection, Request request, int offset, int limit) {
+        // The auth filter is the only place a list rule gets evaluated; without its filter
+        // attribute there is no evidence the request was scoped, so refuse rather than list all.
+        if (!(request.getAttribute(ApiAuthFilter.LIST_FILTER_ATTRIBUTE) instanceof Bson filters)) {
+            return RecordResult.forbidden();
+        }
+
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
 
         int effectiveOffset = Math.max(offset, 0);
         int effectiveLimit = limit <= 0 || limit > MAX_LIMIT ? DEFAULT_LIMIT : limit;
-
-        Bson filters = request.getAttribute(ApiAuthFilter.LIST_FILTER_ATTRIBUTE) instanceof Bson bson
-                ? bson
-                : Filters.empty();
 
         List<Document> items = new ArrayList<>();
         tenantCollections.dataCollection(ctx, collection)

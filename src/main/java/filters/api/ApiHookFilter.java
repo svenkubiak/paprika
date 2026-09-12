@@ -41,7 +41,7 @@ public class ApiHookFilter implements PerRequestFilter {
     @Override
     public Response execute(Request request, Response response) {
         TenantContext ctx = TenantContextHolder.require(request);
-        String collection = request.getParameter("collection");
+        String collection = request.getPathParameter("collection");
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
         if (definition == null) {
             return response;
@@ -95,7 +95,7 @@ public class ApiHookFilter implements PerRequestFilter {
             Request request,
             Response response) {
 
-        Document record = loadRecord(ctx, definition.name(), request.getParameter("id"));
+        Document record = loadRecord(ctx, definition.name(), request.getPathParameter("id"));
         if (record == null) {
             return requestLogService.track(request, Response.notFound().end());
         }
@@ -113,7 +113,7 @@ public class ApiHookFilter implements PerRequestFilter {
                 request,
                 body,
                 record,
-                request.getParameter("id")
+                request.getPathParameter("id")
         );
 
         return applyBlockingResult(result, response, request);
@@ -125,7 +125,7 @@ public class ApiHookFilter implements PerRequestFilter {
             Request request,
             Response response) {
 
-        Document record = loadRecord(ctx, definition.name(), request.getParameter("id"));
+        Document record = loadRecord(ctx, definition.name(), request.getPathParameter("id"));
         if (record == null) {
             return requestLogService.track(request, Response.notFound().end());
         }
@@ -139,7 +139,7 @@ public class ApiHookFilter implements PerRequestFilter {
                 request,
                 null,
                 record,
-                request.getParameter("id")
+                request.getPathParameter("id")
         );
 
         return applyBlockingResult(result, response, request);
@@ -151,7 +151,7 @@ public class ApiHookFilter implements PerRequestFilter {
             Request request,
             Response response) {
 
-        Document record = loadRecord(ctx, definition.name(), request.getParameter("id"));
+        Document record = loadRecord(ctx, definition.name(), request.getPathParameter("id"));
         if (record == null) {
             return requestLogService.track(request, Response.notFound().end());
         }
@@ -165,7 +165,7 @@ public class ApiHookFilter implements PerRequestFilter {
                 request,
                 null,
                 record,
-                request.getParameter("id")
+                request.getPathParameter("id")
         );
 
         return applyBlockingResult(result, response, request);
@@ -218,13 +218,13 @@ public class ApiHookFilter implements PerRequestFilter {
     }
 
     private boolean isFileRoute(Request request) {
-        String field = request.getParameter("field");
-        return field != null && !field.isBlank();
+        return request.hasPathParameter("field");
     }
 
     private RuleOperation resolveOperation(Request request) {
-        String field = request.getParameter("field");
-        if (field != null && !field.isBlank()) {
+        // Only route parameters may decide the operation: a client can always add a query
+        // parameter of the same name, which must not turn a LIST into a VIEW (or similar).
+        if (request.hasPathParameter("field")) {
             if (Methods.GET.equals(request.getMethod())) {
                 return RuleOperation.VIEW;
             }
@@ -243,8 +243,7 @@ public class ApiHookFilter implements PerRequestFilter {
             return RuleOperation.DELETE;
         }
         if (Methods.GET.equals(request.getMethod())) {
-            String id = request.getParameter("id");
-            return id != null && !id.isBlank() ? RuleOperation.VIEW : RuleOperation.LIST;
+            return request.hasPathParameter("id") ? RuleOperation.VIEW : RuleOperation.LIST;
         }
         return RuleOperation.VIEW;
     }

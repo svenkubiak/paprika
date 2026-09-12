@@ -45,7 +45,7 @@ public class ApiValidationFilter implements PerRequestFilter {
     @Override
     public Response execute(Request request, Response response) {
         TenantContext ctx = TenantContextHolder.require(request);
-        String collection = request.getParameter("collection");
+        String collection = request.getPathParameter("collection");
 
         CollectionDefinition collectionDefinition = tenantCollections.findDefinition(ctx, collection);
         if (collectionDefinition == null) {

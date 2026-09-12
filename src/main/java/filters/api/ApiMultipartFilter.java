@@ -31,7 +31,7 @@ public class ApiMultipartFilter implements PerRequestFilter {
         }
 
         TenantContext ctx = TenantContextHolder.require(request);
-        String collection = request.getParameter("collection");
+        String collection = request.getPathParameter("collection");
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
         if (definition == null) {
             return response;

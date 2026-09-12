@@ -36,8 +36,8 @@ public final class CollectionFileResponseHelper {
 
         Response response = switch (result.status()) {
             case FOUND -> {
-                boolean requestedAttachment = "1".equals(request.getParameter("download"))
-                        || "true".equalsIgnoreCase(StringUtils.defaultString(request.getParameter("download")));
+                boolean requestedAttachment = "1".equals(request.getQueryParameter("download"))
+                        || "true".equalsIgnoreCase(StringUtils.defaultString(request.getQueryParameter("download")));
                 boolean attachment = requestedAttachment || !INLINE_SAFE_MIME_TYPES.contains(result.mimeType());
                 String disposition = (attachment ? "attachment" : "inline")
                         + "; filename=\""

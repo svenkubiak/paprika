@@ -16,6 +16,8 @@ default:
       enable: false
     vault:
       enable: false
+    parameter:
+      strict: true
   connector:
     http:
       host: localhost
@@ -130,6 +132,8 @@ environments:
       key: env{}
     application:
       secret: env{}
+      parameter:
+        strict: true
     connector:
       http:
         host: env{}

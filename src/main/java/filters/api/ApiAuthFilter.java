@@ -91,7 +91,7 @@ public class ApiAuthFilter implements PerRequestFilter {
             Response response,
             TenantContext tenantContext) {
 
-        String collection = request.getParameter("collection");
+        String collection = request.getPathParameter("collection");
         if (collection == null || collection.isBlank()) {
             return log(request, Response.notFound().bodyJson(NOT_FOUND_BODY).end());
         }
@@ -184,7 +184,7 @@ public class ApiAuthFilter implements PerRequestFilter {
             AuthContext auth,
             RuleOperation operation) {
 
-        String id = request.getParameter("id");
+        String id = request.getPathParameter("id");
         Document record = tenantCollections.dataCollection(tenantContext, collection)
                 .find(eq("id", id))
                 .first();
@@ -202,8 +202,9 @@ public class ApiAuthFilter implements PerRequestFilter {
     }
 
     private RuleOperation resolveOperation(Request request) {
-        String field = request.getParameter("field");
-        if (field != null && !field.isBlank()) {
+        // Only route parameters may decide the operation: a client can always add a query
+        // parameter of the same name, which must not turn a LIST into a VIEW (or similar).
+        if (request.hasPathParameter("field")) {
             if (Methods.GET.equals(request.getMethod())) {
                 return RuleOperation.VIEW;
             }
@@ -222,8 +223,7 @@ public class ApiAuthFilter implements PerRequestFilter {
             return RuleOperation.DELETE;
         }
         if (Methods.GET.equals(request.getMethod())) {
-            String id = request.getParameter("id");
-            return id != null && !id.isBlank() ? RuleOperation.VIEW : RuleOperation.LIST;
+            return request.hasPathParameter("id") ? RuleOperation.VIEW : RuleOperation.LIST;
         }
         return RuleOperation.VIEW;
     }
