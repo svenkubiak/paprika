@@ -95,6 +95,15 @@ environments:
     paprika:
       storage:
         root: target/test-storage
+    smtp:
+      # Points at the GreenMail server the recovery mail tests start on this port. Set here
+      # because mangoo builds its mail session once from the configuration; tests that do not
+      # start GreenMail simply see the asynchronous send fail and log, which does not affect them.
+      host: localhost
+      port: 3025
+      from: no-reply@paprika.test
+      from-name: Paprika Test
+      authentication: false
 
   dev:
     connector:
