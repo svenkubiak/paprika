@@ -75,8 +75,12 @@ Paprika does no rate limiting of its own, so a login endpoint will happily accep
 | `/api/auth/login` | Tenant user login, password guessing target. |
 | `/api/auth/register` | Tenant self-registration, abuse and spam target. |
 | `/api/auth/refresh` | Token refresh. |
+| `/api/auth/password/forgot`, `/api/auth/verify/request` | Unauthenticated and send an email, so they're a spam and enumeration target. |
+| `/api/auth/password/reset`, `/api/auth/verify/confirm` | Redeem a one-time token, guessing target. |
 | `/authenticate`, `/api/admin/login`, `/api/admin/login/2fa` | Superadmin login and second factor. |
 | `/api/admin/setup`, `/api/admin/token`, `/api/admin/token/2fa` | Initial setup and programmatic admin tokens. |
+
+The examples below throttle all of `/api/auth/` in one go, which covers every row above that starts with that prefix; the rest sits behind the admin location block and is throttled there.
 
 A handful of requests per second per IP with a small burst is plenty for real users and cuts brute force down hard. Tune to taste; the numbers in the examples are a sane starting point, not a law.
 
