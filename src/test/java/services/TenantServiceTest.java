@@ -57,6 +57,11 @@ class TenantServiceTest {
 
         tenantService.deleteWithCascade(other.id());
 
-        assertThat(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null), is(keepDefault.id()));
+        try {
+            assertThat(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null), is(keepDefault.id()));
+        } finally {
+            settingsService.set(SettingKeys.DEFAULT_TENANT_ID, "");
+            tenantService.deleteWithCascade(keepDefault.id());
+        }
     }
 }
