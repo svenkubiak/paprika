@@ -7,6 +7,7 @@ import io.mangoo.test.http.TestRequest;
 import models.CollectionRules;
 import models.TenantDefinition;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,13 +43,28 @@ class ConcurrentCreationIntegrationTest {
     private static final int PARALLEL_ATTEMPTS = 8;
 
     private static AdminTestUtils.AdminCookies admin;
+    private static String tenantId;
+    private static boolean registrationWasEnabled;
 
     @BeforeAll
     static void setUp() {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
+        tenantId = tenant.id();
+        registrationWasEnabled = tenant.registrationEnabled();
         Application.getInstance(TenantService.class).update(
-                tenant.id(), null, null, null, true, null, null, null, null, null, null);
+                tenantId, null, null, null, true, null, null, null, null, null, null);
         admin = AdminTestUtils.loginAsAdminWithDefaultTenant();
+    }
+
+    /**
+     * Registration is enabled on the shared default tenant above. Leaving it that way would make
+     * every later class that expects the bootstrap default order dependent - exactly the kind of
+     * cross class leakage that only surfaces on a build server, where classes run in another order.
+     */
+    @AfterAll
+    static void restoreRegistrationFlag() {
+        Application.getInstance(TenantService.class).update(
+                tenantId, null, null, null, registrationWasEnabled, null, null, null, null, null, null);
     }
 
     @Test

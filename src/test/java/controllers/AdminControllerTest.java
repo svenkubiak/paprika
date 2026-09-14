@@ -37,42 +37,51 @@ public class AdminControllerTest {
         SystemUserService users = Application.getInstance(SystemUserService.class);
         String token = users.createSuperadminSetup(username, null);
 
-        TestResponse login = TestRequest.post("/api/admin/login")
-                .withStringBody(
-                        "{\"username\":\"" + username + "\",\"password\":\"permanent-password-123\"}")
-                .withContentType("application/json")
-                .execute();
-        assertThat(login.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
-        assertThat(login.getCookie("paprika-authentication"), nullValue());
+        // The cleanup has to run even when an assertion below fails: a completed superadmin left in
+        // the DB would let lastSuperadminCannotBeRemoved delete "admin" on the next test run,
+        // cascading failures across the whole suite.
+        SystemUserService.DeleteOutcome cleanup;
+        try {
+            TestResponse login = TestRequest.post("/api/admin/login")
+                    .withStringBody(
+                            "{\"username\":\"" + username + "\",\"password\":\"permanent-password-123\"}")
+                    .withContentType("application/json")
+                    .execute();
+            assertThat(login.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
+            assertThat(login.getCookie("paprika-authentication"), nullValue());
 
-        TestResponse shortPassword = TestRequest.post("/api/admin/setup")
-                .withStringBody(
-                        "{\"token\":\"" + token + "\",\"password\":\"too-short\"}")
-                .withContentType("application/json")
-                .execute();
-        assertThat(shortPassword.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+            TestResponse shortPassword = TestRequest.post("/api/admin/setup")
+                    .withStringBody(
+                            "{\"token\":\"" + token + "\",\"password\":\"too-short\"}")
+                    .withContentType("application/json")
+                    .execute();
+            assertThat(shortPassword.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
-        TestResponse completed = TestRequest.post("/api/admin/setup")
-                .withStringBody(
-                        "{\"token\":\"" + token + "\",\"username\":\"" + username + "\",\"password\":\"permanent-password-123\"}")
-                .withContentType("application/json")
-                .execute();
+            TestResponse completed = TestRequest.post("/api/admin/setup")
+                    .withStringBody(
+                            "{\"token\":\"" + token + "\",\"username\":\"" + username + "\",\"password\":\"permanent-password-123\"}")
+                    .withContentType("application/json")
+                    .execute();
 
-        assertThat(completed.getStatusCode(), equalTo(StatusCodes.OK));
-        assertThat(completed.getCookie("paprika-authentication"), not(nullValue()));
-        assertThat(users.authenticateSuperadmin(username, "permanent-password-123").isPresent(), equalTo(true));
+            assertThat(completed.getStatusCode(), equalTo(StatusCodes.OK));
+            assertThat(completed.getCookie("paprika-authentication"), not(nullValue()));
+            assertThat(users.authenticateSuperadmin(username, "permanent-password-123").isPresent(), equalTo(true));
 
-        TestResponse replay = TestRequest.post("/api/admin/setup")
-                .withStringBody(
-                        "{\"token\":\"" + token + "\",\"password\":\"another-password-123\"}")
-                .withContentType("application/json")
-                .execute();
-        assertThat(replay.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+            TestResponse replay = TestRequest.post("/api/admin/setup")
+                    .withStringBody(
+                            "{\"token\":\"" + token + "\",\"password\":\"another-password-123\"}")
+                    .withContentType("application/json")
+                    .execute();
+            assertThat(replay.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        } finally {
+            cleanup = users.findPublicUserByUsername(username)
+                    .map(user -> users.deleteSuperadmin(String.valueOf(user.get("id"))))
+                    .orElse(SystemUserService.DeleteOutcome.NOT_FOUND);
+        }
 
-        // Clean up: a completed superadmin left in the DB would let lastSuperadminCannotBeRemoved
-        // delete "admin" on the next test run, cascading failures across the whole suite.
-        String createdId = String.valueOf(users.findPublicUserByUsername(username).orElseThrow().get("id"));
-        users.deleteSuperadmin(createdId);
+        // Only reached when the body passed - a silently failed cleanup would poison later classes.
+        assertThat("the superadmin created here must not outlive this test",
+                cleanup, equalTo(SystemUserService.DeleteOutcome.DELETED));
     }
 
     @Test
