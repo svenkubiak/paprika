@@ -99,7 +99,7 @@ public class Bootstrap implements MangooBootstrap {
         Bind.controller(MetaController.class).withRoutes(
                 On.get().to("/api/meta/collections/{collection}").respondeWith("read"),
                 On.post().to("/api/meta/collections/{collection}").respondeWith("create"),
-                On.get().to("/api/meta/collections/{collection}/{id}").respondeWith("read"),
+                On.get().to("/api/meta/collections/{collection}/{id}").respondeWith("readById"),
                 On.patch().to("/api/meta/collections/{collection}/{id}").respondeWith("update"),
                 On.delete().to("/api/meta/collections/{collection}/{id}").respondeWith("delete")
         );

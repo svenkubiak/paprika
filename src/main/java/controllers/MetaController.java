@@ -107,7 +107,7 @@ public class MetaController {
         return Response.ok().bodyJson(definition);
     }
 
-    public Response read(String collection, String id, Request request) {
+    public Response readById(String collection, String id, Request request) {
         TenantContext ctx = TenantContextHolder.require(request);
         CollectionDefinition definition = tenantCollections.findDefinitionById(ctx, collection, id);
         if (definition == null) {
