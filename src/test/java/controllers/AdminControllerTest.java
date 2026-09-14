@@ -30,6 +30,9 @@ public class AdminControllerTest {
 
     @Test
     void oneTimeSetupTokenCreatesSuperadminPassword() {
+        // Ensures "admin" is a completed superadmin before we create a second one below,
+        // so the cleanup at the end of this test can actually delete it.
+        AdminTestUtils.prepareAdminPassword();
         String username = "setup-" + CommonUtils.uuidV7();
         SystemUserService users = Application.getInstance(SystemUserService.class);
         String token = users.createSuperadminSetup(username, null);
@@ -65,6 +68,11 @@ public class AdminControllerTest {
                 .withContentType("application/json")
                 .execute();
         assertThat(replay.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+
+        // Clean up: a completed superadmin left in the DB would let lastSuperadminCannotBeRemoved
+        // delete "admin" on the next test run, cascading failures across the whole suite.
+        String createdId = String.valueOf(users.findPublicUserByUsername(username).orElseThrow().get("id"));
+        users.deleteSuperadmin(createdId);
     }
 
     @Test
