@@ -8,6 +8,8 @@ import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import io.undertow.util.Headers;
 import jakarta.inject.Inject;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.apache.commons.lang3.StringUtils;
 import services.MailService;
 import services.SystemUserService;
@@ -37,11 +39,7 @@ public class SuperadminController {
         return Response.ok().bodyJson(systemUserService.listSuperadmins());
     }
 
-    public Response invite(SuperadminInviteDto dto) {
-        if (dto == null || dto.username() == null || dto.username().isBlank()) {
-            return Response.badRequest().bodyJson(Map.of("error", "Username is required")).end();
-        }
-
+    public Response invite(@NotNull(message = "Request body is required") @Valid SuperadminInviteDto dto) {
         try {
             String token = systemUserService.inviteSuperadmin(dto.username(), dto.email());
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -59,11 +57,7 @@ public class SuperadminController {
      * admin UI, only offered when SMTP is configured. The absolute link is built from this request's
      * own host, matching the copy link shown alongside it.
      */
-    public Response emailInvite(SuperadminInviteEmailDto dto, Request request) {
-        if (dto == null || StringUtils.isBlank(dto.token()) || StringUtils.isBlank(dto.email())) {
-            return Response.badRequest().bodyJson(Map.of("error", "Token and email are required")).end();
-        }
-
+    public Response emailInvite(@NotNull(message = "Request body is required") @Valid SuperadminInviteEmailDto dto, Request request) {
         String link = setupLink(
                 request.getHeader(Headers.HOST),
                 request.getHeader(Headers.X_FORWARDED_PROTO),

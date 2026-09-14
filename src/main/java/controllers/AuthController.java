@@ -16,6 +16,7 @@ import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import models.HookEvent;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
@@ -52,7 +53,7 @@ public class AuthController {
         this.mailService = Objects.requireNonNull(mailService, "mailService must not be null");
     }
 
-    public Response register(@Valid RegisterDto registerDto, Request request) {
+    public Response register(@NotNull(message = "Request body is required") @Valid RegisterDto registerDto, Request request) {
         if (StringUtils.isBlank(registerDto.tenant())) {
             return Response.badRequest().bodyJson(Map.of("error", "Tenant slug is required"));
         }
@@ -121,7 +122,7 @@ public class AuthController {
         }
     }
 
-    public Response login(@Valid LoginDto loginDto, Request request) {
+    public Response login(@NotNull(message = "Request body is required") @Valid LoginDto loginDto, Request request) {
         TenantContext ctx = TenantContextHolder.get(request);
 
         if (hasTenant(ctx)) {
@@ -154,7 +155,7 @@ public class AuthController {
         return response;
     }
 
-    public Response refresh(@Valid RefreshDto refreshDto, Request request) {
+    public Response refresh(@NotNull(message = "Request body is required") @Valid RefreshDto refreshDto, Request request) {
         TenantContext ctx = TenantContextHolder.get(request);
 
         if (hasTenant(ctx)) {
@@ -192,7 +193,7 @@ public class AuthController {
                 .orElseGet(() -> Response.notFound().bodyJson(Map.of("error", "User not found")));
     }
 
-    public Response forgotPassword(@Valid ForgotPasswordDto dto, Request request) {
+    public Response forgotPassword(@NotNull(message = "Request body is required") @Valid ForgotPasswordDto dto, Request request) {
         TenantDefinition tenant = activeTenant(dto.tenant());
 
         if (tenant != null && tenant.passwordResetEnabled()
@@ -209,7 +210,7 @@ public class AuthController {
         return Response.ok().bodyJson(Map.of("success", true));
     }
 
-    public Response resetPassword(@Valid ResetPasswordDto dto, Request request) {
+    public Response resetPassword(@NotNull(message = "Request body is required") @Valid ResetPasswordDto dto, Request request) {
         TenantDefinition tenant = activeTenant(dto.tenant());
         if (tenant == null || !tenant.passwordResetEnabled()) {
             return Response.badRequest().bodyJson(Map.of("error", "Reset token is invalid or expired"));
@@ -225,7 +226,7 @@ public class AuthController {
         }
     }
 
-    public Response requestVerification(@Valid VerifyRequestDto dto, Request request) {
+    public Response requestVerification(@NotNull(message = "Request body is required") @Valid VerifyRequestDto dto, Request request) {
         TenantDefinition tenant = activeTenant(dto.tenant());
 
         if (tenant != null && tenant.emailVerificationEnabled()
@@ -241,7 +242,7 @@ public class AuthController {
         return Response.ok().bodyJson(Map.of("success", true));
     }
 
-    public Response confirmVerification(@Valid VerifyConfirmDto dto, Request request) {
+    public Response confirmVerification(@NotNull(message = "Request body is required") @Valid VerifyConfirmDto dto, Request request) {
         TenantDefinition tenant = activeTenant(dto.tenant());
         if (tenant == null || !tenant.emailVerificationEnabled()) {
             return Response.badRequest().bodyJson(Map.of("error", "Verification token is invalid or expired"));

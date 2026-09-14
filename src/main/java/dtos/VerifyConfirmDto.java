@@ -1,10 +1,10 @@
 package dtos;
 
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotBlank;
 
 public record VerifyConfirmDto(
         String tenant,
 
-        @NotEmpty(message = "Token is required")
+        @NotBlank(message = "Token is required")
         String token) {
 }

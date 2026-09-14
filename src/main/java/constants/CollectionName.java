@@ -3,7 +3,6 @@ package constants;
 public final class CollectionName {
     public static final String META_COLLECTIONS = "meta.collections";
     public static final String META_HOOKS = "meta.hooks";
-    public static final String TENANTS = "tenants";
     public static final String USERS = "users";
     public static final String SETTINGS = "settings";
 

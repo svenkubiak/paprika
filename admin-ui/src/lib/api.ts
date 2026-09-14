@@ -33,6 +33,23 @@ function parseErrorMessage(body: string, fallback: string): string {
         .map((entry) => (entry.field ? `${entry.field}: ${entry.message}` : entry.message))
         .join(', ')
     }
+    if (data.errors) {
+      // mangoo builds this from a HashMap, so the order is arbitrary - sort it to keep the
+      // message stable when more than one field failed.
+      const entries = Object.entries(data.errors).sort(([a], [b]) => a.localeCompare(b))
+      // The key is whatever the violated constraint sits on, which for a body-level @NotNull is
+      // the Java parameter name (`registerDto`). Naming the key only helps when there is more
+      // than one message to tell apart, so a single violation is shown on its own - that also
+      // keeps internal parameter names out of the UI.
+      const fields =
+        entries.length > 1
+          ? entries.map(([field, message]) => (field ? `${field}: ${message}` : message))
+          : entries.map(([, message]) => message)
+      const joined = fields.filter(Boolean).join(', ')
+      if (joined) {
+        return joined
+      }
+    }
     return data.message || data.error || fallback
   } catch {
     return body || fallback

@@ -1,8 +1,8 @@
 package dtos;
 
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotBlank;
 
 public record RefreshDto(
-        @NotEmpty(message = "RefreshToken is required")
+        @NotBlank(message = "RefreshToken is required")
         String refreshToken)
 {}

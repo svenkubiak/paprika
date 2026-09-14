@@ -10,6 +10,7 @@ import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import models.HookDefinition;
 import services.HookService;
 import utils.DbUtils;
@@ -31,7 +32,11 @@ public class MetaHooksController {
         return Response.ok().bodyJson(hookService.listForCollection(ctx, collection));
     }
 
-    public Response create(String collection, @Valid HookDefinition hookDefinition, Request request) {
+    public Response create(
+            String collection,
+            @NotNull(message = "Request body is required") @Valid HookDefinition hookDefinition,
+            Request request) {
+
         TenantContext ctx = TenantContextHolder.require(request);
 
         HookDefinition hook = new HookDefinition(
@@ -63,7 +68,12 @@ public class MetaHooksController {
         return Response.created().bodyJson(hook);
     }
 
-    public Response update(String collection, String id, @Valid HookDefinition hookDefinition, Request request) {
+    public Response update(
+            String collection,
+            String id,
+            @NotNull(message = "Request body is required") @Valid HookDefinition hookDefinition,
+            Request request) {
+
         TenantContext ctx = TenantContextHolder.require(request);
 
         HookDefinition current = hookService.findById(ctx, collection, id);

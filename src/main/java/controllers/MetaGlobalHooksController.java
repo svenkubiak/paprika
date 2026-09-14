@@ -11,6 +11,7 @@ import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import models.HookDefinition;
 import models.HookEvent;
 import services.HookService;
@@ -33,7 +34,7 @@ public class MetaGlobalHooksController {
         return Response.ok().bodyJson(hookService.listGlobalBeforeRequest(ctx));
     }
 
-    public Response create(@Valid HookDefinition hookDefinition, Request request) {
+    public Response create(@NotNull(message = "Request body is required") @Valid HookDefinition hookDefinition, Request request) {
         TenantContext ctx = TenantContextHolder.require(request);
 
         HookDefinition hook = new HookDefinition(
@@ -64,7 +65,11 @@ public class MetaGlobalHooksController {
         return Response.created().bodyJson(hook);
     }
 
-    public Response update(String id, @Valid HookDefinition hookDefinition, Request request) {
+    public Response update(
+            String id,
+            @NotNull(message = "Request body is required") @Valid HookDefinition hookDefinition,
+            Request request) {
+
         TenantContext ctx = TenantContextHolder.require(request);
 
         HookDefinition current = hookService.findGlobalById(ctx, id);

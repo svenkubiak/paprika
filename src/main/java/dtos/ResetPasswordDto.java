@@ -1,13 +1,13 @@
 package dtos;
 
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotBlank;
 
 public record ResetPasswordDto(
         String tenant,
 
-        @NotEmpty(message = "Token is required")
+        @NotBlank(message = "Token is required")
         String token,
 
-        @NotEmpty(message = "Password is required")
+        @NotBlank(message = "Password is required")
         String password) {
 }

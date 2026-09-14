@@ -15,6 +15,7 @@ import io.mangoo.routing.bindings.Request;
 import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import models.CollectionDefinition;
 import models.CollectionRules;
 import models.FieldDefinition;
@@ -45,7 +46,11 @@ public class MetaController {
         this.fileFieldService = Objects.requireNonNull(fileFieldService, "fileFieldService must not be null");
     }
 
-    public Response create(String collection, @Valid CollectionDefinition collectionDefinition, Request request) {
+    public Response create(
+            String collection,
+            @NotNull(message = "Request body is required") @Valid CollectionDefinition collectionDefinition,
+            Request request) {
+
         TenantContext ctx = TenantContextHolder.require(request);
 
         if (SystemCollections.isSystem(collection)) {
@@ -119,7 +124,7 @@ public class MetaController {
     public Response update(
             String collection,
             String id,
-            @Valid CollectionDefinition collectionDefinition,
+            @NotNull(message = "Request body is required") @Valid CollectionDefinition collectionDefinition,
             Request request) {
 
         TenantContext ctx = TenantContextHolder.require(request);

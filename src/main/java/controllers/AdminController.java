@@ -16,6 +16,7 @@ import io.mangoo.routing.bindings.Form;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import models.TenantDefinition;
 import services.*;
 import session.AdminTenantSession;
@@ -71,31 +72,27 @@ public class AdminController {
                 adminLoginService.login(form.get("username"), form.get("password"), authentication, request));
     }
 
-    public Response loginJson(LoginDto dto, Authentication authentication, Request request) {
+    public Response loginJson(@NotNull(message = "Request body is required") @Valid LoginDto dto, Authentication authentication, Request request) {
         return AdminLoginResponseHelper.toJsonResponse(
                 adminLoginService.login(dto.username(), dto.password(), authentication, request));
     }
 
-    public Response loginTwoFactor(TwoFactorCodeDto dto, Authentication authentication, Request request) {
+    public Response loginTwoFactor(@NotNull(message = "Request body is required") @Valid TwoFactorCodeDto dto, Authentication authentication, Request request) {
         return AdminLoginResponseHelper.toJsonResponse(
                 adminLoginService.confirmLoginTwoFactor(dto, authentication, request));
     }
 
-    public Response token(LoginDto dto, Request request) {
+    public Response token(@NotNull(message = "Request body is required") @Valid LoginDto dto, Request request) {
         return AdminLoginResponseHelper.toTokenResponse(
                 adminLoginService.issueToken(dto.username(), dto.password(), request));
     }
 
-    public Response tokenTwoFactor(TwoFactorCodeDto dto, Request request) {
+    public Response tokenTwoFactor(@NotNull(message = "Request body is required") @Valid TwoFactorCodeDto dto, Request request) {
         return AdminLoginResponseHelper.toTokenResponse(
                 adminLoginService.confirmTokenTwoFactor(dto, request));
     }
 
-    public Response completeSetup(CompleteSetupDto dto, Authentication authentication, Request request) {
-        if (dto == null || dto.token() == null || dto.username() == null || dto.password() == null) {
-            return Response.badRequest().bodyJson(Map.of("error", "Setup token, username and password are required")).end();
-        }
-
+    public Response completeSetup(@NotNull(message = "Request body is required") @Valid CompleteSetupDto dto, Authentication authentication, Request request) {
         try {
             Optional<AuthContext> auth = systemUserService.completeSuperadminSetup(dto.token(), dto.username(), dto.password());
             if (auth.isEmpty()) {
@@ -114,7 +111,7 @@ public class AdminController {
         }
     }
 
-    public Response switchTenantJwt(@Valid SwitchTenantDto dto, Request request) {
+    public Response switchTenantJwt(@NotNull(message = "Request body is required") @Valid SwitchTenantDto dto, Request request) {
         if (!authService.hasBearerToken(request)) {
             return Response.unauthorized().bodyJson(Map.of("error", "Unauthorized"));
         }

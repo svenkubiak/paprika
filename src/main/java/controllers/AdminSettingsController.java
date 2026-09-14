@@ -10,6 +10,8 @@ import io.mangoo.annotations.FilterWith;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import services.AdminSettingsService;
 
 import java.util.Objects;
@@ -27,23 +29,23 @@ public class AdminSettingsController {
         return AdminSettingsResponseHelper.toResponse(adminSettingsService.readSettings(request));
     }
 
-    public Response update(UpdateAdminSettingsDto dto, Request request) {
+    public Response update(@NotNull(message = "Request body is required") @Valid UpdateAdminSettingsDto dto, Request request) {
         return AdminSettingsResponseHelper.toResponse(adminSettingsService.update(request, dto));
     }
 
-    public Response changePassword(ChangePasswordDto dto, Request request) {
+    public Response changePassword(@NotNull(message = "Request body is required") @Valid ChangePasswordDto dto, Request request) {
         return AdminSettingsResponseHelper.toResponse(adminSettingsService.changePassword(request, dto));
     }
 
-    public Response setupTwoFactor(TwoFactorSetupDto dto, Request request) {
+    public Response setupTwoFactor(@NotNull(message = "Request body is required") @Valid TwoFactorSetupDto dto, Request request) {
         return AdminSettingsResponseHelper.toResponse(adminSettingsService.setupTwoFactor(request, dto));
     }
 
-    public Response confirmTwoFactor(TwoFactorCodeDto dto, Request request) {
+    public Response confirmTwoFactor(@NotNull(message = "Request body is required") @Valid TwoFactorCodeDto dto, Request request) {
         return AdminSettingsResponseHelper.toResponse(adminSettingsService.confirmTwoFactor(request, dto));
     }
 
-    public Response disableTwoFactor(TwoFactorSetupDto dto, Request request) {
+    public Response disableTwoFactor(@NotNull(message = "Request body is required") @Valid TwoFactorSetupDto dto, Request request) {
         return AdminSettingsResponseHelper.toResponse(adminSettingsService.disableTwoFactor(request, dto));
     }
 }

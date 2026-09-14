@@ -197,6 +197,9 @@ export interface ApiErrorBody {
   error?: string
   message?: string
   field?: string
+  // Bean Validation failures from mangoo, keyed by the field that failed. Sent instead of
+  // `error` when a request never reaches the controller.
+  errors?: Record<string, string>
 }
 
 export interface ValidationError {

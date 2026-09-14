@@ -7,7 +7,9 @@ import java.util.List;
 public record TenantUpdateDto(
         String name,
 
-        @Pattern(regexp = "[a-z0-9-]+", message = "Slug must contain only lowercase letters, numbers, and hyphens")
+        // Stays optional - null means "leave the slug as it is". Same message as TenantDto,
+        // because it is the same rule.
+        @Pattern(regexp = "[a-z0-9-]+", message = "Slug must be one or more lowercase letters, numbers, or hyphens")
         String slug,
 
         Boolean registrationEnabled,

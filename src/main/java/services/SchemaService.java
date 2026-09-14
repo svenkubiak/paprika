@@ -18,8 +18,6 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.StreamSupport;
 
-import static com.mongodb.client.model.Filters.eq;
-
 @Singleton
 public class SchemaService {
     private static final Logger LOG = LogManager.getLogger(SchemaService.class);

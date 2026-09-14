@@ -81,6 +81,7 @@ public class SuperadminControllerTest {
                 .execute();
 
         assertThat(emailed.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(emailed.getContent(), containsString("Email is required"));
     }
 
     @Test

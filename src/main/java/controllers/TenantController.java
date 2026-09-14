@@ -10,6 +10,7 @@ import io.mangoo.routing.Response;
 import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import models.TenantDefinition;
 import services.TenantService;
 import services.TenantUserService;
@@ -32,7 +33,7 @@ public class TenantController {
         return Response.ok().bodyJson(tenantService.listAll());
     }
 
-    public Response create(@Valid TenantDto tenantDto) {
+    public Response create(@NotNull(message = "Request body is required") @Valid TenantDto tenantDto) {
         try {
             TenantDefinition tenant = tenantService.create(tenantDto.name(), tenantDto.slug());
             return Response.created().bodyJson(tenant);
@@ -47,7 +48,7 @@ public class TenantController {
                 .orElseGet(Response::notFound);
     }
 
-    public Response update(String tenantId, @Valid TenantUpdateDto tenantDto) {
+    public Response update(String tenantId, @NotNull(message = "Request body is required") @Valid TenantUpdateDto tenantDto) {
         try {
             return tenantService.update(
                             tenantId,
@@ -81,7 +82,7 @@ public class TenantController {
                 .orElseGet(Response::notFound);
     }
 
-    public Response createUser(String tenantId, @Valid UserDto userDto) {
+    public Response createUser(String tenantId, @NotNull(message = "Request body is required") @Valid UserDto userDto) {
         try {
             return tenantService.findById(tenantId)
                     .map(tenant -> Response.created().bodyJson(tenantUserService.createUser(
@@ -95,7 +96,11 @@ public class TenantController {
         }
     }
 
-    public Response updateUser(String tenantId, String userId, @Valid UserUpdateDto userDto) {
+    public Response updateUser(
+            String tenantId,
+            String userId,
+            @NotNull(message = "Request body is required") @Valid UserUpdateDto userDto) {
+
         try {
             return tenantService.findById(tenantId)
                     .flatMap(tenant -> tenantUserService.updateUser(

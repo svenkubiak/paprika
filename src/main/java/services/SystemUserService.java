@@ -1,10 +1,10 @@
 package services;
 
 import auth.AuthContext;
-import constants.CollectionName;
-import enums.Role;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
+import constants.CollectionName;
+import enums.Role;
 import io.mangoo.utils.CommonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -23,7 +23,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.Locale;
 
 import static com.mongodb.client.model.Filters.*;
 import static com.mongodb.client.model.Updates.*;

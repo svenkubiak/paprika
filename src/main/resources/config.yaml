@@ -18,6 +18,15 @@ default:
       enable: false
     parameter:
       strict: true
+    validation:
+      # Paprika is a JSON API, so a constraint violation has to answer with a machine-readable
+      # body. Without this, mangoo replies 400 with the framework's default HTML error page,
+      # which tells a client nothing and ends up in the admin UI verbatim.
+      #
+      # This passes the constraint messages through to the caller. All of them are hand-written
+      # constants on the DTOs - never put user input or an EL expression (${...}) into a
+      # message, because Hibernate Validator interpolates it and it would be reflected here.
+      passthrough: true
   connector:
     http:
       host: localhost

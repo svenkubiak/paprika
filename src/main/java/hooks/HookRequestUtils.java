@@ -7,12 +7,7 @@ import io.undertow.util.HeaderMap;
 import io.undertow.util.HeaderValues;
 import org.bson.Document;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public final class HookRequestUtils {
     public static final String MUTATED_BODY_ATTRIBUTE = "paprika.hook.body";

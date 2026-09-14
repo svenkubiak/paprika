@@ -10,6 +10,7 @@ import io.mangoo.routing.bindings.Request;
 import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import services.AuthService;
 import services.RealtimeService;
 
@@ -27,7 +28,7 @@ public class RealtimeController {
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
     }
 
-    public Response subscribe(@Valid SubscribeRealtimeDto dto, Request request) {
+    public Response subscribe(@NotNull(message = "Request body is required") @Valid SubscribeRealtimeDto dto, Request request) {
         if (!authService.hasBearerToken(request)) {
             return Response.unauthorized()
                     .header("WWW-Authenticate", "Bearer")

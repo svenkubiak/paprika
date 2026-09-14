@@ -23,7 +23,6 @@ import utils.DbWrites;
 import utils.UserRecordUtils;
 
 import java.util.*;
-import java.util.Locale;
 
 import static com.mongodb.client.model.Filters.eq;
 

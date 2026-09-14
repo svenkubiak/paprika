@@ -50,12 +50,16 @@ public class AdminControllerTest {
             assertThat(login.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
             assertThat(login.getCookie("paprika-authentication"), nullValue());
 
+            // Sends a complete body on purpose: with only token and password this would be
+            // rejected by Bean Validation for the missing username and would never reach the
+            // password length rule it is here to cover.
             TestResponse shortPassword = TestRequest.post("/api/admin/setup")
                     .withStringBody(
-                            "{\"token\":\"" + token + "\",\"password\":\"too-short\"}")
+                            "{\"token\":\"" + token + "\",\"username\":\"" + username + "\",\"password\":\"too-short\"}")
                     .withContentType("application/json")
                     .execute();
             assertThat(shortPassword.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+            assertThat(shortPassword.getContent(), containsString("Password must be at least"));
 
             TestResponse completed = TestRequest.post("/api/admin/setup")
                     .withStringBody(
@@ -67,12 +71,15 @@ public class AdminControllerTest {
             assertThat(completed.getCookie("paprika-authentication"), not(nullValue()));
             assertThat(users.authenticateSuperadmin(username, "permanent-password-123").isPresent(), equalTo(true));
 
+            // Complete body again, so the rejection can only come from the consumed token and
+            // not from a field the request happens to be missing.
             TestResponse replay = TestRequest.post("/api/admin/setup")
                     .withStringBody(
-                            "{\"token\":\"" + token + "\",\"password\":\"another-password-123\"}")
+                            "{\"token\":\"" + token + "\",\"username\":\"" + username + "\",\"password\":\"another-password-123\"}")
                     .withContentType("application/json")
                     .execute();
             assertThat(replay.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+            assertThat(replay.getContent(), containsString("Setup token is invalid or expired"));
         } finally {
             cleanup = users.findPublicUserByUsername(username)
                     .map(user -> users.deleteSuperadmin(String.valueOf(user.get("id"))))
