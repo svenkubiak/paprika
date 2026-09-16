@@ -38,12 +38,26 @@ default:
       key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
       secure: true
   authentication:
-    redirect: /
+    redirect:
+      # The key mangoo reads is authentication.redirect.login. Without it an unauthenticated
+      # request to a route bound withAuthentication() does not redirect at all, it ends with
+      # the framework's default 401 page - which is what the whole admin UI looked like in
+      # production, because / is such a route. Belongs in the defaults, not in an environment.
+      login: /login
+    # Makes mangoo append the requested path as an origin parameter to that redirect, so a
+    # session that runs out on a deep link does not dump the admin back on the dashboard.
+    origin: true
     cookie:
       name: paprika-authentication
       secret: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
       key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
       secure: true
+      token:
+        # One hour, which is also mangoo's default - set explicitly because the admin UI tells
+        # the user this is why they were signed out, and that should not silently change with a
+        # framework upgrade. The cookie is only reissued when a request arrives without one, so
+        # this is an absolute lifetime from sign-in, not a sliding window.
+        expires: 3600
   token:
     secret: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
     key: defaultTokenKeyForLocalDevOnly0000000000000000000000000000000000
@@ -133,8 +147,6 @@ environments:
         secret: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
         key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
         secure: false
-      redirect:
-        login: /login
     persistence:
       mongo:
         embedded: true

@@ -13,6 +13,7 @@ import models.Stats;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import session.AdminTenantSession;
+import utils.AppVersion;
 
 import java.util.*;
 
@@ -42,6 +43,7 @@ public class AdminBootstrapService {
         boolean hasActiveTenant = ctx.hasTenantContext();
 
         Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("version", AppVersion.get());
         payload.put("authenticated", auth.isAuthenticated());
         payload.put("isSuperAdmin", auth.isSuperAdmin());
         payload.put("adminId", auth.isAuthenticated() ? auth.id() : null);

@@ -15,12 +15,12 @@ const confirmPassword = ref('')
 const loading = ref(false)
 const error = ref('')
 
+// The route guard already turned away anything without a token, so this only has to lift it out
+// of the fragment and get it out of the address bar again.
 onMounted(() => {
   token.value = new URLSearchParams(window.location.hash.slice(1)).get('token') || ''
   if (token.value) {
     window.history.replaceState(window.history.state, '', '/setup')
-  } else {
-    error.value = 'The setup token is missing. Open the setup link you were given.'
   }
 })
 

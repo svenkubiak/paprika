@@ -15,8 +15,13 @@ async function handleSchemaImport(event: Event) {
   importingSchema.value = true
   try {
     const result = await api.importSchema(file)
+    const preserved = result.rulesPreserved
     toast.add({
       title: `Schema imported: ${result.collectionsCreated} created, ${result.collectionsUpdated} updated, ${result.hooksRestored} hooks restored`,
+      // Only mentioned when it actually happened, so a normal import stays a one-liner.
+      description: preserved > 0
+        ? `${preserved} existing ${preserved === 1 ? 'collection' : 'collections'} kept their current rules — the file did not contain any.`
+        : undefined,
       color: 'success',
       icon: 'i-lucide-circle-check'
     })
@@ -56,7 +61,7 @@ async function handleSchemaImport(event: Event) {
         <div class="space-y-1">
           <h3 class="font-medium">Import schema</h3>
           <p class="max-w-2xl text-sm text-muted">
-            Apply a previously exported schema to the active tenant. Existing collections are updated, new ones are created. All hooks are replaced. No data is modified.
+            Apply a previously exported schema to the active tenant. Existing collections are updated, new ones are created. All hooks are replaced. Rules are taken from the file; a collection whose entry carries no rules keeps the rules it already has. An entry missing its fields or indexes is rejected and nothing is imported at all. No data is modified.
           </p>
         </div>
         <input

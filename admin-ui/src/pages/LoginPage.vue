@@ -10,6 +10,7 @@ const router = useRouter()
 const { load } = useBootstrap()
 
 const step = ref<'credentials' | '2fa'>(route.query['2fa'] === '1' ? '2fa' : 'credentials')
+const sessionExpired = route.query.reason === 'expired'
 const username = ref('')
 const password = ref('')
 const totpCode = ref('')
@@ -51,8 +52,22 @@ async function submitTwoFactor() {
 
 async function completeLogin() {
   await load(true)
-  const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
-  await router.replace(redirect)
+  // `redirect` is set when the SPA itself bounced us here, `origin` when the server did - mangoo
+  // appends it to its login redirect because authentication.origin is on.
+  await router.replace(localPath(route.query.redirect) ?? localPath(route.query.origin) ?? '/')
+}
+
+/**
+ * Both parameters arrive in a URL anyone can hand out, so only a plain path on this origin is
+ * accepted. Rejecting a leading double slash matters: it would otherwise read as a
+ * protocol-relative URL to a foreign host.
+ */
+function localPath(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
+    return undefined
+  }
+
+  return value
 }
 
 function backToCredentials() {
@@ -85,6 +100,18 @@ function backToCredentials() {
         variant="soft"
         icon="i-lucide-circle-x"
         :title="error"
+        class="mb-4"
+      />
+
+      <!-- Being timed out is not an error the user did anything wrong to cause, so this reads as
+           information and gives way to a real error once they try to sign in. -->
+      <UAlert
+        v-else-if="sessionExpired"
+        color="info"
+        variant="soft"
+        icon="i-lucide-clock"
+        title="You have been signed out"
+        description="Your session expired after an hour. Sign in again to pick up where you left off."
         class="mb-4"
       />
 

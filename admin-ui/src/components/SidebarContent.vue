@@ -207,6 +207,15 @@ function onTenantChange(value: string) {
       >
         Log out
       </UButton>
+
+      <p
+        v-if="bootstrap?.version"
+        class="pt-2 text-center text-xs text-muted"
+        title="Paprika version"
+      >
+        <!-- Monospaced and selectable because the first thing a bug report needs is this string. -->
+        <span class="select-all font-mono">v{{ bootstrap.version }}</span>
+      </p>
     </div>
   </div>
 </template>

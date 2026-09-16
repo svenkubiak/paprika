@@ -15,6 +15,10 @@ There is no intermediate "tenant admin" role. Every tenant user is a plain `user
 
 Superadmins sign in to the admin UI with a session cookie (optionally protected by TOTP 2FA, configured under [Settings](/admin-ui/settings)). A separate JWT-based flow (`/api/admin/token`) exists for programmatic access to the admin API. The two are mutually exclusive per request: an endpoint guarded for the admin session (`AdminAuthFilter`) rejects bearer tokens outright, and vice versa.
 
+### Session lifetime
+
+The admin session cookie is valid for **one hour**, and that hour is absolute rather than sliding — the cookie isn't reissued on activity, so a superadmin is signed out an hour after signing in no matter how busy the session was. When it runs out, the admin UI sends the user to the login page with a notice explaining what happened, and signing back in returns them to the page they were on. The value lives in `config.yaml` as `authentication.cookie.token.expires` (seconds) rather than in the environment, so changing it means a rebuild — and the notice on the login page names the hour explicitly, so that wording needs to change with it.
+
 ## Admin bypass on tenant data
 
 When a superadmin has [switched into a tenant](/concepts/tenants#the-tenant-switcher), they can browse and edit that tenant's collection data through the same admin UI (Data tab) — but this does **not** go through the rule engine described below. Superadmin requests are flagged as an admin bypass and skip rule evaluation entirely, so a superadmin always has full read/write access to every tenant's data regardless of how that tenant's rules are configured.

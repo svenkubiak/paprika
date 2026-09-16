@@ -14,7 +14,15 @@ const router = createRouter({
       path: '/setup',
       name: 'setup',
       component: () => import('@/pages/SetupPage.vue'),
-      meta: { public: true, title: 'Initial setup' }
+      meta: { public: true, title: 'Initial setup' },
+      // The token only ever travels in the fragment, so it is also the only thing that tells a
+      // real invite apart from someone just opening /setup - the server never sees it and can
+      // not make this call. Whether the initial setup is done is deliberately not the criterion:
+      // superadmin invites reuse this flow long after that point.
+      beforeEnter: (to) => {
+        const token = new URLSearchParams(to.hash.slice(1)).get('token')
+        return token ? true : { name: 'login' }
+      }
     },
     {
       path: '/',

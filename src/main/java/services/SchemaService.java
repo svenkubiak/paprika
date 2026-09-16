@@ -7,6 +7,7 @@ import dtos.SchemaExportDto;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.CollectionDefinition;
+import models.CollectionRules;
 import models.HookDefinition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +37,10 @@ public class SchemaService {
         List<CollectionDefinition> collections = StreamSupport
                 .stream(tenantCollections.metaCollections(ctx).find().spliterator(), false)
                 .filter(c -> !c.isSystem() || SystemCollections.USERS.equals(c.name()))
+                // An import rejects a definition without fields or indexes, so an export must
+                // never produce one - otherwise a row that predates that rule would turn into a
+                // backup the instance refuses to read back.
+                .map(SchemaService::withCompleteLists)
                 .toList();
 
         List<HookDefinition> hooks = StreamSupport
@@ -46,27 +51,41 @@ public class SchemaService {
     }
 
     public SchemaImportResult importSchema(TenantContext ctx, SchemaExportDto schema) {
+        // Entries the import would skip anyway must not be validated, otherwise the file could be
+        // rejected over a collection that was never going to be touched.
+        List<CollectionDefinition> applicable = schema.collections().stream()
+                .filter(SchemaService::isApplicable)
+                .toList();
+
+        // Runs before the first write: an import that fails halfway through would leave the
+        // tenant with some collections migrated and some not, and no way to tell which.
+        rejectIncompleteDefinitions(applicable);
+
         int created = 0;
         int updated = 0;
+        int rulesPreserved = 0;
 
-        for (CollectionDefinition incoming : schema.collections()) {
-            if (incoming.name() == null) {
-                continue;
-            }
-            boolean isNonUserSystem = SystemCollections.isSystem(incoming.name())
-                    && !SystemCollections.USERS.equals(incoming.name());
-            if (isNonUserSystem) {
-                continue;
-            }
-
+        for (CollectionDefinition incoming : applicable) {
             CollectionDefinition existing = tenantCollections.findDefinition(ctx, incoming.name());
             if (existing != null) {
+                // A file without a rules object is taken as "not specified", not as "no rules".
+                // Applying the null would fall through rulesOrDefault() to locked() and silently
+                // cut off API access to a collection that was working a moment ago - which is the
+                // safe direction, but not something an import of a hand-edited or pre-rules
+                // schema should do behind the admin's back. Rules that are present are applied
+                // as they are, including a deliberate full lock.
+                CollectionRules rules = incoming.rules();
+                if (rules == null) {
+                    rules = existing.rules();
+                    rulesPreserved++;
+                }
+
                 CollectionDefinition merged = new CollectionDefinition(
                         existing.id(),
                         incoming.name(),
                         incoming.fields(),
                         incoming.indexes(),
-                        incoming.rules(),
+                        rules,
                         existing.system()
                 );
                 tenantCollections.replaceDefinition(ctx, merged);
@@ -90,7 +109,59 @@ public class SchemaService {
 
         replaceAllHooks(ctx, schema.hooks());
 
-        return new SchemaImportResult(created, updated, schema.hooks() != null ? schema.hooks().size() : 0);
+        return new SchemaImportResult(
+                created,
+                updated,
+                schema.hooks() != null ? schema.hooks().size() : 0,
+                rulesPreserved);
+    }
+
+    private static boolean isApplicable(CollectionDefinition incoming) {
+        if (incoming.name() == null) {
+            return false;
+        }
+
+        return !SystemCollections.isSystem(incoming.name())
+                || SystemCollections.USERS.equals(incoming.name());
+    }
+
+    /**
+     * Unlike the rules, fields and indexes are what a schema import is for, so a missing one is
+     * not "leave it alone" - it is an incomplete file. Applying it would wipe the schema of an
+     * existing collection, or store a definition the rest of the code has to null-check forever.
+     * Every problem in the file is reported at once so one attempt is enough to fix it.
+     */
+    private static void rejectIncompleteDefinitions(List<CollectionDefinition> collections) {
+        List<String> problems = new ArrayList<>();
+
+        for (CollectionDefinition incoming : collections) {
+            if (incoming.fields() == null) {
+                problems.add(incoming.name() + " is missing \"fields\"");
+            }
+            if (incoming.indexes() == null) {
+                problems.add(incoming.name() + " is missing \"indexes\"");
+            }
+        }
+
+        if (!problems.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Incomplete schema, nothing was imported: " + String.join(", ", problems));
+        }
+    }
+
+    private static CollectionDefinition withCompleteLists(CollectionDefinition definition) {
+        if (definition.fields() != null && definition.indexes() != null) {
+            return definition;
+        }
+
+        return new CollectionDefinition(
+                definition.id(),
+                definition.name(),
+                definition.fields() != null ? definition.fields() : List.of(),
+                definition.indexes() != null ? definition.indexes() : List.of(),
+                definition.rules(),
+                definition.system()
+        );
     }
 
     private void replaceAllHooks(TenantContext ctx, List<HookDefinition> hooks) {
@@ -166,5 +237,14 @@ public class SchemaService {
         }
     }
 
-    public record SchemaImportResult(int collectionsCreated, int collectionsUpdated, int hooksRestored) {}
+    /**
+     * @param rulesPreserved How many existing collections kept their rules because the imported
+     *                       file did not carry any. Reported so that an import which silently
+     *                       leaves rules untouched is visible rather than guesswork.
+     */
+    public record SchemaImportResult(
+            int collectionsCreated,
+            int collectionsUpdated,
+            int hooksRestored,
+            int rulesPreserved) {}
 }

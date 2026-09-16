@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { type SchemaRow } from '@/components/SchemaEditorSheet.vue'
 import { api } from '@/lib/api'
@@ -38,7 +38,11 @@ const columns = [
   { id: 'actions', header: '' }
 ]
 
+// Reloading on a collection change as well as on mount: a deep link or the browser's
+// back button can move straight from one collection's tab to another's, which reuses
+// this component and would otherwise leave the previous collection on screen.
 onMounted(loadDefinition)
+watch(collection, loadDefinition)
 
 async function loadDefinition() {
   loading.value = true

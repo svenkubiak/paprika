@@ -171,6 +171,7 @@ export interface SuperadminInvite {
 }
 
 export interface BootstrapData {
+  version?: string
   authenticated: boolean
   isSuperAdmin: boolean
   adminId?: string | null
@@ -182,6 +183,14 @@ export interface BootstrapData {
   collections: string[]
   relationCollections?: string[]
   stats: Stats | null
+}
+
+export interface SchemaImportResult {
+  collectionsCreated: number
+  collectionsUpdated: number
+  hooksRestored: number
+  /** Existing collections whose rules the file did not carry and that were therefore left alone. */
+  rulesPreserved: number
 }
 
 export interface PaginatedRecords {

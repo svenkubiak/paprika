@@ -32,7 +32,19 @@
 				</includes>
 				<excludes>
 					<exclude>jpackage/**</exclude>
+					<exclude>paprika-version.properties</exclude>
 				</excludes>
+			</resource>
+			<!--
+				Filtering is scoped to this one file on purpose. The directory above holds the
+				built admin UI including PNGs, and filtering those would corrupt them.
+			-->
+			<resource>
+				<directory>src/main/resources</directory>
+				<filtering>true</filtering>
+				<includes>
+					<include>paprika-version.properties</include>
+				</includes>
 			</resource>
 		</resources>
 		<plugins>

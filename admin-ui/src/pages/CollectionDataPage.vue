@@ -32,6 +32,9 @@ const saving = ref(false)
 const bulkDeleteOpen = ref(false)
 const recordDeleteOpen = ref(false)
 
+/** Identifies the newest record request so an overtaken one cannot write its result. */
+let latestRecordsRequest = 0
+
 const pageSizeOptions = [
   { label: '10', value: 10 },
   { label: '25', value: 25 },
@@ -90,7 +93,29 @@ const summary = computed(() => {
   return `${from}–${to} of ${total.value} records`
 })
 
-watch([collection, page, pageSize], () => {
+// Switching collections in the sidebar keeps this component mounted, so everything derived from
+// the previous one has to be dropped by hand. The definition is the one that mattered: it drives
+// the table columns and the sort options, and reloading only the records left the new collection's
+// rows rendered through the old collection's columns - which looked like the page had not reacted
+// at all until a detour through another tab remounted it.
+watch(collection, async () => {
+  if (isUsers.value) return
+
+  definition.value = null
+  records.value = []
+  total.value = 0
+  // Sort and search belong to the collection that was on screen; a sort field that does not exist
+  // in the new collection would silently sort on nothing.
+  search.value = ''
+  sortField.value = 'updatedAt'
+  sortDirection.value = 'desc'
+  page.value = 1
+
+  await loadDefinition()
+  await refreshRecords()
+})
+
+watch([page, pageSize], () => {
   if (isUsers.value) return
   refreshRecords()
 })
@@ -123,11 +148,16 @@ async function loadDefinition() {
 }
 
 async function refreshRecords() {
+  const request = ++latestRecordsRequest
   loading.value = true
   selectedIds.value = new Set()
   try {
     const offset = (page.value - 1) * pageSize.value
     const result = await api.listRecords(collection.value, offset, pageSize.value)
+    // A collection switch resets the page, so two requests can be in flight at once - same for
+    // clicking through pages quickly. Only the newest may write, otherwise a slower response
+    // overwrites what the user is actually looking at.
+    if (request !== latestRecordsRequest) return
     records.value = result.items
     total.value = result.total
   } catch (error) {
@@ -137,7 +167,9 @@ async function refreshRecords() {
       icon: 'i-lucide-circle-x'
     })
   } finally {
-    loading.value = false
+    if (request === latestRecordsRequest) {
+      loading.value = false
+    }
   }
 }
 

@@ -7,6 +7,7 @@ import type {
   HookTestResult,
   PaginatedRecords,
   PaginatedRequestLogs,
+  SchemaImportResult,
   SuperadminInvite,
   SuperadminSummary,
   TenantDefinition,
@@ -22,6 +23,58 @@ export class ApiError extends Error {
     super(message)
     this.name = 'ApiError'
     this.status = status
+  }
+}
+
+const LOGIN_PATH = '/login'
+
+/**
+ * Endpoints where a 401 is the normal answer to a wrong credential rather than a session that ran
+ * out. These are the ones used to get a session in the first place, so bouncing them to the login
+ * page would loop and swallow the "wrong password" the user needs to see.
+ */
+const CREDENTIAL_ENDPOINTS = new Set([
+  '/api/admin/login',
+  '/api/admin/login/2fa',
+  '/api/admin/setup',
+  '/api/admin/token',
+  '/api/admin/token/2fa'
+])
+
+let leavingForLogin = false
+
+function redirectToLogin(): never {
+  // A full page load rather than a router navigation: the session is gone, and every bit of state
+  // cached from it - bootstrap payload, active tenant, open sheets - has to go with it. The flag
+  // keeps a page that fires several requests at once from stacking up navigations.
+  if (!leavingForLogin) {
+    leavingForLogin = true
+
+    const query = new URLSearchParams({ reason: 'expired' })
+    const target = window.location.pathname + window.location.search
+    if (window.location.pathname !== LOGIN_PATH) {
+      query.set('redirect', target)
+    }
+
+    window.location.replace(`${LOGIN_PATH}?${query}`)
+  }
+
+  throw new ApiError('Your session has expired', 401)
+}
+
+/**
+ * An expired admin session reaches the client in two shapes: the meta and admin API answer with a
+ * 401 from AdminAuthFilter, while a route bound withAuthentication() redirects to the login page
+ * and fetch follows that transparently, leaving a 200 that carries the admin UI shell. Both mean
+ * the same thing and neither is something a calling page can do anything useful with.
+ */
+function guardSession(response: Response, url: string): void {
+  if (CREDENTIAL_ENDPOINTS.has(url)) {
+    return
+  }
+
+  if (response.status === 401 || (response.redirected && new URL(response.url).pathname === LOGIN_PATH)) {
+    redirectToLogin()
   }
 }
 
@@ -65,6 +118,8 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
       ...(options.headers || {})
     }
   })
+
+  guardSession(response, url)
 
   if (response.status === 204) {
     return null as T
@@ -133,6 +188,7 @@ export const api = {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString()
     }).then((response) => {
+      guardSession(response, '/admin/switch-tenant')
       if (!response.ok && response.status !== 302) {
         throw new ApiError('Failed to switch tenant', response.status)
       }
@@ -379,6 +435,7 @@ export const api = {
       credentials: 'same-origin',
       body: formData
     }).then((response) => {
+      guardSession(response, url)
       if (!response.ok && response.status !== 204) {
         throw new ApiError('Request failed', response.status)
       }
@@ -483,7 +540,7 @@ export const api = {
     window.location.href = '/api/meta/schema/export'
   },
 
-  async importSchema(file: File): Promise<{ collectionsCreated: number; collectionsUpdated: number; hooksRestored: number }> {
+  async importSchema(file: File): Promise<SchemaImportResult> {
     const text = await file.text()
     const response = await fetch('/api/meta/schema/import', {
       method: 'POST',
@@ -491,6 +548,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: text
     })
+    guardSession(response, '/api/meta/schema/import')
     const body = await response.text()
     if (!response.ok) {
       throw new ApiError(parseErrorMessage(body, 'Schema import failed'), response.status)
@@ -510,6 +568,7 @@ export const api = {
       credentials: 'same-origin',
       body: formData
     })
+    guardSession(response, '/api/admin/backup/import')
     const body = await response.text()
     if (!response.ok) {
       throw new ApiError(parseErrorMessage(body, 'Import failed'), response.status)

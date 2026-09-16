@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import services.SystemUserService;
 import services.TwoFactorService;
 import utils.AdminTestUtils;
+import utils.AppVersion;
 
 import java.net.HttpCookie;
 
@@ -20,12 +21,47 @@ import static org.hamcrest.Matchers.*;
 @ExtendWith({TestRunner.class})
 public class AdminControllerTest {
 
+    /**
+     * An unauthenticated browser hitting the admin UI has to land on the login page. Getting this
+     * wrong is not a redirect to the wrong place, it is no redirect at all: mangoo falls back to
+     * its default error page and the whole UI looks broken, so the Location header is asserted
+     * rather than just the status code.
+     *
+     * The origin parameter comes from authentication.origin and is what lets the login page send
+     * the user back to the page they were on, so it is part of the contract here.
+     */
     @Test
-    public void testIndexPageRequiresAuthentication() {
-        TestResponse response = TestRequest.get("/").execute();
+    public void testIndexPageRedirectsToLogin() {
+        TestResponse response = TestRequest.get("/").withDisabledRedirects().execute();
 
         assertThat(response, not(nullValue()));
-        assertThat(response.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.FOUND));
+        assertThat(response.getHeader("Location"), equalTo("/login?origin=%2F"));
+    }
+
+    /**
+     * The path the session ran out on has to survive the redirect, otherwise signing back in
+     * always dumps the admin on the dashboard instead of the page they were working on.
+     */
+    @Test
+    public void testTheRedirectKeepsTheRequestedPath() {
+        TestResponse response = TestRequest.get("/admin/tenants").withDisabledRedirects().execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.FOUND));
+        assertThat(response.getHeader("Location"), equalTo("/login?origin=%2Fadmin%2Ftenants"));
+    }
+
+    /**
+     * The admin and meta API do not redirect - they sit behind AdminAuthFilter and answer an
+     * expired cookie with a 401, which is the signal the admin UI turns into the "you have been
+     * signed out" notice. A different status here would leave that notice unreachable.
+     */
+    @Test
+    public void testTheAdminApiAnswersAnExpiredSessionWithUnauthorized() {
+        TestResponse response = TestRequest.get("/api/meta/tenants").execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
+        assertThat(response.getContent(), containsString("Unauthorized"));
     }
 
     @Test
@@ -89,6 +125,25 @@ public class AdminControllerTest {
         // Only reached when the body passed - a silently failed cleanup would poison later classes.
         assertThat("the superadmin created here must not outlive this test",
                 cleanup, equalTo(SystemUserService.DeleteOutcome.DELETED));
+    }
+
+    /**
+     * The version the admin UI shows comes from paprika-version.properties, which only carries a
+     * real value once Maven resource filtering has run. A missing or unfiltered file degrades to
+     * "unknown" rather than failing, so nothing else would notice the build config breaking.
+     */
+    @Test
+    void bootstrapReportsTheBuildVersion() {
+        HttpCookie authentication = AdminTestUtils.loginAsAdmin();
+
+        TestResponse response = TestRequest.get("/admin/bootstrap")
+                .withCookie(authentication)
+                .execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(response.getContent(), containsString("\"version\":\"" + AppVersion.get() + "\""));
+        assertThat(AppVersion.get(), not(equalTo("unknown")));
+        assertThat(AppVersion.get(), not(containsString("${")));
     }
 
     @Test
