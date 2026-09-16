@@ -66,4 +66,61 @@ class MetaUsersSchemaIntegrationTest {
             collections.replaceDefinition(ctx, original);
         }
     }
+
+    @Test
+    void addingFieldWithAdminUiPayloadKeepsSingleUsernameIndex() {
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        CollectionDefinition original = collections.findDefinition(ctx, "users");
+
+        try {
+            AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+            // The schema editor sends the whole definition back and derives index names from the
+            // field name, so the unique username index arrives as "idx_username" rather than
+            // under its canonical name.
+            TestResponse patch = AdminTestUtils.patchWithAdminCookies(
+                    "/api/meta/collections/users/" + original.id(),
+                    cookies,
+                    """
+                    {
+                      "name": "users",
+                      "fields": [
+                        {"name": "username", "type": "STRING", "required": true, "nullable": false},
+                        {"name": "email", "type": "EMAIL", "required": false, "nullable": true},
+                        {"name": "role", "type": "STRING", "required": false, "nullable": true},
+                        {"name": "password", "type": "STRING", "required": true, "nullable": false},
+                        {"name": "displayName", "type": "STRING", "required": false, "nullable": true}
+                      ],
+                      "indexes": [
+                        {
+                          "name": "idx_username",
+                          "unique": true,
+                          "fields": [{"field": "username", "direction": "ASC"}]
+                        }
+                      ]
+                    }
+                    """,
+                    "application/json"
+            );
+
+            assertThat(patch.getStatusCode(), equalTo(StatusCodes.OK));
+
+            CollectionDefinition after = collections.findDefinition(ctx, "users");
+            var indexNames = after.indexes().stream().map(IndexDefinition::name).toList();
+            assertThat(indexNames, equalTo(java.util.List.of("username_unique")));
+
+            var usernameIndexes = Application.getInstance(services.TenantDatabaseResolver.class)
+                    .tenantDataCollection(ctx, "users")
+                    .listIndexes()
+                    .into(new java.util.ArrayList<>())
+                    .stream()
+                    .filter(index -> index.get("key", org.bson.Document.class).containsKey("username"))
+                    .map(index -> index.getString("name"))
+                    .toList();
+            assertThat(usernameIndexes, equalTo(java.util.List.of("username_unique")));
+        } finally {
+            collections.replaceDefinition(ctx, original);
+        }
+    }
 }

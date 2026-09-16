@@ -187,7 +187,15 @@ public class SystemCollectionService {
                 if (index == null) {
                     continue;
                 }
-                if (USERNAME_INDEX.equals(index.name())) {
+                if (USERNAME_INDEX.equals(index.name()) || coversUsernameOnly(index)) {
+                    // Matched by covered field, not only by name: the schema editor derives index
+                    // names from the field name, so the unique username index comes back as
+                    // "idx_username". Comparing names alone would let that through and re-inject
+                    // the canonical index on top - two indexes on { username: 1 }, which MongoDB
+                    // rejects with an IndexOptionsConflict and the admin UI sees as a 500.
+                    if (hasUsernameIndex) {
+                        continue;
+                    }
                     hasUsernameIndex = true;
                     merged.add(usernameIndexDefinition());
                 } else {
@@ -201,6 +209,13 @@ public class SystemCollectionService {
         }
 
         return merged;
+    }
+
+    private static boolean coversUsernameOnly(IndexDefinition index) {
+        return index.fields() != null
+                && index.fields().size() == 1
+                && index.fields().getFirst() != null
+                && "username".equals(index.fields().getFirst().field());
     }
 
     /**

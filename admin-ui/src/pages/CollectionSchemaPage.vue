@@ -208,12 +208,24 @@ function buildDefinitionFromRows(sourceRows: SchemaRow[]): CollectionDefinition 
   const indexes: IndexDefinition[] = []
   const compoundIndexes = (definition.value.indexes || []).filter((index) => index.fields.length > 1)
 
+  // Keep the name an existing single-field index already has instead of regenerating it: names
+  // are part of the index identity server-side, so renaming one means dropping and rebuilding it.
+  // Indexes created outside this editor (meta API, or server-owned ones like the unique username
+  // index on users) do not follow the idx_<field> convention. A renamed field misses the lookup
+  // and falls back to the convention, which is what we want - the old index is gone with the field.
+  const existingIndexNames = new Map<string, string>()
+  for (const index of definition.value.indexes || []) {
+    if (index.fields.length === 1) {
+      existingIndexNames.set(index.fields[0].field, index.name)
+    }
+  }
+
   for (const row of sourceRows) {
     const name = row.name.trim()
     if (!name) continue
     if (row.indexEnabled) {
       indexes.push({
-        name: `idx_${name}`,
+        name: existingIndexNames.get(name) ?? `idx_${name}`,
         unique: row.indexUnique,
         fields: [{ field: name, direction: row.indexDirection }]
       })
