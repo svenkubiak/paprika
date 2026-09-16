@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useBootstrap } from '@/composables/useBootstrap'
+import { isStaleBuildError, reloadForStaleBuild, renderStaleBuildNotice } from '@/lib/stale-build'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -121,26 +122,26 @@ const router = createRouter({
   ]
 })
 
-const CHUNK_RELOAD_KEY = 'paprika:chunk-reload'
-
 router.onError((error, to) => {
-  const message = error instanceof Error ? error.message : String(error)
-  const isChunkLoadFailure =
-    message.includes('Failed to fetch dynamically imported module') ||
-    message.includes('Importing a module script failed') ||
-    message.includes('error loading dynamically imported module')
-
-  if (!isChunkLoadFailure) {
+  if (!isStaleBuildError(error)) {
     return
   }
 
-  if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
-    sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
-    window.location.assign(to.fullPath)
+  if (reloadForStaleBuild(to.fullPath)) {
     return
   }
 
-  sessionStorage.removeItem(CHUNK_RELOAD_KEY)
+  // The reload already happened and the chunk is still not there, so this is not going to fix
+  // itself. Say so instead of leaving whatever the failed navigation left behind - on the first
+  // navigation of a tab that is an empty #app, i.e. a white page.
+  renderStaleBuildNotice(error)
+})
+
+// Vite raises this for a modulepreload that failed, which happens before the router ever gets to
+// import the chunk. It is deliberately not preventDefault()ed: if the reload is used up, the
+// error has to keep propagating so it reaches onError above.
+window.addEventListener('vite:preloadError', () => {
+  reloadForStaleBuild(window.location.pathname + window.location.search)
 })
 
 router.beforeEach(async (to) => {
