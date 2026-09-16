@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/prune-build-output.mjs",
-    "prebuild": "rm -rf ../src/main/resources/files/assets/js ../src/main/resources/files/assets/css ../src/main/resources/files/assets/manifest.json ../src/main/resources/files/assets/admin ../src/main/resources/files/assets/.vite && find ../src/main/resources/files/assets/img -mindepth 1 ! -name 'favicon.png' -delete 2>/dev/null || true",
+    "prebuild": "rm -rf ../src/main/resources/files/assets/js ../src/main/resources/files/assets/css ../src/main/resources/files/assets/img ../src/main/resources/files/assets/manifest.json ../src/main/resources/files/assets/admin ../src/main/resources/files/assets/.vite",
     "preview": "vite preview"
   },
   "dependencies": {
