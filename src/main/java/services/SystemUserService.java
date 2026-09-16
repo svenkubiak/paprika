@@ -84,10 +84,10 @@ public class SystemUserService {
             return;
         }
 
+        // A still-active token is deliberately replaced instead of kept: only its hash is
+        // stored, so an existing token can never be printed again. Keeping it would leave a
+        // restart before setup completion with no reachable link until the token expires.
         Document user = findByUsername(username.trim());
-        if (user != null && isSetupTokenActive(user)) {
-            return;
-        }
 
         String token;
         if (user == null) {

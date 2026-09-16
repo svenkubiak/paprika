@@ -304,6 +304,11 @@ else
 #      ]
 #    })
 #
+#  The password goes into the connection string verbatim and is not
+#  URL-encoded, so it must not contain : @ / ? # or % — pick one made up
+#  of letters, digits and -_.~ (e.g. openssl rand -hex 32), or
+#  percent-encode it here (@ -> %40, : -> %3A).
+#
 #  See: https://svenkubiak.github.io/paprika/installation/standalone#mongodb-setup
 PERSISTENCE_MONGO_HOST=CHANGE_ME
 PERSISTENCE_MONGO_PORT=27017
@@ -398,6 +403,15 @@ find "$INSTALL_DIR" -mindepth 1 -type f \
     -exec chmod 640 {} \;
 
 chmod 750 "${INSTALL_DIR}/bin/${APP_NAME}" 2>/dev/null || true
+
+# The blanket 640 above also strips the executable bit off the JDK runtime that
+# jpackage bundles under lib/runtime - including lib/jspawnhelper, which the JVM
+# execs for every Runtime.exec() call. Without it the app logs
+# "posix_spawn failed, error: 13" on startup. Put the bit back on exactly the
+# files the package itself shipped as executable.
+find "$EXTRACTED_APP" -type f -perm -u+x -printf '%P\n' | while IFS= read -r relative; do
+    chmod 750 "${INSTALL_DIR}/${relative}" 2>/dev/null || true
+done
 
 mkdir -p "${INSTALL_DIR}/storage"
 chown paprika:paprika "${INSTALL_DIR}/storage"
