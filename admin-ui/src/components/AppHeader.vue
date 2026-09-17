@@ -3,10 +3,12 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useColorMode } from '@vueuse/core'
 import { useBootstrap } from '@/composables/useBootstrap'
+import { useGeneralNav } from '@/composables/useGeneralNav'
 import { useSidebar } from '@/composables/useSidebar'
 
 const route = useRoute()
 const { bootstrap } = useBootstrap()
+const { generalNavItems } = useGeneralNav()
 const { openMobileSidebar } = useSidebar()
 const colorMode = useColorMode()
 
@@ -116,6 +118,22 @@ function toggleColorMode() {
             API Healthy
           </div>
         </div>
+
+        <!-- Instance-wide navigation used to sit in the sidebar, which is otherwise entirely
+             tenant-scoped. It is the only way to reach these pages, so it needs real menu
+             semantics: keyboard navigation, Esc, and focus returning to the trigger. -->
+        <UDropdownMenu
+          :items="generalNavItems"
+          :content="{ align: 'end' }"
+          :ui="{ content: 'w-56' }"
+        >
+          <UButton
+            icon="i-lucide-sliders-horizontal"
+            variant="ghost"
+            color="neutral"
+            aria-label="Instance navigation"
+          />
+        </UDropdownMenu>
 
         <UButton
           :icon="colorMode === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"

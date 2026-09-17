@@ -80,7 +80,7 @@ function backToCredentials() {
 
 <template>
   <div class="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted/30 p-4">
-    <AppLogo size="lg" show-text :subtitle="step === '2fa' ? 'Secure sign-in' : 'Admin Control Plane'" />
+    <AppLogo size="lg" show-text :subtitle="step === '2fa' ? 'Secure sign-in' : ''" />
 
     <UCard class="w-full max-w-md">
       <template #header>

@@ -43,7 +43,9 @@ const titleClass = {
     />
     <div v-if="showText" class="min-w-0">
       <div :class="titleClass[size]">Paprika</div>
-      <div v-if="subtitle" class="text-xs text-muted">{{ subtitle }}</div>
+      <slot name="subtitle">
+        <div v-if="subtitle" class="text-xs text-muted">{{ subtitle }}</div>
+      </slot>
     </div>
   </div>
 </template>

@@ -35,53 +35,6 @@ const tenantItems = computed(() =>
 
 const activeTenantId = computed(() => bootstrap.value?.activeTenant?.id || '')
 
-const generalNavItems = computed(() => {
-  const items = [
-    {
-      label: 'Overview',
-      icon: 'i-lucide-layout-dashboard',
-      to: '/',
-      active: route.name === 'dashboard'
-    }
-  ]
-
-  if (bootstrap.value?.isSuperAdmin) {
-    items.push({
-      label: 'Tenants',
-      icon: 'i-lucide-building-2',
-      to: '/admin/tenants',
-      active: route.name === 'tenants'
-    })
-  }
-
-  if (bootstrap.value?.isSuperAdmin) {
-    items.push({
-      label: 'Backup',
-      icon: 'i-lucide-archive',
-      to: '/admin/backup',
-      active: route.name === 'backup'
-    })
-  }
-
-  if (bootstrap.value?.isSuperAdmin) {
-    items.push({
-      label: 'Superadmins',
-      icon: 'i-lucide-shield',
-      to: '/admin/superadmins',
-      active: route.name === 'superadmins'
-    })
-  }
-
-  items.push({
-    label: 'Settings',
-    icon: 'i-lucide-settings',
-    to: '/admin/settings',
-    active: route.name === 'settings'
-  })
-
-  return items
-})
-
 const tenantNavItems = computed(() => {
   const items = []
 
@@ -181,7 +134,6 @@ async function logout() {
   <aside class="hidden h-full w-64 shrink-0 border-r border-default bg-default md:flex md:flex-col">
     <SidebarContent
       :bootstrap="bootstrap"
-      :general-nav-items="generalNavItems"
       :tenant-nav-items="tenantNavItems"
       :tenant-items="tenantItems"
       :active-tenant-id="activeTenantId"
@@ -202,15 +154,26 @@ async function logout() {
     <template #default="{ close }">
       <div class="flex items-center justify-between border-b border-default p-4">
         <div id="mobile-sidebar-title">
-          <AppLogo size="sm" show-text />
+          <RouterLink
+            to="/"
+            class="block rounded-md transition-opacity hover:opacity-80"
+            aria-label="Overview"
+          >
+            <AppLogo size="sm" show-text>
+              <template v-if="bootstrap?.version" #subtitle>
+                <div class="text-xs text-muted" title="Paprika version" @click.prevent.stop>
+                  <span class="select-all font-mono">v{{ bootstrap.version }}</span>
+                </div>
+              </template>
+            </AppLogo>
+          </RouterLink>
         </div>
         <UButton icon="i-lucide-x" variant="ghost" color="neutral" @click="close" />
       </div>
       <SidebarContent
         class="min-h-0 flex-1"
         :bootstrap="bootstrap"
-        :general-nav-items="generalNavItems"
-      :tenant-nav-items="tenantNavItems"
+        :tenant-nav-items="tenantNavItems"
         :tenant-items="tenantItems"
         :active-tenant-id="activeTenantId"
         :active-collection="String(route.params.collection || '')"

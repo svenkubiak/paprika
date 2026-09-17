@@ -10,7 +10,6 @@ const { load, bootstrap } = useBootstrap()
 const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 const activeTenant = computed(() => bootstrap.value?.activeTenant ?? null)
 
-const loading = ref(false)
 const saving = ref(false)
 
 const registrationEnabled = ref(false)
