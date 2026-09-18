@@ -7,7 +7,7 @@ import { useSchemaEditorSheet, emptyRow } from '@/composables/useSchemaEditorShe
 import { useAppToast } from '@/composables/useAppToast'
 import { modalUi } from '@/lib/overlay-ui'
 import { fieldTypeIcon, fieldTypeLabel } from '@/lib/utils'
-import IndexEditorModal from '@/components/IndexEditorModal.vue'
+import IndexEditorSheet from '@/components/IndexEditorSheet.vue'
 import { isReservedSchemaFieldName, SYSTEM_RECORD_FIELDS } from '@/lib/system-fields'
 import { optionsToSchemaRow, parseSelectValues, schemaRowToField } from '@/lib/schema-options'
 import {
@@ -325,6 +325,17 @@ function openEditIndex(index: IndexDefinition) {
   indexEditorOpen.value = true
 }
 
+function openEditIndexRow(_event: Event, tableRow: { original: IndexDefinition }) {
+  openEditIndex(tableRow.original)
+}
+
+function requestDeleteIndexFromEditor() {
+  const target = indexEditorTarget.value
+  if (!target) return
+  indexEditorOpen.value = false
+  requestDeleteIndex(target)
+}
+
 async function saveIndex(edited: IndexDefinition) {
   const target = indexEditorTarget.value
   const next =
@@ -499,7 +510,12 @@ function describeIndexFields(index: IndexDefinition): string {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="indexes" :columns="indexColumns" :loading="loading">
+      <UTable
+        :data="indexes"
+        :columns="indexColumns"
+        :loading="loading"
+        @select="openEditIndexRow"
+      >
         <template #name-cell="{ row }">
           <div class="flex items-center gap-1.5">
             <code>{{ row.original.name }}</code>
@@ -526,14 +542,6 @@ function describeIndexFields(index: IndexDefinition): string {
           <div v-if="!isManagedIndex(row.original)" class="flex justify-end gap-2" @click.stop>
             <UButton
               size="sm"
-              color="neutral"
-              variant="soft"
-              icon="i-lucide-pencil"
-              aria-label="Edit index"
-              @click="openEditIndex(row.original)"
-            />
-            <UButton
-              size="sm"
               color="error"
               variant="soft"
               icon="i-lucide-trash-2"
@@ -548,7 +556,7 @@ function describeIndexFields(index: IndexDefinition): string {
       </UTable>
     </UCard>
 
-    <IndexEditorModal
+    <IndexEditorSheet
       v-model:open="indexEditorOpen"
       :mode="indexEditorMode"
       :index="indexEditorTarget"
@@ -556,6 +564,7 @@ function describeIndexFields(index: IndexDefinition): string {
       :taken-names="takenIndexNames"
       :saving="saving"
       @save="saveIndex"
+      @delete="requestDeleteIndexFromEditor"
     />
 
     <UModal v-model:open="indexDeleteOpen" portal="body" :ui="modalUi">

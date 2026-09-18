@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import OverlayDrawer from '@/components/OverlayDrawer.vue'
 import FieldLabelHelp from '@/components/FieldLabelHelp.vue'
-import { modalUi } from '@/lib/overlay-ui'
+import { selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
 import type { IndexDefinition, IndexDirection, IndexField } from '@/types'
 
 const props = defineProps<{
@@ -18,6 +19,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:open': [value: boolean]
   save: [index: IndexDefinition]
+  delete: []
 }>()
 
 const DIRECTIONS = [
@@ -31,6 +33,16 @@ const fields = ref<IndexField[]>([])
 const error = ref('')
 
 const fieldItems = computed(() => props.availableFields.map((field) => ({ label: field, value: field })))
+
+const title = computed(() =>
+  props.mode === 'add' ? 'Add index' : `Edit index${props.index?.name ? `: ${props.index.name}` : ''}`
+)
+
+const description = computed(() =>
+  props.mode === 'add'
+    ? 'Define a new index for this collection.'
+    : 'Update this index. Renaming it drops the index and builds it again.'
+)
 
 // A compound index is ordered: MongoDB can only serve a query from a prefix of it, so which field
 // comes first is part of what the index is, not a detail of how it is rendered.
@@ -122,21 +134,29 @@ function submit() {
 </script>
 
 <template>
-  <UModal
+  <OverlayDrawer
     :open="open"
-    portal="body"
-    :ui="modalUi"
+    side="right"
+    width-class="w-full max-w-xl"
+    labelled-by="index-editor-title"
     @update:open="emit('update:open', $event)"
   >
-    <template #content>
-      <UCard>
-        <template #header>
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-list-ordered" class="size-5 text-primary" />
-            <h3 class="font-semibold">{{ mode === 'add' ? 'New index' : 'Edit index' }}</h3>
-          </div>
-        </template>
+    <template #default="{ close }">
+      <div class="flex items-start justify-between gap-3 border-b border-default p-4 sm:px-6">
+        <div class="min-w-0">
+          <h2 id="index-editor-title" class="font-semibold">{{ title }}</h2>
+          <p class="mt-1 text-sm text-muted">{{ description }}</p>
+        </div>
+        <UButton
+          icon="i-lucide-x"
+          variant="ghost"
+          color="neutral"
+          aria-label="Close index editor"
+          @click="close"
+        />
+      </div>
 
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <UAlert
           v-if="error"
           color="error"
@@ -146,7 +166,7 @@ function submit() {
           class="mb-4"
         />
 
-        <form class="w-full space-y-4" @submit.prevent="submit">
+        <UCard variant="subtle" :ui="{ body: 'space-y-4 p-4 sm:p-4' }">
           <UFormField required class="w-full">
             <template #label>
               <FieldLabelHelp
@@ -157,17 +177,15 @@ function submit() {
             <UInput v-model="name" class="w-full font-mono" autofocus />
           </UFormField>
 
-          <UFormField class="w-full">
-            <template #label>
-              <FieldLabelHelp
-                label="Unique"
-                hint="Rejects records whose indexed values, taken together, already exist. Cannot be enabled while the collection still holds duplicates."
-              />
-            </template>
+          <div class="flex items-center justify-between gap-3">
+            <FieldLabelHelp
+              label="Unique"
+              hint="Rejects records whose indexed values, taken together, already exist. Cannot be enabled while the collection still holds duplicates."
+            />
             <USwitch v-model="unique" />
-          </UFormField>
+          </div>
 
-          <div class="space-y-2">
+          <div class="space-y-2 border-t border-default pt-4">
             <FieldLabelHelp
               label="Fields"
               hint="Order matters: a compound index only serves queries that start with its leading fields."
@@ -181,13 +199,17 @@ function submit() {
               <USelect
                 :model-value="entry.field"
                 :items="fieldItems"
-                class="min-w-0 flex-1"
+                :content="selectContentProps"
+                :ui="selectMenuUi"
+                class="min-w-0 flex-1 font-mono"
                 @update:model-value="setField(position, String($event))"
               />
               <USelect
                 :model-value="entry.direction"
                 :items="DIRECTIONS"
-                class="w-40"
+                :content="selectContentProps"
+                :ui="selectMenuUi"
+                class="w-36"
                 @update:model-value="setDirection(position, $event as IndexDirection)"
               />
               <UButton
@@ -229,17 +251,25 @@ function submit() {
               Add field
             </UButton>
           </div>
+        </UCard>
+      </div>
 
-          <div class="flex justify-end gap-2">
-            <UButton variant="ghost" color="neutral" @click="emit('update:open', false)">
-              Cancel
-            </UButton>
-            <UButton type="submit" :loading="saving" icon="i-lucide-save">
-              {{ mode === 'add' ? 'Create index' : 'Save index' }}
-            </UButton>
-          </div>
-        </form>
-      </UCard>
+      <div class="flex flex-col gap-2 border-t border-default p-4 sm:flex-row sm:px-6">
+        <UButton class="flex-1" :loading="saving" icon="i-lucide-save" @click="submit">
+          {{ mode === 'add' ? 'Create index' : 'Save index' }}
+        </UButton>
+        <UButton
+          v-if="mode === 'edit'"
+          color="error"
+          variant="soft"
+          icon="i-lucide-trash-2"
+          :loading="saving"
+          @click="emit('delete')"
+        >
+          Delete
+        </UButton>
+        <UButton variant="ghost" color="neutral" @click="close">Cancel</UButton>
+      </div>
     </template>
-  </UModal>
+  </OverlayDrawer>
 </template>
