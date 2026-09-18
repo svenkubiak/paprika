@@ -21,7 +21,10 @@ import models.HookEvent;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import results.TenantLoginResult;
+import results.TokenIssueResult;
 import services.*;
 
 import java.util.Map;
@@ -30,6 +33,7 @@ import java.util.Optional;
 
 @FilterWith({TenantContextFilter.class, ApiBeforeRequestHookFilter.class})
 public class AuthController {
+    private static final Logger LOG = LogManager.getLogger(AuthController.class);
     private final AuthResponseService authResponseService;
     private final AuthService authService;
     private final TenantService tenantService;
@@ -153,6 +157,31 @@ public class AuthController {
         }
 
         return response;
+    }
+
+    /**
+     * Mints a session for another user of the caller's own tenant, without a password. Meant for a
+     * trusted backend that authenticated the user against an external identity provider itself.
+     * The tenant comes from the caller's bearer token only - a tenant in the body would be a
+     * cross-tenant vector - and the caller has to be listed in the tenant's {@code tokenIssuers}.
+     */
+    public Response issueToken(@NotNull(message = "Request body is required") @Valid IssueTokenDto issueTokenDto, Request request) {
+        TenantContext ctx = TenantContextHolder.get(request);
+        TokenIssueResult result = tenantUserService.resolveTokenIssue(ctx, issueTokenDto.userId());
+
+        return switch (result.status()) {
+            case UNAUTHORIZED -> Response.unauthorized()
+                    .header("WWW-Authenticate", "Bearer")
+                    .bodyJson(Map.of("error", "Unauthorized"));
+            case FORBIDDEN -> Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
+            case USER_NOT_FOUND -> Response.notFound().bodyJson(Map.of("error", "User not found"));
+            case SUCCESS -> {
+                AuthContext target = result.auth().orElseThrow();
+                LOG.info("Issued a token for user {} in tenant {}, requested by user {}",
+                        target.id(), ctx.effectiveTenantId(), ctx.userId());
+                yield issueTokenForUser(target, request);
+            }
+        };
     }
 
     public Response refresh(@NotNull(message = "Request body is required") @Valid RefreshDto refreshDto, Request request) {
@@ -279,9 +308,17 @@ public class AuthController {
             return Response.notFound().bodyJson(Map.of("error", "User not found"));
         }
 
-        AuthContext resolved = auth.get();
-        Response response = authResponseService.toTokenResponse(authService.createTokenPair(resolved));
-        fireAfterForUser(resolved, HookEvent.afterLogin, request, null);
+        return issueTokenForUser(auth.get(), request);
+    }
+
+    /**
+     * The token response both token-issuing paths share: the hook driven
+     * {@code beforeLogin}/{@code issueTokenFor} and {@code POST /api/auth/issue-token}. Both look
+     * like a login to everything downstream, so both fire {@code afterLogin}.
+     */
+    private Response issueTokenForUser(AuthContext auth, Request request) {
+        Response response = authResponseService.toTokenResponse(authService.createTokenPair(auth));
+        fireAfterForUser(auth, HookEvent.afterLogin, request, null);
         return response;
     }
 

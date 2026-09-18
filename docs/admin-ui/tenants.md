@@ -21,6 +21,8 @@ Name and slug can be changed later. The database name is derived from the tenant
 
 - **Webhook allowlist** — `host:port` combinations (comma-separated) this tenant's [collection hooks](/admin-ui/collection-hooks) and [global hooks](/admin-ui/global-hooks) may target even though they're loopback or private-network addresses, which are blocked by default to prevent one tenant's hooks from reaching another tenant's or the host's internal services. There's no format enforcement — a malformed entry simply never matches, it doesn't break saving. The check applies both when a hook is saved and every time it fires, so shrinking the allowlist takes effect on the next dispatch even for hooks that were already saved.
 
+- **Token issuers** — user IDs of this tenant (comma-separated) that may call `POST /api/auth/issue-token` and mint an access/refresh token pair for **any other user of this tenant**, without knowing that user's password. Empty is the default for every tenant, existing ones included, and means nobody can. Whoever is listed here can take over the identity of every user of this tenant, which makes it the strongest permission in the system below superadmin — list a dedicated service account of your trusted backend, never a regular end-user account. Details and the full request/response shape: [Auth settings → Trusted token issuance](/admin-ui/auth-settings#trusted-token-issuance).
+
 Self-registration, password reset, and email verification are **not** configured here — they're per-tenant toggles on the [Auth settings](/admin-ui/auth-settings) page, available once you've switched into that tenant.
 
 ## Switching tenants

@@ -90,6 +90,7 @@ public class TenantService {
                 false,
                 null,
                 null,
+                List.of(),
                 List.of()
         );
 
@@ -137,6 +138,10 @@ public class TenantService {
                 .toList();
     }
 
+    /**
+     * Kept so callers that predate {@code tokenIssuers} keep compiling and keep their behaviour:
+     * a null list means "leave the setting as it is".
+     */
     public Optional<TenantDefinition> update(
             String id,
             String name,
@@ -149,6 +154,34 @@ public class TenantService {
             String passwordResetUrl,
             String emailVerificationUrl,
             List<String> webhookAllowlist) {
+        return update(
+                id,
+                name,
+                slug,
+                status,
+                registrationEnabled,
+                passwordResetEnabled,
+                emailVerificationEnabled,
+                emailVerificationRequired,
+                passwordResetUrl,
+                emailVerificationUrl,
+                webhookAllowlist,
+                null);
+    }
+
+    public Optional<TenantDefinition> update(
+            String id,
+            String name,
+            String slug,
+            String status,
+            Boolean registrationEnabled,
+            Boolean passwordResetEnabled,
+            Boolean emailVerificationEnabled,
+            Boolean emailVerificationRequired,
+            String passwordResetUrl,
+            String emailVerificationUrl,
+            List<String> webhookAllowlist,
+            List<String> tokenIssuers) {
         TenantDefinition current = findById(id).orElse(null);
         if (current == null) {
             return Optional.empty();
@@ -177,8 +210,11 @@ public class TenantService {
                 ? (emailVerificationUrl.isBlank() ? null : emailVerificationUrl.trim())
                 : current.emailVerificationUrl();
         List<String> newWebhookAllowlist = webhookAllowlist != null
-                ? normalizeWebhookAllowlist(webhookAllowlist)
+                ? normalizeStringList(webhookAllowlist)
                 : current.webhookAllowlist();
+        List<String> newTokenIssuers = tokenIssuers != null
+                ? normalizeStringList(tokenIssuers)
+                : current.tokenIssuers();
 
         if (!current.slug().equals(newSlug) && findBySlug(newSlug).isPresent()) {
             throw new IllegalArgumentException("Tenant slug already exists");
@@ -197,7 +233,8 @@ public class TenantService {
                 newEmailVerificationRequired,
                 newPasswordResetUrl,
                 newEmailVerificationUrl,
-                newWebhookAllowlist
+                newWebhookAllowlist,
+                newTokenIssuers
         );
 
         resolver.systemCollection(TenantDefinition.COLLECTION)
@@ -358,7 +395,7 @@ public class TenantService {
         }
     }
 
-    private static List<String> normalizeWebhookAllowlist(List<String> hosts) {
+    private static List<String> normalizeStringList(List<String> hosts) {
         return hosts.stream()
                 .filter(Objects::nonNull)
                 .map(String::trim)
@@ -390,11 +427,13 @@ public class TenantService {
                 .append("emailVerificationRequired", tenant.emailVerificationRequired())
                 .append("passwordResetUrl", tenant.passwordResetUrl())
                 .append("emailVerificationUrl", tenant.emailVerificationUrl())
-                .append("webhookAllowlist", tenant.webhookAllowlist());
+                .append("webhookAllowlist", tenant.webhookAllowlist())
+                .append("tokenIssuers", tenant.tokenIssuers());
     }
 
     private TenantDefinition fromDocument(Document doc) {
         List<String> webhookAllowlist = doc.getList("webhookAllowlist", String.class);
+        List<String> tokenIssuers = doc.getList("tokenIssuers", String.class);
         return new TenantDefinition(
                 doc.getString("id"),
                 doc.getString("name"),
@@ -408,7 +447,10 @@ public class TenantService {
                 doc.getBoolean("emailVerificationRequired", false),
                 doc.getString("passwordResetUrl"),
                 doc.getString("emailVerificationUrl"),
-                webhookAllowlist != null ? webhookAllowlist : List.of()
+                webhookAllowlist != null ? webhookAllowlist : List.of(),
+                // Tenants created before this setting existed must default to "nobody may issue
+                // tokens", so an upgrade never widens what an existing installation allows.
+                tokenIssuers != null ? tokenIssuers : List.of()
         );
     }
 }

@@ -45,3 +45,57 @@ The full flow:
 ### Mobile and native apps
 
 The verification link URL works with deep links. Set it to a Universal Link (iOS) or App Link (Android) that your app is registered to handle, or a custom URL scheme (`myapp://verify?token={token}`). The app extracts the token and calls `POST /api/auth/verify/confirm` — the API call itself is a plain HTTP request that works identically on any platform.
+
+## Trusted token issuance
+
+Sometimes a user is authenticated **outside** Paprika — a middleware verifies an Apple Sign-In
+identity token, a SAML assertion, or a magic link — and afterwards needs a Paprika session for
+exactly that user. No password is involved, and the middleware must not know one.
+
+`POST /api/auth/issue-token` covers that case:
+
+```http
+POST /api/auth/issue-token
+Authorization: Bearer <access token of a tenant user listed in tokenIssuers>
+Content-Type: application/json
+
+{ "userId": "<id of a user of the same tenant>" }
+```
+
+The response is identical to a normal login response (`accessToken`, `refreshToken`, `tokenType`,
+`expiresIn`), so a caller needs no special parsing. The issued token belongs to the **target**
+user: `GET /api/auth/me` with it returns that user's record.
+
+Two conditions must both hold:
+
+1. The caller presents a valid bearer token of a **tenant user** of that tenant. Guests and
+   superadmin tokens are rejected — a superadmin token carries no unambiguous tenant-user identity.
+2. The caller's own user ID is listed in the tenant's **token issuers** setting, maintained by a
+   superadmin on the [Tenants](/admin-ui/tenants#editing-a-tenant) page. Empty (the default for
+   every existing tenant) means nobody can, and the endpoint answers `403`.
+
+The tenant is taken **only** from the caller's bearer token; there is no `tenant` field in the
+body, so the endpoint can never cross a tenant boundary.
+
+| Situation | Response |
+|---|---|
+| No or invalid bearer token, guest, or superadmin token | `401 {"error":"Unauthorized"}` with `WWW-Authenticate: Bearer` |
+| Caller not listed in token issuers (or the list is empty) | `403 {"error":"Forbidden"}` |
+| `userId` missing or blank | `400` (bean validation) |
+| Target user unknown, inactive, or in another tenant | `404 {"error":"User not found"}` — deliberately the same answer for all three, so the endpoint can't be used to enumerate users across tenants |
+| Target user is the caller | allowed, no special case |
+
+A successful issue fires the `afterLogin` hook with the **target** user's id, exactly like a login
+does, so existing hook-based bookkeeping keeps working.
+
+::: danger Security assumption
+Anyone listed in token issuers can assume the identity of **every** user of that tenant. Treat
+that access token like a master key: give it to a dedicated service account of your own backend,
+store it server-side only, and never ship it into a mobile or browser client.
+:::
+
+This replaces the older workaround of answering a `beforeLogin` hook with
+`{"continue": false, "issueTokenFor": {"userId": "…"}}`. That path still works unchanged (see
+[Roles & Permissions](/concepts/roles-and-permissions#trusted-token-issuance)), but it puts the
+whole authorization decision into a hook behind a public endpoint, which is why the explicit
+endpoint exists.

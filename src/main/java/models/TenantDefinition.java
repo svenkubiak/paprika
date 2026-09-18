@@ -15,7 +15,13 @@ public record TenantDefinition(
         boolean emailVerificationRequired,
         String passwordResetUrl,
         String emailVerificationUrl,
-        List<String> webhookAllowlist) {
+        List<String> webhookAllowlist,
+
+        /**
+         * IDs of users of this tenant that may mint a session for any other user of the same
+         * tenant through {@code POST /api/auth/issue-token}. Empty means nobody can.
+         */
+        List<String> tokenIssuers) {
 
     public static final String COLLECTION = "tenants";
     public static final String STATUS_ACTIVE = "active";
@@ -26,5 +32,10 @@ public record TenantDefinition(
 
     public boolean isActive() {
         return STATUS_ACTIVE.equals(status);
+    }
+
+    public boolean canIssueTokens(String userId) {
+        return userId != null && !userId.isBlank()
+                && tokenIssuers != null && tokenIssuers.contains(userId);
     }
 }

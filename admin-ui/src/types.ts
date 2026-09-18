@@ -136,6 +136,7 @@ export interface TenantDefinition {
   passwordResetUrl?: string | null
   emailVerificationUrl?: string | null
   webhookAllowlist?: string[]
+  tokenIssuers?: string[]
 }
 
 export interface TenantUser {

@@ -133,11 +133,12 @@ public class ImportService {
                         Boolean.TRUE.equals(doc.get("emailVerificationRequired")),
                         (String) doc.get("passwordResetUrl"),
                         (String) doc.get("emailVerificationUrl"),
-                        parseWebhookAllowlist(doc.get("webhookAllowlist"))))
+                        parseStringList(doc.get("webhookAllowlist")),
+                        parseStringList(doc.get("tokenIssuers"))))
                 .toList();
     }
 
-    private static List<String> parseWebhookAllowlist(Object value) {
+    private static List<String> parseStringList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
         }

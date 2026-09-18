@@ -69,6 +69,7 @@ public class Bootstrap implements MangooBootstrap {
                 On.post().to("/api/auth/register").respondeWith("register"),
                 On.post().to("/api/auth/login").respondeWith("login"),
                 On.post().to("/api/auth/refresh").respondeWith("refresh"),
+                On.post().to("/api/auth/issue-token").respondeWith("issueToken"),
                 On.get().to("/api/auth/me").respondeWith("me"),
                 On.post().to("/api/auth/password/forgot").respondeWith("forgotPassword"),
                 On.post().to("/api/auth/password/reset").respondeWith("resetPassword"),

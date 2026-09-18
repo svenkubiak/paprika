@@ -61,7 +61,8 @@ public class TenantController {
                             tenantDto.emailVerificationRequired(),
                             tenantDto.passwordResetUrl(),
                             tenantDto.emailVerificationUrl(),
-                            tenantDto.webhookAllowlist())
+                            tenantDto.webhookAllowlist(),
+                            tenantDto.tokenIssuers())
                     .map(Response.ok()::bodyJson)
                     .orElseGet(Response::notFound);
         } catch (IllegalArgumentException e) {

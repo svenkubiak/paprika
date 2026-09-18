@@ -24,5 +24,7 @@ public record TenantUpdateDto(
 
         String emailVerificationUrl,
 
-        List<String> webhookAllowlist) {
+        List<String> webhookAllowlist,
+
+        List<String> tokenIssuers) {
 }

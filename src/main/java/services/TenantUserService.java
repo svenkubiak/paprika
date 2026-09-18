@@ -17,6 +17,7 @@ import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import results.TenantLoginResult;
+import results.TokenIssueResult;
 import utils.AuthTokens;
 import utils.DbUtils;
 import utils.DbWrites;
@@ -337,6 +338,36 @@ public class TenantUserService {
             return Optional.empty();
         }
         return Optional.of(toPublicMap(user));
+    }
+
+    /**
+     * Authorization for {@code POST /api/auth/issue-token}: a trusted backend that authenticated a
+     * user elsewhere (Apple Sign-In, SAML, a magic link) needs a Paprika session for that user
+     * without knowing a password.
+     * <p>
+     * Two things have to hold. The caller must be an authenticated tenant user - a guest has no
+     * identity to check, and a superadmin token carries no unambiguous tenant user - and that
+     * identity must be listed in the tenant's {@code tokenIssuers}. The tenant is taken from the
+     * caller's own context only, never from the request body, so this can never cross a tenant
+     * boundary.
+     */
+    public TokenIssueResult resolveTokenIssue(TenantContext ctx, String targetUserId) {
+        if (ctx == null || !ctx.hasTenantContext() || !ctx.hasAuthenticatedUser()
+                || ctx.isSuperAdmin() || !Role.USER.equals(ctx.role())) {
+            return TokenIssueResult.unauthorized();
+        }
+
+        TenantDefinition tenant = tenantService.findById(ctx.effectiveTenantId())
+                .filter(TenantDefinition::isActive)
+                .orElse(null);
+
+        if (tenant == null || !tenant.canIssueTokens(ctx.userId())) {
+            return TokenIssueResult.forbidden();
+        }
+
+        return resolveUser(ctx, targetUserId)
+                .map(TokenIssueResult::success)
+                .orElseGet(TokenIssueResult::userNotFound);
     }
 
     public Optional<AuthContext> resolveUser(TenantContext ctx, String userId) {

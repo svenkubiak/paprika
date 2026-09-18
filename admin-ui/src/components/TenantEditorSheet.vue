@@ -10,6 +10,7 @@ export interface TenantEditorForm {
   name: string
   slug: string
   webhookAllowlist: string
+  tokenIssuers: string
 }
 
 const props = defineProps<{
@@ -121,6 +122,19 @@ function onSlugInput() {
                 icon="i-lucide-shield-check"
                 class="w-full font-mono"
                 placeholder="127.0.0.1:8092, 192.168.1.10:9000"
+              />
+            </UFormField>
+
+            <UFormField
+              label="Token issuers"
+              help="User IDs of this tenant that may call POST /api/auth/issue-token and mint a session for ANY other user of this tenant - no password needed. This is the strongest permission below superadmin, intended for a trusted backend that authenticated the user elsewhere. Empty means nobody can. Separate multiple IDs with commas."
+              class="w-full"
+            >
+              <UInput
+                v-model="form.tokenIssuers"
+                icon="i-lucide-key-round"
+                class="w-full font-mono"
+                placeholder="user id, user id"
               />
             </UFormField>
           </template>

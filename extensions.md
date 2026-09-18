@@ -102,3 +102,28 @@ The following are intentionally out of scope for now and would be the natural fo
   ordering comparisons, full-text search, sorting, and relation traversal.
 - **Admin UI search** — the data view could grow a search box on top of this parameter
   (`admin-ui/src/lib/api.ts` currently builds only `?offset=&limit=`).
+
+## Trusted token issuance (`POST /api/auth/issue-token`)
+
+A tenant user listed in the tenant's `tokenIssuers` setting can mint a session for any other user
+of the same tenant (`dtos/IssueTokenDto`, `AuthController.issueToken`,
+`TenantUserService.resolveTokenIssue`, `results/TokenIssueResult`). Documented in
+`docs/admin-ui/auth-settings.md` and `docs/concepts/roles-and-permissions.md`.
+
+### Deliberately not implemented
+
+- **Rate limiting / brute-force braking.** Paprika has none for `/api/auth/*` at all today, so
+  the new endpoint got none either instead of inventing a one-off mechanism for a single route.
+  A rate limit for the whole auth surface (login, refresh, recovery, issue-token) is the natural
+  follow-up; `/api/auth/issue-token` is at least not publicly reachable, since it requires a
+  bearer token of an allowlisted user.
+- **Superadmin impersonation.** Superadmin tokens are rejected by the endpoint (they carry no
+  unambiguous tenant-user identity), and there is no impersonation button in the admin UI. That
+  would be a separate feature with its own audit story.
+- **Audit trail.** A successful issue is written to the application log (tenant id, caller id,
+  target id — no usernames or email addresses) but not to a queryable audit collection.
+  `RequestLogService` only records requests that carry a `collection` path parameter, so like
+  `/api/auth/login` this endpoint does not show up in the request log.
+- **Admin UI endpoint examples.** The per-collection API card documents `register`, `login`,
+  `refresh`, `me`, and the recovery endpoints; `issue-token` is documented in the docs site only,
+  since it is not an app-client endpoint.

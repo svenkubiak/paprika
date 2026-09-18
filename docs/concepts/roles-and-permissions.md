@@ -48,6 +48,42 @@ A `posts` collection where anyone can read published posts, but only the author 
 - **Create**: `auth` — any signed-in tenant user can create a post (they become the owner automatically).
 - **Update / Delete**: `owner` — only the post's author can modify or remove it.
 
+## Trusted token issuance
+
+Neither role covers the case of a **trusted backend** that authenticated a user somewhere else
+(Apple Sign-In, SAML, a magic link) and now needs a Paprika session for that user without knowing
+a password. Paprika has two mechanisms for it.
+
+### `POST /api/auth/issue-token` (the explicit one)
+
+An authenticated tenant user whose id is listed in its tenant's `tokenIssuers` setting can mint an
+access/refresh token pair for any other user of the **same** tenant. The endpoint requires a
+bearer token (it is not public), the tenant is derived from that token only, and `tokenIssuers` is
+empty by default for every tenant — so nothing changes for an existing installation until a
+superadmin opts in on the [Tenants](/admin-ui/tenants#editing-a-tenant) page. Full request and
+response shape: [Auth settings → Trusted token issuance](/admin-ui/auth-settings#trusted-token-issuance).
+
+The security assumption is explicit and unavoidable: **whoever is listed in `tokenIssuers` can
+assume the identity of every user of that tenant.** It is the strongest permission in the system
+below superadmin. Superadmins are not subject to it and cannot use the endpoint — a superadmin
+token carries no unambiguous tenant-user identity.
+
+### `beforeLogin` + `issueTokenFor` (the hook-based one)
+
+A `beforeLogin` hook may answer `{"continue": false, "issueTokenFor": {"userId": "…"}}`, and
+`POST /api/auth/login` then issues a token for that user without checking the password. This
+predates the endpoint above and keeps working unchanged. The difference matters:
+
+| | `/api/auth/issue-token` | `beforeLogin` + `issueTokenFor` |
+|---|---|---|
+| Endpoint | authenticated | public (`/api/auth/login`) |
+| Authorization | tenant setting `tokenIssuers`, checked by Paprika | entirely up to the hook target |
+| Caller identity | the caller's bearer token | none — hooks receive no credentials, and the [header allowlist](/admin-ui/collection-hooks) deliberately strips custom headers such as a one-time ticket |
+| Password | not needed | a dummy value must be sent, since `password` is validated before the hook runs |
+
+For a new integration, prefer the endpoint. The hook path remains for installations that already
+depend on it.
+
 ## Where this leaves the two roles
 
 To summarize the mental model:

@@ -34,7 +34,8 @@ const isDeletingDefaultTenant = computed(
 const form = ref<TenantEditorForm>({
   name: '',
   slug: '',
-  webhookAllowlist: ''
+  webhookAllowlist: '',
+  tokenIssuers: ''
 })
 
 const columns = [
@@ -77,7 +78,7 @@ async function loadDefaultTenantId() {
 }
 
 function resetForm() {
-  form.value = { name: '', slug: '', webhookAllowlist: '' }
+  form.value = { name: '', slug: '', webhookAllowlist: '', tokenIssuers: '' }
   editingTenant.value = null
 }
 
@@ -91,7 +92,8 @@ function tenantToForm(tenant: TenantDefinition): TenantEditorForm {
   return {
     name: tenant.name,
     slug: tenant.slug,
-    webhookAllowlist: (tenant.webhookAllowlist ?? []).join(', ')
+    webhookAllowlist: (tenant.webhookAllowlist ?? []).join(', '),
+    tokenIssuers: (tenant.tokenIssuers ?? []).join(', ')
   }
 }
 
@@ -127,6 +129,10 @@ async function saveTenant() {
         webhookAllowlist: form.value.webhookAllowlist
           .split(',')
           .map((host) => host.trim())
+          .filter(Boolean),
+        tokenIssuers: form.value.tokenIssuers
+          .split(',')
+          .map((userId) => userId.trim())
           .filter(Boolean)
       })
       toast.add({ title: 'Tenant updated', color: 'success', icon: 'i-lucide-circle-check' })
