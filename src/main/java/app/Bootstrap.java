@@ -125,7 +125,10 @@ public class Bootstrap implements MangooBootstrap {
                 On.post().to("/api/meta/tenants/{tenantId}/users").respondeWith("createUser"),
                 On.get().to("/api/meta/tenants/{tenantId}/users").respondeWith("listUsers"),
                 On.patch().to("/api/meta/tenants/{tenantId}/users/{userId}").respondeWith("updateUser"),
-                On.delete().to("/api/meta/tenants/{tenantId}/users/{userId}").respondeWith("deleteUser")
+                On.delete().to("/api/meta/tenants/{tenantId}/users/{userId}").respondeWith("deleteUser"),
+                On.get().to("/api/meta/tenants/{tenantId}/api-keys").respondeWith("listApiKeys"),
+                On.post().to("/api/meta/tenants/{tenantId}/api-keys").respondeWith("createApiKey"),
+                On.delete().to("/api/meta/tenants/{tenantId}/api-keys/{keyId}").respondeWith("revokeApiKey")
         );
 
         Bind.controller(AdminSettingsController.class).withRoutes(

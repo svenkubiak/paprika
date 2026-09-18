@@ -1,5 +1,7 @@
 import type {
   ApiErrorBody,
+  ApiKey,
+  CreatedApiKey,
   AppSettings,
   BootstrapData,
   CollectionDefinition,
@@ -281,6 +283,33 @@ export const api = {
   deleteTenantUser(tenantId: string, userId: string): Promise<void> {
     return request(
       `/api/meta/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' }
+    )
+  },
+
+  listApiKeys(tenantId: string): Promise<ApiKey[]> {
+    return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys`)
+  },
+
+  /** The response of this call is the only place the plaintext key is ever available. */
+  createApiKey(
+    tenantId: string,
+    payload: { name: string; userId: string; expiresAt?: string | null }
+  ): Promise<CreatedApiKey> {
+    return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: payload.name,
+        userId: payload.userId,
+        expiresAt: payload.expiresAt || undefined
+      })
+    })
+  },
+
+  revokeApiKey(tenantId: string, keyId: string): Promise<void> {
+    return request(
+      `/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys/${encodeURIComponent(keyId)}`,
       { method: 'DELETE' }
     )
   },

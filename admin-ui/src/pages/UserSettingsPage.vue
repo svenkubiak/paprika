@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import ApiKeysManager from '@/components/ApiKeysManager.vue'
 import { api } from '@/lib/api'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
@@ -190,6 +191,8 @@ async function save() {
           <UButton type="submit" :loading="saving" icon="i-lucide-save">Save settings</UButton>
         </div>
       </form>
+
+      <ApiKeysManager />
     </template>
   </div>
 </template>

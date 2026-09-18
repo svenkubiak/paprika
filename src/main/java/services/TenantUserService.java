@@ -443,7 +443,12 @@ public class TenantUserService {
                 .getCollection(CollectionName.tenantData(SystemCollections.USERS));
     }
 
-    private Document findById(TenantDefinition tenant, String id) {
+    /**
+     * The raw user record of this tenant, credential fields included. Only for callers inside the
+     * auth layer - anything client facing goes through {@link #findPublicUser} or
+     * {@link #toPublicMap}.
+     */
+    public Document findById(TenantDefinition tenant, String id) {
         return usersCollection(tenant).find(eq("id", id)).first();
     }
 

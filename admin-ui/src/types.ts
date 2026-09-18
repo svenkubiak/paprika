@@ -148,6 +148,23 @@ export interface TenantUser {
   updatedAt?: string | null
 }
 
+/** An API key as the admin UI sees it: never the key itself, only its metadata. */
+export interface ApiKey {
+  id: string
+  name: string
+  userId: string
+  keyPrefix: string
+  createdAt?: string | null
+  lastUsedAt?: string | null
+  expiresAt?: string | null
+  revokedAt?: string | null
+}
+
+/** Only the create response carries the plaintext key, and only once. */
+export interface CreatedApiKey extends ApiKey {
+  key: string
+}
+
 export interface Stats {
   connected: boolean
   healthy: boolean
@@ -239,6 +256,8 @@ export interface RequestLogEntry {
   execTimeMs?: number | null
   userId?: string | null
   userRole?: string | null
+  apiKeyId?: string | null
+  apiKeyName?: string | null
   hookFired?: boolean
   hookBlocked?: boolean
 }

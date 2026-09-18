@@ -75,6 +75,7 @@ Paprika does no rate limiting of its own, so a login endpoint will happily accep
 | `/api/auth/login` | Tenant user login, password guessing target. |
 | `/api/auth/register` | Tenant self-registration, abuse and spam target. |
 | `/api/auth/refresh` | Token refresh. |
+| `/api/auth/issue-token` | Authenticated, but mints sessions for arbitrary users - throttle it and see [keeping it internal](#keep-the-token-issuing-endpoint-off-the-public-internet). |
 | `/api/auth/password/forgot`, `/api/auth/verify/request` | Unauthenticated and send an email, so they're a spam and enumeration target. |
 | `/api/auth/password/reset`, `/api/auth/verify/confirm` | Redeem a one-time token, guessing target. |
 | `/authenticate`, `/api/admin/login`, `/api/admin/login/2fa` | Superadmin login and second factor. |
@@ -84,13 +85,96 @@ The examples below throttle all of `/api/auth/` in one go, which covers every ro
 
 A handful of requests per second per IP with a small burst is plenty for real users and cuts brute force down hard. Tune to taste; the numbers in the examples are a sane starting point, not a law.
 
+## Use API keys for machine access
+
+Do not let a backend log in with a username and password. `/api/auth/login` has to stay public
+for real users, which makes it the most brute-forcible surface of the installation, a password
+cannot be scoped or revoked on its own, and a machine has no second factor - so protecting a
+machine account with MFA is not an option either.
+
+Create an [API key](/admin-ui/auth-settings#api-keys) instead, bound to a dedicated tenant user
+whose [rules](/admin-ui/collection-rules) allow exactly what that service needs, and send it as
+`Authorization: Bearer pk_…`. Keys are named, individually revocable, carry an optional expiry,
+and their last use is visible in the admin UI.
+
+Operational hints:
+
+- **One key per service and per environment.** Revoking then affects one consumer, and the
+  request log names which key was used.
+- **Rotate by overlap:** create the new key, deploy it, then revoke the old one. Both work at the
+  same time, so a rotation needs no downtime. Set an expiry if you want rotation to be enforced
+  rather than remembered.
+- **Store keys like passwords:** in the consumer's secret store, never in a repository, never in
+  a mobile or browser client. Whoever holds the key *is* the bound user.
+- **A leaked key is revoked, not rotated in place.** Revocation is immediate.
+
+A key never grants superadmin rights and never bypasses collection rules; for administrative
+automation use `POST /api/admin/token` instead.
+
+## Keep the token-issuing endpoint off the public internet
+
+`POST /api/auth/issue-token` mints an access/refresh token pair for *any* user of the tenant,
+without a password, for callers listed under
+[token issuers](/admin-ui/tenants#editing-a-tenant). That is the strongest permission in the
+system below superadmin, and nothing in a mobile app or a browser ever needs to call it - only
+your own backend does. So unlike the rest of the tenant API, this one route can be taken off the
+public internet entirely.
+
+### How this relates to API keys
+
+These are two independent things that meet in exactly one place, and it is worth being precise
+about it:
+
+- An **[API key](/admin-ui/auth-settings#api-keys)** answers *how* a caller proves an identity.
+  It replaces a password login and is sent straight on the normal routes
+  (`Authorization: Bearer pk_…`). There is no exchange step: the key **is** the credential.
+- **`/api/auth/issue-token`** answers *for whom* a session is minted: an authorized caller gets
+  tokens for a different user.
+
+The overlap is that `issue-token` needs some bearer credential from its caller, and that may be
+either an access token or an API key of the issuer user - the key is presented as proof at the
+entrance, it is not traded in for the tokens that come out:
+
+```
+your backend ──Bearer pk_… (API key = how it proves who it is)──▶ POST /api/auth/issue-token
+                                                                  { "userId": "<app user>" }
+                                                                            │
+                       accessToken / refreshToken for <app user> ◀──────────┘
+                                    │
+                                    ▼  (handed to the app, which uses them normally)
+```
+
+That difference decides what a proxy can do:
+
+- `issue-token` is **one route, called only by your backend** → it can be gated by path.
+- An API key used for data access travels on `/api/collections/*`, which has to stay public for
+  real users → **no path gate is possible** there. Such a key is protected by its entropy, by the
+  rules of the bound user, and by being revocable. If your backend only ever calls `issue-token`,
+  its key never touches a public route in the first place.
+
+Paprika-side, `/api/auth/issue-token` already refuses anyone who is not an allowlisted tenant user
+(`401`/`403`), so the proxy rule below is defense in depth: if the route is only reachable from
+your own network, a stolen issuer credential is worthless from the outside.
+
+Pick whichever fits your deployment:
+
+- **Middleware on the same host or in the same private network** - do not expose the route
+  publicly at all; let the middleware talk to Paprika directly (`127.0.0.1:8080` or the internal
+  service address) and return `403` for it on the public listener.
+- **Middleware elsewhere** - allowlist its egress IPs on that one location instead of blocking
+  it outright.
+
+Both examples below carry this as a commented-out block, so you can switch it on deliberately
+rather than discover it the hard way. If you comment it in, make sure your own backend is inside
+the allowed range first - an issuer that cannot reach the route will fail closed.
+
 ## Restrict the admin UI by IP
 
 The public API and the admin UI share one process but split cleanly by path. Everything a tenant app needs is under a few prefixes; everything else is the admin area, which only you and your team should ever reach. Following the same idea [PocketBase suggests for its admin UI](https://pocketbase.io), lock the admin UI down to a known IP range (your office, a VPN, a bastion) and leave the app API open.
 
 **Keep public** (your tenant apps call these):
 
-- `/api/auth/...`
+- `/api/auth/...` (except `/api/auth/issue-token`, see [above](#keep-the-token-issuing-endpoint-off-the-public-internet))
 - `/api/collections/...`
 - `/api/realtime`, `/api/realtime/subscribe`
 
@@ -137,6 +221,20 @@ server {
     proxy_set_header X-Forwarded-For   $remote_addr;
     proxy_set_header X-Forwarded-Proto https;
 
+    # Machine-only route: issues a session for any user of the tenant. Uncomment to keep it
+    # off the public internet. An exact-match location wins over the /api/auth/ prefix below,
+    # so the rest of the auth API stays public.
+    #
+    # location = /api/auth/issue-token {
+    #     # Your own backend only - internal network, VPN, the middleware's egress IP.
+    #     allow 10.0.0.0/8;
+    #     allow 203.0.113.20/32;
+    #     deny  all;
+    #
+    #     limit_req zone=paprika_auth burst=10 nodelay;
+    #     proxy_pass http://127.0.0.1:8080;
+    # }
+
     # Public tenant API, open to the world but rate limited on auth.
     location /api/auth/ {
         limit_req zone=paprika_auth burst=10 nodelay;
@@ -169,6 +267,8 @@ server {
 }
 ```
 
+If your middleware runs on the same host, the cleanest variant is to not proxy the route at all - `location = /api/auth/issue-token { deny all; }` - and let the middleware call `http://127.0.0.1:8080/api/auth/issue-token` directly, bypassing the proxy.
+
 The trailing `location /` block catches everything that isn't the public API, including `/admin`, `/api/admin`, `/api/meta`, `/login`, and `/assets`, so a single IP gate covers the whole admin UI. Keep the `/api/auth/` and `/api/collections/` blocks above it, since nginx matches prefix locations by longest match regardless of order but it reads more clearly this way.
 
 ## Caddy example
@@ -186,6 +286,16 @@ paprika.example.com {
         not remote_ip 10.0.0.0/8 203.0.113.10/32
     }
     respond @blocked_admin 403
+
+    # Machine-only route: issues a session for any user of the tenant. Uncomment to keep it
+    # off the public internet - your own backend (internal network or the middleware's egress
+    # IP) stays allowed, everyone else gets a 403 before Paprika ever sees the request.
+    #
+    # @issue_token_external {
+    #     path /api/auth/issue-token
+    #     not remote_ip 10.0.0.0/8 203.0.113.20/32
+    # }
+    # respond @issue_token_external 403
 
     # Rate limit the auth routes. Needs the caddy-ratelimit plugin
     # (github.com/mholt/caddy-ratelimit); it is not in the standard Caddy build.

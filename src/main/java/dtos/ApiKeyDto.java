@@ -1,0 +1,14 @@
+package dtos;
+
+import jakarta.validation.constraints.NotBlank;
+
+public record ApiKeyDto(
+        @NotBlank(message = "Name is required")
+        String name,
+
+        @NotBlank(message = "UserId is required")
+        String userId,
+
+        /** Optional ISO-8601 instant; null means the key does not expire on its own. */
+        String expiresAt) {
+}

@@ -21,6 +21,11 @@ A separate card documents `/api/auth/register`, `/api/auth/login`, and `/api/aut
 
 The same card documents `GET /api/auth/me`, which returns the calling tenant user's own record from just the bearer token — no id or call to `/api/collections/users` needed. It bypasses collection rules and never returns `passwordHash`, `passwordSalt`, or `role`.
 
+Any endpoint that accepts `Authorization: Bearer <accessToken>` also accepts an
+[API key](/admin-ui/auth-settings#api-keys) in the same header (`Authorization: Bearer pk_…`).
+A key authenticates as the tenant user it is bound to, so the examples on this page apply
+unchanged - a machine consumer just skips the login call.
+
 The same card also lists the optional recovery endpoints: `/api/auth/password/forgot` and `/api/auth/password/reset`, plus `/api/auth/verify/request` and `/api/auth/verify/confirm`. These are off unless the tenant has [Password reset or email verification](/admin-ui/tenant-users#password-reset-and-email-verification) enabled, and the link is emailed by Paprika over the instance SMTP settings, built from the tenant's configured link URL.
 
 ## Realtime (SSE)

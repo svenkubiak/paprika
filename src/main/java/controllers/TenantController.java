@@ -1,5 +1,6 @@
 package controllers;
 
+import dtos.ApiKeyDto;
 import dtos.TenantDto;
 import dtos.TenantUpdateDto;
 import dtos.UserDto;
@@ -12,9 +13,11 @@ import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import models.TenantDefinition;
+import services.ApiKeyService;
 import services.TenantService;
 import services.TenantUserService;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -22,11 +25,16 @@ import java.util.Objects;
 public class TenantController {
     private final TenantService tenantService;
     private final TenantUserService tenantUserService;
+    private final ApiKeyService apiKeyService;
 
     @Inject
-    public TenantController(TenantService tenantService, TenantUserService tenantUserService) {
+    public TenantController(
+            TenantService tenantService,
+            TenantUserService tenantUserService,
+            ApiKeyService apiKeyService) {
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.tenantUserService = Objects.requireNonNull(tenantUserService, "tenantUserService must not be null");
+        this.apiKeyService = Objects.requireNonNull(apiKeyService, "apiKeyService must not be null");
     }
 
     public Response list() {
@@ -72,6 +80,9 @@ public class TenantController {
 
     public Response delete(String tenantId) {
         if (tenantService.deleteWithCascade(tenantId)) {
+            // The keys live in the system database, so the dropped tenant database does not take
+            // them with it
+            apiKeyService.deleteForTenant(tenantId);
             return Response.status(StatusCodes.NO_CONTENT);
         }
         return Response.notFound();
@@ -120,6 +131,50 @@ public class TenantController {
     public Response deleteUser(String tenantId, String userId) {
         return tenantService.findById(tenantId)
                 .filter(tenant -> tenantUserService.deleteUser(tenant, userId))
+                .map(tenant -> {
+                    // A deleted user must not leave working credentials behind
+                    apiKeyService.revokeForUser(tenant.id(), userId);
+                    return Response.status(StatusCodes.NO_CONTENT);
+                })
+                .orElseGet(Response::notFound);
+    }
+
+    public Response listApiKeys(String tenantId) {
+        return tenantService.findById(tenantId)
+                .map(tenant -> Response.ok().bodyJson(apiKeyService.list(tenant.id())))
+                .orElseGet(Response::notFound);
+    }
+
+    /**
+     * Creates an API key. This is the only response that ever carries the plaintext key - it is
+     * stored hashed, so it cannot be shown again afterwards.
+     */
+    public Response createApiKey(
+            String tenantId,
+            @NotNull(message = "Request body is required") @Valid ApiKeyDto apiKeyDto) {
+
+        try {
+            return tenantService.findById(tenantId)
+                    .map(tenant -> {
+                        ApiKeyService.CreatedApiKey created = apiKeyService.create(
+                                tenant,
+                                apiKeyDto.name(),
+                                apiKeyDto.userId(),
+                                apiKeyDto.expiresAt());
+
+                        Map<String, Object> body = new LinkedHashMap<>(created.key());
+                        body.put("key", created.plaintext());
+                        return Response.created().bodyJson(body);
+                    })
+                    .orElseGet(Response::notFound);
+        } catch (IllegalArgumentException e) {
+            return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
+        }
+    }
+
+    public Response revokeApiKey(String tenantId, String keyId) {
+        return tenantService.findById(tenantId)
+                .filter(tenant -> apiKeyService.revoke(tenant.id(), keyId))
                 .map(tenant -> Response.status(StatusCodes.NO_CONTENT))
                 .orElseGet(Response::notFound);
     }

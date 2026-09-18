@@ -46,13 +46,71 @@ The full flow:
 
 The verification link URL works with deep links. Set it to a Universal Link (iOS) or App Link (Android) that your app is registered to handle, or a custom URL scheme (`myapp://verify?token={token}`). The app extracts the token and calls `POST /api/auth/verify/confirm` — the API call itself is a plain HTTP request that works identically on any platform.
 
+## API keys
+
+API keys authenticate a **machine** as an existing tenant user - a backend job, a middleware, an
+integration - without a password login and without a second factor. Manage them in the **API
+keys** card at the bottom of this page (it needs an active tenant).
+
+**Creating a key** asks for three things:
+
+- **Name** - who uses it, e.g. `middleware-prod`. It shows up in the key list and in the
+  [request log](/admin-ui/request-logs) of every request made with it.
+- **Bound user** - the tenant user the key authenticates as. The key inherits exactly that user's
+  permissions, no more and no less.
+- **Expires** - optional. Without it the key is valid until revoked.
+
+The plaintext key is shown **once**, right after creating it, with a copy button:
+
+```
+pk_3Yb1f…
+```
+
+Paprika stores only a SHA-256 hash of it, so there is no way to display it again - no
+"show key" endpoint exists. Lose it and you revoke the key and create a new one.
+
+**Using a key** - send it as a bearer token, exactly where an access token would go:
+
+```http
+GET /api/collections/posts
+Authorization: Bearer pk_3Yb1f…
+```
+
+Everything under `/api/auth/*` and `/api/collections/*` accepts it, including
+`GET /api/auth/me` (returns the bound user) and `POST /api/auth/issue-token` (works if the bound
+user is a token issuer). There is no login step and no refresh: the key *is* the credential.
+
+A key is never *exchanged* for a token. The two mechanisms are independent: a key answers **how**
+a caller proves an identity, [trusted token issuance](#trusted-token-issuance) answers **for
+whom** a session is minted. They meet only in that `issue-token` accepts a key as the caller's
+credential, next to an access token - which is exactly what lets a middleware work without any
+password at all.
+
+**The list** shows each key's name, its non-secret prefix, the bound user, when it was last used
+(updated at most once per minute, so it never slows a request down), its expiry and its status.
+**Revoke** stops it from authenticating immediately; the entry stays visible so you can still see
+that the key existed and when it was last used. Deleting the bound user revokes its keys, and
+deleting the tenant removes them.
+
+::: danger Whoever holds the key is the bound user
+A key carries every permission the bound user's [rules](/admin-ui/collection-rules) grant,
+including the ability to mint sessions for other users if that user is listed under
+[token issuers](/admin-ui/tenants#editing-a-tenant). Keys never grant superadmin rights and never
+bypass rules, but within the bound identity they are complete. Bind them to a dedicated service
+account, keep them server-side, and rotate them.
+:::
+
+Keys cannot be bound to a superadmin: that would be a cross-tenant bypass credential, which is
+deliberately not part of this feature.
+
 ## Trusted token issuance
 
 Sometimes a user is authenticated **outside** Paprika — a middleware verifies an Apple Sign-In
 identity token, a SAML assertion, or a magic link — and afterwards needs a Paprika session for
 exactly that user. No password is involved, and the middleware must not know one.
 
-`POST /api/auth/issue-token` covers that case:
+`POST /api/auth/issue-token` covers that case (the caller's bearer token may be an access token
+or an [API key](#api-keys) of an allowlisted user):
 
 ```http
 POST /api/auth/issue-token
@@ -87,6 +145,11 @@ body, so the endpoint can never cross a tenant boundary.
 
 A successful issue fires the `afterLogin` hook with the **target** user's id, exactly like a login
 does, so existing hook-based bookkeeping keeps working.
+
+Because nothing in a client app ever calls this route, it is a good candidate for being reachable
+from your own network only - see
+[Going to production](/operations/going-to-production#keep-the-token-issuing-endpoint-off-the-public-internet)
+for nginx and Caddy snippets.
 
 ::: danger Security assumption
 Anyone listed in token issuers can assume the identity of **every** user of that tenant. Treat

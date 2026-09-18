@@ -127,3 +127,39 @@ of the same tenant (`dtos/IssueTokenDto`, `AuthController.issueToken`,
 - **Admin UI endpoint examples.** The per-collection API card documents `register`, `login`,
   `refresh`, `me`, and the recovery endpoints; `issue-token` is documented in the docs site only,
   since it is not an app-client endpoint.
+
+## API keys (`Authorization: Bearer pk_…`)
+
+A named, revocable credential bound to one tenant user (`utils/ApiKeys`, `services/ApiKeyService`,
+`models/ApiKeyDefinition`, `dtos/ApiKeyDto`, the `/api/meta/tenants/{tenantId}/api-keys` routes,
+`admin-ui/src/components/ApiKeysManager.vue`). It resolves in `AuthService.resolveBearer` to the
+same `AuthContext` an access token of that user produces, so the data path is untouched.
+
+Two decisions worth knowing:
+
+- **Stored as SHA-256, not Argon2.** A key is 40 characters of URL-safe `SecureRandom` output
+  (~240 bits), so there is nothing to brute force from the stored hash, while an Argon2 verify on
+  every single request would sit on the hottest path of the API and let an attacker burn CPU with
+  bogus keys. Comparison is constant time. Reasoning also lives in `utils/ApiKeys`.
+- **Records live in the system database**, with `tenantId` on each record, because the presented
+  key is the only input available at resolve time - no tenant is known yet, and scanning every
+  tenant database per request is not viable. The resolved context is tenant-bound and the
+  management endpoints only ever see keys of the tenant in their path.
+
+### Deliberately not implemented
+
+- **Per-key scoping or permissions** (only these collections, read-only, …). The permission comes
+  from the rules of the bound identity; a key is a way to prove an identity, not a second
+  authorization system. If a service needs less, bind it to a user whose rules give less. Adding
+  scopes would mean a second policy layer next to the rule engine and a `context.auth` that no
+  longer describes a user.
+- **Superadmin keys.** A key bound to a superadmin would be a cross-tenant bypass credential;
+  `ApiKeyService` refuses any role but `user`, at creation and again at resolve time. Programmatic
+  admin access stays `POST /api/admin/token`.
+- **Rate limiting for the auth surface.** Still absent instance-wide (see the note on
+  `/api/auth/issue-token` above). A key is at least not brute-forcible in practice - unlike a
+  password it carries ~240 bits of entropy - but request-level throttling remains a proxy concern
+  and a natural follow-up.
+- **Key rotation endpoint / usage analytics.** Rotation is "create new, revoke old" by hand, and
+  usage visibility is `lastUsedAt` plus the key name in the request log; there is no per-key call
+  count or last-IP.

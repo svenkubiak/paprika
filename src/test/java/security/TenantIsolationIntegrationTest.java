@@ -15,6 +15,7 @@ import org.bson.Document;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import services.ApiKeyService;
 import services.TenantCollectionService;
 import services.TenantService;
 import services.TenantUserService;
@@ -62,6 +63,8 @@ class TenantIsolationIntegrationTest {
     private static TenantDefinition tenantA;
     private static TenantDefinition tenantB;
     private static String tenantBUserId;
+    private static String tenantBApiKeyId;
+    private static String tenantBApiKeyPlaintext;
     private static String tokenA;
 
     @BeforeAll
@@ -81,6 +84,13 @@ class TenantIsolationIntegrationTest {
         TenantUserService users = Application.getInstance(TenantUserService.class);
         users.createUser(tenantA, SHARED_USERNAME, null, PASSWORD_A);
         tenantBUserId = String.valueOf(users.createUser(tenantB, SHARED_USERNAME, null, PASSWORD_B).get("id"));
+
+        // A key of tenant B, so the API key routes are exercised against another tenant's key -
+        // and so the plaintext becomes a leak marker of its own
+        ApiKeyService.CreatedApiKey keyB = Application.getInstance(ApiKeyService.class)
+                .create(tenantB, "iso-b-key", tenantBUserId, null);
+        tenantBApiKeyId = String.valueOf(keyB.key().get("id"));
+        tenantBApiKeyPlaintext = keyB.plaintext();
 
         tokenA = login(tenantA.slug(), PASSWORD_A);
     }
@@ -198,6 +208,7 @@ class TenantIsolationIntegrationTest {
                 "/api/meta/tenants",
                 "/api/meta/tenants/" + tenantB.id(),
                 "/api/meta/tenants/" + tenantB.id() + "/users",
+                "/api/meta/tenants/" + tenantB.id() + "/api-keys",
                 "/api/meta/global-hooks",
                 "/api/meta/schema/export",
                 "/api/admin/settings",
@@ -221,7 +232,12 @@ class TenantIsolationIntegrationTest {
         if (content == null || content.isBlank()) {
             return null;
         }
-        for (String marker : List.of(TENANT_B_SECRET, tenantB.databaseName(), tenantBUserId)) {
+        for (String marker : List.of(
+                TENANT_B_SECRET,
+                tenantB.databaseName(),
+                tenantBUserId,
+                tenantBApiKeyId,
+                tenantBApiKeyPlaintext)) {
             if (marker != null && !marker.isBlank() && content.contains(marker)) {
                 return marker;
             }
@@ -250,7 +266,8 @@ class TenantIsolationIntegrationTest {
                 .replace("{field}", PLACEHOLDER_FIELD)
                 .replace("{fileId}", PLACEHOLDER_FILE_ID)
                 .replace("{tenantId}", tenantB.id())
-                .replace("{userId}", tenantBUserId);
+                .replace("{userId}", tenantBUserId)
+                .replace("{keyId}", tenantBApiKeyId);
     }
 
     private static TestResponse call(String method, String uri) {

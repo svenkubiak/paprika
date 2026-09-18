@@ -16,6 +16,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import utils.ApiKeys;
 import utils.DbUtils;
 
 import java.time.Duration;
@@ -94,6 +95,15 @@ public class RequestLogService {
         if (ctx.hasAuthenticatedUser()) {
             entry.append("userId", ctx.userId());
             entry.append("userRole", ctx.role());
+        }
+
+        // Which credential proved the identity: an API key is named, an access token is not. The
+        // key itself is never logged, only its id and name.
+        Object apiKeyId = request.getAttribute(ApiKeys.ATTRIBUTE_ID);
+        if (apiKeyId instanceof String keyId) {
+            entry.append("apiKeyId", keyId);
+            Object apiKeyName = request.getAttribute(ApiKeys.ATTRIBUTE_NAME);
+            entry.append("apiKeyName", apiKeyName instanceof String name ? name : null);
         }
 
         Boolean hookFired = (Boolean) request.getAttribute("paprika.hook.fired");

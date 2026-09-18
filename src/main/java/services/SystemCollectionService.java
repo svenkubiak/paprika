@@ -25,6 +25,7 @@ public class SystemCollectionService {
     private final TenantDatabaseResolver resolver;
     private final TenantService tenantService;
     private final SystemUserService systemUserService;
+    private final ApiKeyService apiKeyService;
     private final Config config;
 
     @Inject
@@ -32,16 +33,19 @@ public class SystemCollectionService {
             TenantDatabaseResolver resolver,
             TenantService tenantService,
             SystemUserService systemUserService,
+            ApiKeyService apiKeyService,
             Config config) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
+        this.apiKeyService = Objects.requireNonNull(apiKeyService, "apiKeyService must not be null");
         this.config = Objects.requireNonNull(config, "config must not be null");
     }
 
     public void ensureSystemCollections() {
         ensureSuperadminUsersCollection();
         ensureSettingsCollection();
+        apiKeyService.ensureApiKeysCollection();
         tenantService.ensureTenantsCollection();
         bootstrapSuperadmin();
         tenantService.ensureDefaultTenant();

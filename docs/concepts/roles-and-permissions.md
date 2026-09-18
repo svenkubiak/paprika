@@ -48,6 +48,46 @@ A `posts` collection where anyone can read published posts, but only the author 
 - **Create**: `auth` — any signed-in tenant user can create a post (they become the owner automatically).
 - **Update / Delete**: `owner` — only the post's author can modify or remove it.
 
+## API keys: a second way to prove the same identity
+
+Paprika can authenticate a **machine** as well, and it does so without inventing a new kind of
+principal. An **API key** is a named, revocable credential bound to one existing tenant user:
+
+```http
+GET /api/collections/posts
+Authorization: Bearer pk_iY3f…
+```
+
+A key resolves to exactly the identity an access token of that same user resolves to. Nothing on
+the data path can tell the two apart - the rule engine, owner filtering, the hook envelope's
+`context.auth`, and `tokenIssuers` all see the bound user, not the key. That is the whole point:
+a key cannot do more (or less) than the user it belongs to.
+
+Consequences worth spelling out:
+
+- **A key never grants superadmin rights and never bypasses rules.** Keys can only be bound to
+  users with the `user` role; a key whose user is elevated afterwards stops working. Hitting a
+  locked rule with a key gives `403`, exactly like any other authenticated tenant user - the same
+  guarantee the [admin bypass](#admin-bypass-on-tenant-data) test suite enforces for admin
+  cookies presented as bearer tokens.
+- **A key is tenant-bound.** It resolves to its own tenant only; a collection of another tenant
+  simply does not exist for it.
+- **The plaintext exists once.** Paprika stores only a hash, so a key is shown exactly once, in
+  the response that creates it.
+- **Keys are revocable and named**, which a shared password is not: revoke one key without
+  touching anyone else, and see per key when it was last used. The request log records which key
+  authenticated a request (id and name, never the key).
+
+::: danger Security assumption
+**Whoever holds the key is the bound user** - including every permission that user's rules grant,
+and `tokenIssuers` membership if the user has it. Bind keys to a dedicated service account with
+exactly the rules that service needs, keep them server-side, and rotate them.
+:::
+
+Managing keys: [Auth settings → API keys](/admin-ui/auth-settings#api-keys). Password login,
+the admin session, and `POST /api/admin/token` are unchanged; API keys are an addition, not a
+replacement.
+
 ## Trusted token issuance
 
 Neither role covers the case of a **trusted backend** that authenticated a user somewhere else

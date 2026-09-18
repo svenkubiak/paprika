@@ -13,6 +13,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.TokenPair;
 import org.apache.commons.lang3.StringUtils;
+import utils.ApiKeys;
 
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
@@ -35,13 +36,15 @@ public class AuthService {
     private static final long REFRESH_TTL_SECONDS = 604800;
     private final Config config;
     private final SystemUserService systemUserService;
+    private final ApiKeyService apiKeyService;
     private final byte[] tokenSecret;
     private final byte[] tokenKey;
 
     @Inject
-    public AuthService(Config config, SystemUserService systemUserService) {
+    public AuthService(Config config, SystemUserService systemUserService, ApiKeyService apiKeyService) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
+        this.apiKeyService = Objects.requireNonNull(apiKeyService, "apiKeyService must not be null");
         this.tokenSecret = resolveTokenSecret(config);
         this.tokenKey = resolveTokenKey(config);
     }
@@ -70,6 +73,13 @@ public class AuthService {
         String authorization = request.getHeader("Authorization");
         if (StringUtils.isNotBlank(authorization) && authorization.startsWith(BEARER_PREFIX)) {
             String token = authorization.substring(BEARER_PREFIX.length()).trim();
+
+            // An API key is a bearer value as well, so it travels the existing filter paths
+            // untouched; the prefix decides which of the two it is without a parse attempt.
+            if (ApiKeys.isApiKey(token)) {
+                return resolveApiKey(token, request);
+            }
+
             AuthContext user = parseAccessToken(token);
             if (user != null) {
                 return user;
@@ -77,6 +87,21 @@ public class AuthService {
         }
 
         return AuthContext.guest();
+    }
+
+    /**
+     * An API key yields the very same context an access token of the bound user yields, so nothing
+     * downstream has to know which of the two authenticated the request. The key id and name are
+     * put on the request so the request log can name it - the key itself never is.
+     */
+    private AuthContext resolveApiKey(String key, Request request) {
+        return apiKeyService.resolve(key)
+                .map(resolved -> {
+                    request.addAttribute(ApiKeys.ATTRIBUTE_ID, resolved.keyId());
+                    request.addAttribute(ApiKeys.ATTRIBUTE_NAME, resolved.keyName());
+                    return resolved.auth();
+                })
+                .orElseGet(AuthContext::guest);
     }
 
     public boolean hasBearerToken(Request request) {

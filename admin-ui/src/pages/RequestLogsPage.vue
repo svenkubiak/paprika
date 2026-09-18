@@ -275,6 +275,15 @@ function statusColor(code: number) {
                     >
                       {{ entry.userRole === 'superadmin' ? 'superadmin' : 'user' }}
                     </UBadge>
+                    <UBadge
+                      v-if="entry.apiKeyId"
+                      color="warning"
+                      variant="subtle"
+                      size="xs"
+                      :title="'Authenticated with API key ' + (entry.apiKeyName || entry.apiKeyId)"
+                    >
+                      key: {{ entry.apiKeyName || entry.apiKeyId }}
+                    </UBadge>
                   </div>
                   <span v-else class="text-muted">—</span>
                 </td>
