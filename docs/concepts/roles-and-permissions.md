@@ -32,11 +32,13 @@ For everything a **tenant user** (not a superadmin) can do against `/api/collect
 | *(empty)* | `LOCKED` | Nobody can perform this operation — not even authenticated users. |
 | `*` | `PUBLIC` | Anyone can perform this operation, no authentication required. |
 | `auth` | `EXPRESSION` → `auth.id != null` | Any authenticated tenant user (valid JWT) can perform this operation. |
-| `owner` | `EXPRESSION` → `record.<ownerField> = auth.id` | Only the tenant user referenced by the record's owner field can perform this operation. |
+| `owner` | `EXPRESSION` → `record.<ownerField> = auth.id`, on `users`: `record.id = auth.id` | Only the tenant user referenced by the record's owner field can perform this operation - on the `users` collection, only the caller's own account (see below). |
 
 These four correspond directly to the **presets** shown in the admin UI: *No access*, *Public*, *Signed in*, *Own records*. These are the only values the API accepts — anything else is rejected on save with `RuleParseException`. Paprika deliberately keeps the rule engine to these four presets instead of exposing a full custom expression syntax like PocketBase's.
 
-**Owner rules** need an **owner field**: a `RELATION → users` field on the collection (see [Collections](/concepts/collections)) that stores which tenant user owns each record. On create, Paprika automatically fills this field with the authenticated user's id, so client apps don't need to send it themselves. If a collection has no such relation field yet, the admin UI falls back to a plain field named `owner`.
+**On the `users` collection, `owner` resolves differently:** to `record.id = auth.id`. The preset is the same, only its meaning adapts to the collection. A user record cannot hold a relation to itself, so the owner-field comparison would run against a field that does not exist and never match — which would lock every user out of their *own* account, the one case the preset is most obviously wanted for. The own record of a user is their identity, not a relation to it. Consequences: no `RELATION → users` field is needed on `users`, any stored owner field is ignored there and never written into a user record, and `owner` on the create rule can never be satisfied (there is no record yet whose id could equal the caller's — sign-up is `POST /api/auth/register`). Everything else is unchanged, including that `role` and the credential fields stay unwritable through the data plane.
+
+**Owner rules** on every other collection need an **owner field**: a `RELATION → users` field on the collection (see [Collections](/concepts/collections)) that stores which tenant user owns each record. On create, Paprika automatically fills this field with the authenticated user's id, so client apps don't need to send it themselves. If a collection has no such relation field yet, the admin UI falls back to a plain field named `owner`.
 
 List rules do double duty: besides gating whether the list endpoint is callable at all, they also filter *which* records come back — an `owner` list rule only returns the calling user's own records, never the whole collection.
 

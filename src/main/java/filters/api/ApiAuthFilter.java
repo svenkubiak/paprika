@@ -130,9 +130,9 @@ public class ApiAuthFilter implements PerRequestFilter {
         }
 
         return switch (operation) {
-            case LIST -> applyListRule(request, response, rule, rules.ownerFieldOrDefault(), auth);
+            case LIST -> applyListRule(request, response, rule, rules.ownerFieldOrDefault(), auth, collection);
             case VIEW -> checkRecordRule(request, response, tenantContext, collection, rule, rules.ownerFieldOrDefault(), auth, operation);
-            case CREATE -> checkCreateRule(request, rule, rules.ownerFieldOrDefault(), auth, response);
+            case CREATE -> checkCreateRule(request, rule, rules.ownerFieldOrDefault(), auth, response, collection);
             case UPDATE, DELETE -> checkRecordRule(request, response, tenantContext, collection, rule, rules.ownerFieldOrDefault(), auth, operation);
         };
     }
@@ -165,7 +165,13 @@ public class ApiAuthFilter implements PerRequestFilter {
      */
     private record ResolvedAuth(AuthContext auth, boolean adminBypass) { }
 
-    private Response applyListRule(Request request, Response response, String rule, String ownerField, AuthContext auth) {
+    private Response applyListRule(
+            Request request,
+            Response response,
+            String rule,
+            String ownerField,
+            AuthContext auth,
+            String collection) {
         if (rule != null && "auth".equalsIgnoreCase(rule.trim()) && !auth.isAuthenticated()) {
             return log(request, Response.unauthorized()
                     .header("WWW-Authenticate", "Bearer")
@@ -173,7 +179,7 @@ public class ApiAuthFilter implements PerRequestFilter {
                     .end());
         }
 
-        Bson filter = ruleService.listFilter(rule, ownerField, auth);
+        Bson filter = ruleService.listFilter(rule, ownerField, auth, collection);
         if (filter == null) {
             // A rule that cannot be translated into a query must not result in an unscoped list
             return log(request, Response.forbidden().bodyJson(FORBIDDEN_BODY).end());
@@ -188,9 +194,10 @@ public class ApiAuthFilter implements PerRequestFilter {
             String rule,
             String ownerField,
             AuthContext auth,
-            Response response) {
+            Response response,
+            String collection) {
         Map<String, Object> body = parseBodyMap(request);
-        if (!ruleService.canAccess(rule, ownerField, auth, null, body)) {
+        if (!ruleService.canAccess(rule, ownerField, auth, null, body, collection)) {
             if (!auth.isAuthenticated()) {
                 return log(request, Response.unauthorized()
                         .header("WWW-Authenticate", "Bearer")
@@ -224,7 +231,7 @@ public class ApiAuthFilter implements PerRequestFilter {
         }
 
         Map<String, Object> body = operation == RuleOperation.UPDATE ? parseBodyMap(request) : null;
-        if (!ruleService.canAccess(rule, ownerField, auth, record, body)) {
+        if (!ruleService.canAccess(rule, ownerField, auth, record, body, collection)) {
             return log(request, Response.notFound().end());
         }
 

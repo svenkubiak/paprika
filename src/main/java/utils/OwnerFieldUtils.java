@@ -18,6 +18,23 @@ public final class OwnerFieldUtils {
     private OwnerFieldUtils() {
     }
 
+    /**
+     * Whether a record of this collection <em>is</em> its own owner, instead of pointing at one.
+     * <p>
+     * The {@code owner} rule compares an owner field - always a RELATION to {@code users} - against
+     * the caller. On the {@code users} collection itself there is nothing to point at: a user
+     * record has no relation to itself, so the comparison would run against a field that does not
+     * exist and never match, locking every user out of their own account. There the "own record"
+     * is the identity itself, so the rule resolves to {@code record.id = auth.id} and the owner
+     * field is not consulted at all (a stored value stays untouched and unused).
+     * <p>
+     * Single place this is decided, so the rule resolution, the create-time owner assignment and
+     * the admin UI cannot drift apart.
+     */
+    public static boolean isSelfOwnedCollection(String collection) {
+        return SystemCollections.USERS.equals(collection);
+    }
+
     public static boolean isUsersRelationField(FieldDefinition field) {
         return field != null
                 && field.type() == FieldType.RELATION
@@ -60,6 +77,12 @@ public final class OwnerFieldUtils {
 
     public static boolean shouldAssignOwnerOnCreate(CollectionDefinition definition, AuthContext auth) {
         if (!auth.isAuthenticated() || definition == null) {
+            return false;
+        }
+
+        // On a self-owned collection the owner field plays no part in the rules, so nothing may
+        // write one into a new record either
+        if (isSelfOwnedCollection(definition.name())) {
             return false;
         }
 

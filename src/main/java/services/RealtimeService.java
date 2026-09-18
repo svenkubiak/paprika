@@ -216,7 +216,8 @@ public class RealtimeService {
                 rules.ownerFieldOrDefault(),
                 auth,
                 record,
-                null);
+                null,
+                collection);
     }
 
     private boolean shouldDeliver(

@@ -199,7 +199,7 @@ async function saveRules() {
       variant="soft"
       icon="i-lucide-user-plus"
       title="Self-registration is separate from these rules"
-      description="These rules only govern the REST API for user records (/api/collections/users). Self-registration uses POST /api/auth/register and is controlled by the Self-registration toggle on the Data tab — it is not affected by the Create rule. Registered users can only read or edit their own profile once you open the View/Update rules (e.g. Own records)."
+      description="These rules only govern the REST API for user records (/api/collections/users). Self-registration uses POST /api/auth/register and is controlled by the Self-registration toggle on the Data tab — it is not affected by the Create rule. Set the View/Update rules to Own records to let each user read and edit exactly their own profile."
     />
 
     <UCard>
@@ -236,7 +236,16 @@ async function saveRules() {
 
       <div v-if="loading" class="py-8 text-center text-muted">Loading rules…</div>
       <div v-else class="space-y-4">
-        <UFormField v-if="usesOwnerRules" class="w-full">
+        <UAlert
+          v-if="isUsers && usesOwnerRules"
+          color="primary"
+          variant="soft"
+          icon="i-lucide-user-cog"
+          title="Own records means the user's own account here"
+          description="On the users collection, Own records resolves to record.id = auth.id: each user reaches exactly their own record. No RELATION → users field and no owner field are needed - a stored owner field is ignored. Create is never granted by Own records; sign-up goes through POST /api/auth/register."
+        />
+
+        <UFormField v-if="usesOwnerRules && !isUsers" class="w-full">
           <template #label>
             <FieldLabelHelp
               label="Owner field"
@@ -274,7 +283,12 @@ async function saveRules() {
         <li>
           Own records compares the owner field to <code>auth.id</code> from the tenant user's JWT.
         </li>
-        <li>
+        <li v-if="isUsers">
+          On this collection, Own records compares <code>record.id</code> to <code>auth.id</code>
+          instead — the own record of a user is their own account. No owner field is involved, and
+          Own records never grants Create here.
+        </li>
+        <li v-else>
           Add a <code>RELATION → users</code> field in Schema, select it here, then use the Own records
           preset. Paprika sets the field automatically on create.
         </li>

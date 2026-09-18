@@ -23,7 +23,20 @@ public final class RuleService {
         return RuleMode.EXPRESSION;
     }
 
+    /**
+     * Resolution for a collection whose records point at their owner - every collection but
+     * {@code users}.
+     * <p>
+     * The collection travels as an optional trailing argument rather than through a new parameter
+     * on every signature: only the {@code owner} preset cares about it, the callers that know the
+     * collection are few (the data-plane auth filter and the realtime delivery check), and this
+     * way every other caller - including the rule unit tests - keeps working unchanged.
+     */
     public String normalizeRule(String rule, String ownerField) {
+        return normalizeRule(rule, ownerField, null);
+    }
+
+    public String normalizeRule(String rule, String ownerField, String collection) {
         if (rule == null || rule.isBlank()) {
             return null;
         }
@@ -35,7 +48,11 @@ public final class RuleService {
             return "auth.id != null";
         }
         if ("owner".equalsIgnoreCase(trimmed)) {
-            return "record." + ownerField + " = auth.id";
+            // See OwnerFieldUtils#isSelfOwnedCollection: on the users collection the own record is
+            // the caller's own account, not a relation pointing at it
+            return OwnerFieldUtils.isSelfOwnedCollection(collection)
+                    ? "record.id = auth.id"
+                    : "record." + ownerField + " = auth.id";
         }
         return trimmed;
     }
@@ -92,12 +109,32 @@ public final class RuleService {
             Document record,
             Map<String, Object> body) {
 
+        return canAccess(rule, ownerField, auth, record, body, null);
+    }
+
+    public boolean canAccess(
+            String rule,
+            String ownerField,
+            AuthContext auth,
+            Document record,
+            Map<String, Object> body,
+            String collection) {
+
         RuleMode mode = resolveMode(rule);
         if (mode == RuleMode.LOCKED) {
             return false;
         }
         if (mode == RuleMode.PUBLIC) {
             return true;
+        }
+
+        // A create on a self-owned collection has no record yet whose id could equal the caller's,
+        // so "own records" can never be satisfied there. Deciding it here rather than letting the
+        // expression decide keeps a client-supplied id out of the question: sending one's own id in
+        // the body must not turn into permission to insert a second record under that identity.
+        // Sign-up goes through POST /api/auth/register.
+        if (record == null && isOwnerRule(rule) && OwnerFieldUtils.isSelfOwnedCollection(collection)) {
+            return false;
         }
 
         Map<String, Object> effectiveBody = OwnerFieldUtils.effectiveCreateBody(rule, ownerField, auth, body);
@@ -109,7 +146,7 @@ public final class RuleService {
                 ? record
                 : OwnerFieldUtils.effectiveCreateRecord(effectiveBody);
 
-        String normalized = normalizeRule(rule, ownerField);
+        String normalized = normalizeRule(rule, ownerField, collection);
         RuleNode node = RuleParser.parse(normalized);
         return RuleEvaluator.evaluate(node, RuleEvaluationContext.of(auth, effectiveRecord, effectiveBody));
     }
@@ -119,6 +156,10 @@ public final class RuleService {
     }
 
     public Bson listFilter(String rule, String ownerField, AuthContext auth) {
+        return listFilter(rule, ownerField, auth, null);
+    }
+
+    public Bson listFilter(String rule, String ownerField, AuthContext auth, String collection) {
         RuleMode mode = resolveMode(rule);
         if (mode == RuleMode.LOCKED) {
             return null;
@@ -127,7 +168,7 @@ public final class RuleService {
             return Filters.empty();
         }
 
-        String normalized = normalizeRule(rule, ownerField);
+        String normalized = normalizeRule(rule, ownerField, collection);
         RuleNode node = RuleParser.parse(normalized);
         return RuleToMongoConverter.toFilter(node, auth);
     }
