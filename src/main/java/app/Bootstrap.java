@@ -34,12 +34,17 @@ public class Bootstrap implements MangooBootstrap {
                 On.post().to("/api/admin/token").respondeWith("token"),
                 On.post().to("/api/admin/token/2fa").respondeWith("tokenTwoFactor"),
                 On.post().to("/api/admin/switch-tenant").respondeWith("switchTenantJwt"),
-                On.post().to("/logout").respondeWith("logout")
+                On.post().to("/logout").respondeWith("logout"),
+                // Deliberately not behind withAuthentication(): the admin UI asks this endpoint
+                // whether it still has a session. Guarding it would answer that question with a
+                // 302 to the login page, so the SPA would have to parse an HTML body out of a
+                // 200 response to notice. Unauthenticated callers get a payload that says
+                // exactly that and nothing else (see AdminBootstrapService).
+                On.get().to("/admin/bootstrap").respondeWith("bootstrap")
         );
 
         Bind.controller(AdminController.class).withAuthentication().withRoutes(
                 On.get().to("/").respondeWith("admin"),
-                On.get().to("/admin/bootstrap").respondeWith("bootstrap"),
                 On.post().to("/admin/switch-tenant").respondeWith("switchTenant"),
                 On.get().to("/admin/tenants").respondeWith("admin"),
                 On.get().to("/admin/settings").respondeWith("admin"),
@@ -47,6 +52,12 @@ public class Bootstrap implements MangooBootstrap {
                 On.get().to("/admin/tenant-settings").respondeWith("admin"),
                 On.get().to("/admin/logs").respondeWith("admin"),
                 On.get().to("/admin/users").respondeWith("admin"),
+                // Every client side route of the admin UI needs a server side counterpart that
+                // serves the shell, otherwise reloading the page (or any full page load the SPA
+                // itself triggers) ends on the framework's 404 page instead of the admin UI.
+                On.get().to("/admin/user-settings").respondeWith("admin"),
+                On.get().to("/admin/backup").respondeWith("admin"),
+                On.get().to("/admin/superadmins").respondeWith("admin"),
                 On.get().to("/admin/collections/{collection}/data").respondeWith("admin"),
                 On.get().to("/admin/collections/{collection}/schema").respondeWith("admin"),
                 On.get().to("/admin/collections/{collection}/rules").respondeWith("admin"),

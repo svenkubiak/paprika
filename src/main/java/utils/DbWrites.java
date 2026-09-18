@@ -1,5 +1,7 @@
 package utils;
 
+import com.mongodb.DuplicateKeyException;
+import com.mongodb.MongoCommandException;
 import com.mongodb.MongoWriteException;
 
 /**
@@ -18,7 +20,17 @@ public final class DbWrites {
     }
 
     public static boolean isDuplicateKey(RuntimeException e) {
-        return e instanceof MongoWriteException write && write.getError().getCode() == DUPLICATE_KEY_CODE;
+        if (e instanceof MongoWriteException write) {
+            return write.getError().getCode() == DUPLICATE_KEY_CODE;
+        }
+
+        // Building a unique index over data that is not unique fails as a command, not as a write,
+        // so the write path alone does not catch it.
+        if (e instanceof MongoCommandException command) {
+            return command.getErrorCode() == DUPLICATE_KEY_CODE;
+        }
+
+        return e instanceof DuplicateKeyException;
     }
 
     /**

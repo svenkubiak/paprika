@@ -6,10 +6,8 @@ import dtos.LoginDto;
 import dtos.SwitchTenantDto;
 import dtos.TwoFactorCodeDto;
 import enums.Role;
-import filters.TenantContextFilter;
 import helpers.AdminLoginResponseHelper;
 import helpers.AdminUiResponseHelper;
-import io.mangoo.annotations.FilterWith;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Authentication;
 import io.mangoo.routing.bindings.Form;
@@ -26,7 +24,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-@FilterWith(TenantContextFilter.class)
+/**
+ * Deliberately without TenantContextFilter. None of these routes work on tenant data - the admin
+ * UI shell, the login flow, and the bootstrap payload all resolve what they need from the session
+ * themselves. The filter answers a request it cannot resolve a tenant for with 403, which on a
+ * setup without any tenant turned the login page itself into an error response.
+ */
 public class AdminController {
     private final AuthResponseService authResponseService;
     private final AdminBootstrapService adminBootstrapService;

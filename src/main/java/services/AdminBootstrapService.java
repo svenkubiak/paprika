@@ -38,6 +38,14 @@ public class AdminBootstrapService {
 
     public Map<String, Object> buildPayload(Request request) {
         AuthContext auth = authService.resolveAdmin(request).orElse(AuthContext.guest());
+
+        // The endpoint is reachable without a session so the admin UI can ask whether it still
+        // has one. Anyone without a session only learns that - no tenants, no collection names,
+        // no stats. The guest tenant context the request filter resolves must not leak here.
+        if (!auth.isAuthenticated()) {
+            return unauthenticatedPayload();
+        }
+
         boolean defaultTenantApplied = applyDefaultTenantIfMissing(request, auth);
         TenantContext ctx = resolveContext(request, auth);
         boolean hasActiveTenant = ctx.hasTenantContext();
@@ -55,6 +63,24 @@ public class AdminBootstrapService {
         payload.put("collections", visibleCollections(ctx));
         payload.put("relationCollections", relationCollections(ctx));
         payload.put("stats", buildStats(ctx, auth));
+
+        return payload;
+    }
+
+    private Map<String, Object> unauthenticatedPayload() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("version", AppVersion.get());
+        payload.put("authenticated", false);
+        payload.put("isSuperAdmin", false);
+        payload.put("adminId", null);
+        payload.put("smtpConfigured", false);
+        payload.put("hasActiveTenant", false);
+        payload.put("activeTenant", null);
+        payload.put("defaultTenantApplied", false);
+        payload.put("tenants", List.of());
+        payload.put("collections", List.of());
+        payload.put("relationCollections", List.of());
+        payload.put("stats", new Stats(true, true, 0, 0, 0, Application.getUptime().toSeconds()));
 
         return payload;
     }

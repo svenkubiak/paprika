@@ -100,8 +100,11 @@ export default defineConfig({
       '/admin': 'http://localhost:9090',
       '/api': 'http://localhost:9090',
       '/authenticate': 'http://localhost:9090',
-      '/logout': 'http://localhost:9090',
-      '/login': 'http://localhost:9090'
+      '/logout': 'http://localhost:9090'
+      // `/login` is deliberately not proxied: the backend would answer it with the *built*
+      // index.html, whose hashed /assets/js/* files the dev server does not serve. Every full
+      // page load onto the login page was a white page because of it. Vite's history fallback
+      // serves the dev shell instead, and the login form posts to /api/admin/login anyway.
     }
   }
 })

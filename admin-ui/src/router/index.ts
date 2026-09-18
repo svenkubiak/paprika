@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useBootstrap } from '@/composables/useBootstrap'
+import { onSessionExpired } from '@/lib/api'
 import { isStaleBuildError, reloadForStaleBuild, renderStaleBuildNotice } from '@/lib/stale-build'
 
 const router = createRouter({
@@ -144,6 +145,27 @@ window.addEventListener('vite:preloadError', () => {
   reloadForStaleBuild(window.location.pathname + window.location.search)
 })
 
+/**
+ * Any request that comes back without a session ends up here. This is a router navigation and not
+ * a full page load on purpose - the page load used to race the navigation the guard below starts
+ * for the very same reason, and whichever one lost left the app unmounted. Everything the old
+ * session put in memory is dropped explicitly instead.
+ */
+onSessionExpired(() => {
+  const { reset } = useBootstrap()
+  reset()
+
+  const current = router.currentRoute.value
+  if (current.meta.public) {
+    return
+  }
+
+  void router.replace({
+    name: 'login',
+    query: { reason: 'expired', redirect: current.fullPath }
+  })
+})
+
 router.beforeEach(async (to) => {
   if (to.meta.public) {
     return true
@@ -153,6 +175,8 @@ router.beforeEach(async (to) => {
     const { load } = useBootstrap()
     const data = await load()
     if (!data?.authenticated) {
+      // `reason` is left off here: a guard that runs before anything was ever loaded cannot tell
+      // an expired session apart from a bookmark opened in a fresh browser.
       return { name: 'login', query: { redirect: to.fullPath } }
     }
 

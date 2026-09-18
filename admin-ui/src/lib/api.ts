@@ -18,11 +18,14 @@ import type {
 
 export class ApiError extends Error {
   status: number
+  /** Set when the request failed because the admin session is gone, not because of its payload. */
+  sessionExpired: boolean
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, sessionExpired = false) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.sessionExpired = sessionExpired
   }
 }
 
@@ -41,25 +44,35 @@ const CREDENTIAL_ENDPOINTS = new Set([
   '/api/admin/token/2fa'
 ])
 
-let leavingForLogin = false
+type SessionExpiredHandler = () => void
 
-function redirectToLogin(): never {
-  // A full page load rather than a router navigation: the session is gone, and every bit of state
-  // cached from it - bootstrap payload, active tenant, open sheets - has to go with it. The flag
-  // keeps a page that fires several requests at once from stacking up navigations.
-  if (!leavingForLogin) {
-    leavingForLogin = true
+let sessionExpiredHandler: SessionExpiredHandler | undefined
+let sessionExpiredNotified = false
 
-    const query = new URLSearchParams({ reason: 'expired' })
-    const target = window.location.pathname + window.location.search
-    if (window.location.pathname !== LOGIN_PATH) {
-      query.set('redirect', target)
-    }
+/**
+ * Installed by the router. Keeping the navigation out of this module is what stops an expired
+ * session from being answered twice - once by a full page load started here and once by the
+ * router guard that catches the error below. Those two raced each other, and the loser was an
+ * aborted navigation with an empty <div id="app">.
+ */
+export function onSessionExpired(handler: SessionExpiredHandler): void {
+  sessionExpiredHandler = handler
+}
 
-    window.location.replace(`${LOGIN_PATH}?${query}`)
+/** Lets the login page report that a session exists again. */
+export function resetSessionExpired(): void {
+  sessionExpiredNotified = false
+}
+
+function sessionExpired(): never {
+  // A page can fire several requests at once, and all of them fail the same way - only the first
+  // one gets to trigger the handler.
+  if (!sessionExpiredNotified) {
+    sessionExpiredNotified = true
+    sessionExpiredHandler?.()
   }
 
-  throw new ApiError('Your session has expired', 401)
+  throw new ApiError('Your session has expired', 401, true)
 }
 
 /**
@@ -74,7 +87,7 @@ function guardSession(response: Response, url: string): void {
   }
 
   if (response.status === 401 || (response.redirected && new URL(response.url).pathname === LOGIN_PATH)) {
-    redirectToLogin()
+    sessionExpired()
   }
 }
 

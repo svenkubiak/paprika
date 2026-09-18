@@ -89,7 +89,7 @@ public class SchemaService {
                         existing.system()
                 );
                 tenantCollections.replaceDefinition(ctx, merged);
-                createMissingIndexes(ctx, merged);
+                applyIndexes(ctx, merged);
                 updated++;
             } else {
                 String newId = UUID.randomUUID().toString();
@@ -206,34 +206,24 @@ public class SchemaService {
         if (!exists) {
             db.createCollection(physicalName);
         }
-        if (definition.indexes() != null) {
-            for (var index : definition.indexes()) {
-                try {
-                    tenantCollections.createIndex(ctx, definition.name(), index);
-                } catch (Exception e) {
-                    LOG.warn("Could not create index {} on {}: {}", index.name(), definition.name(), e.getMessage());
-                }
-            }
-        }
+        applyIndexes(ctx, definition);
     }
 
-    private void createMissingIndexes(TenantContext ctx, CollectionDefinition definition) {
-        if (definition.indexes() == null) return;
+    /**
+     * An import is not allowed to fail over an index: the definition it belongs to is already
+     * stored, and data that stands in the way of a unique index is something the admin has to
+     * clean up afterwards. Matching indexes are left alone, changed ones (unique flipped, fields
+     * or direction edited) are rebuilt.
+     */
+    private void applyIndexes(TenantContext ctx, CollectionDefinition definition) {
+        if (definition.indexes() == null) {
+            return;
+        }
 
-        var dataCol = tenantCollections.dataCollection(ctx, definition.name());
-        var existingIndexNames = StreamSupport
-                .stream(dataCol.listIndexes().spliterator(), false)
-                .map(d -> d.getString("name"))
-                .collect(java.util.stream.Collectors.toSet());
-
-        for (var index : definition.indexes()) {
-            if (!existingIndexNames.contains(index.name())) {
-                try {
-                    tenantCollections.createIndex(ctx, definition.name(), index);
-                } catch (Exception e) {
-                    LOG.warn("Could not create index {} on {}: {}", index.name(), definition.name(), e.getMessage());
-                }
-            }
+        try {
+            tenantCollections.syncIndexes(ctx, definition.name(), definition.indexes());
+        } catch (RuntimeException e) {
+            LOG.warn("Could not apply indexes on {}: {}", definition.name(), e.getMessage());
         }
     }
 

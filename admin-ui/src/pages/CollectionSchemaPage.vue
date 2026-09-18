@@ -7,7 +7,8 @@ import { useSchemaEditorSheet, emptyRow } from '@/composables/useSchemaEditorShe
 import { useAppToast } from '@/composables/useAppToast'
 import { modalUi } from '@/lib/overlay-ui'
 import { fieldTypeIcon, fieldTypeLabel } from '@/lib/utils'
-import { isReservedSchemaFieldName } from '@/lib/system-fields'
+import IndexEditorModal from '@/components/IndexEditorModal.vue'
+import { isReservedSchemaFieldName, SYSTEM_RECORD_FIELDS } from '@/lib/system-fields'
 import { optionsToSchemaRow, parseSelectValues, schemaRowToField } from '@/lib/schema-options'
 import {
   isProtectedUserField,
@@ -28,6 +29,32 @@ const loading = ref(true)
 const fieldDeleteOpen = ref(false)
 const fieldDeleteTarget = ref<{ index: number; name: string } | null>(null)
 
+const indexEditorOpen = ref(false)
+const indexEditorMode = ref<'add' | 'edit'>('add')
+const indexEditorTarget = ref<IndexDefinition | null>(null)
+const indexDeleteOpen = ref(false)
+const indexDeleteTarget = ref<IndexDefinition | null>(null)
+
+const indexes = computed<IndexDefinition[]>(() => definition.value?.indexes || [])
+
+// An index may also be built on the fields every record carries, which are not part of the
+// schema field list.
+const indexableFields = computed(() => indexableFieldsFor(rows.value))
+
+const takenIndexNames = computed(() =>
+  indexes.value
+    .map((index) => index.name)
+    .filter((name) => indexEditorMode.value === 'add' || name !== indexEditorTarget.value?.name)
+)
+
+/**
+ * Indexes the server owns (the unique username index on the users collection) are rebuilt on
+ * every save, so offering to edit or delete them would only produce a change that reverts.
+ */
+function isManagedIndex(index: IndexDefinition): boolean {
+  return index.fields.some((field) => isProtectedUserField(collection.value, field.field))
+}
+
 const columns = [
   { accessorKey: 'name', header: 'Field' },
   { accessorKey: 'type', header: 'Type' },
@@ -35,6 +62,13 @@ const columns = [
   { accessorKey: 'indexEnabled', header: 'Indexed' },
   { accessorKey: 'indexDirection', header: 'Direction' },
   { accessorKey: 'indexUnique', header: 'Unique' },
+  { id: 'actions', header: '' }
+]
+
+const indexColumns = [
+  { accessorKey: 'name', header: 'Index' },
+  { accessorKey: 'fields', header: 'Fields' },
+  { accessorKey: 'unique', header: 'Unique' },
   { id: 'actions', header: '' }
 ]
 
@@ -205,42 +239,155 @@ async function confirmDeleteField() {
   await persistSchema(nextRows, 'Field deleted')
 }
 
-function buildDefinitionFromRows(sourceRows: SchemaRow[]): CollectionDefinition {
+function buildDefinitionFromRows(
+  sourceRows: SchemaRow[],
+  overrideIndexes?: IndexDefinition[]
+): CollectionDefinition {
   if (!definition.value) throw new Error('Missing definition')
 
-  const fields = sourceRows.map((row) => schemaRowToField(row))
-  const indexes: IndexDefinition[] = []
-  const compoundIndexes = (definition.value.indexes || []).filter((index) => index.fields.length > 1)
+  return {
+    ...definition.value,
+    fields: sourceRows.map((row) => schemaRowToField(row)),
+    indexes: overrideIndexes ?? indexesForRows(sourceRows)
+  }
+}
+
+/**
+ * Rebuilds the index list for a change made in the field table. The per-field toggles only ever
+ * describe one single-field index per field; everything else - compound indexes and any extra
+ * index built in the index editor - is carried over untouched.
+ */
+function indexesForRows(sourceRows: SchemaRow[]): IndexDefinition[] {
+  const existing = definition.value?.indexes || []
+  const generated: IndexDefinition[] = []
 
   // Keep the name an existing single-field index already has instead of regenerating it: names
   // are part of the index identity server-side, so renaming one means dropping and rebuilding it.
   // Indexes created outside this editor (meta API, or server-owned ones like the unique username
-  // index on users) do not follow the idx_<field> convention. A renamed field misses the lookup
-  // and falls back to the convention, which is what we want - the old index is gone with the field.
-  const existingIndexNames = new Map<string, string>()
-  for (const index of definition.value.indexes || []) {
+  // index on users) do not follow the idx_<field> convention.
+  const nameByField = new Map<string, string>()
+  for (const index of existing) {
     if (index.fields.length === 1) {
-      existingIndexNames.set(index.fields[0].field, index.name)
+      nameByField.set(index.fields[0].field, index.name)
     }
   }
+
+  // Names the field table owns. Such an index is replaced by what its row says, or dropped when
+  // the row's toggle is off - it must not be carried over as an untouched one.
+  const ownedByRows = new Set<string>()
 
   for (const row of sourceRows) {
     const name = row.name.trim()
     if (!name) continue
+
+    const existingName = nameByField.get(name)
+    if (existingName) {
+      ownedByRows.add(existingName)
+    }
+
     if (row.indexEnabled) {
-      indexes.push({
-        name: existingIndexNames.get(name) ?? `idx_${name}`,
+      const indexName = existingName ?? `idx_${name}`
+      ownedByRows.add(indexName)
+      generated.push({
+        name: indexName,
         unique: row.indexUnique,
         fields: [{ field: name, direction: row.indexDirection }]
       })
     }
   }
 
-  return {
-    ...definition.value,
-    fields,
-    indexes: [...indexes, ...compoundIndexes]
+  // A field that is gone takes every index mentioning it with it. An index pointing at a field
+  // that no longer exists is rejected by the server for the whole definition, so a deleted field
+  // that appears in a compound index would otherwise make the collection unsavable.
+  const known = new Set(indexableFieldsFor(sourceRows))
+  const preserved = existing.filter(
+    (index) =>
+      !ownedByRows.has(index.name) && index.fields.every((field) => known.has(field.field))
+  )
+
+  return [...generated, ...preserved]
+}
+
+function indexableFieldsFor(sourceRows: SchemaRow[]): string[] {
+  return [...sourceRows.map((row) => row.name.trim()).filter(Boolean), ...SYSTEM_RECORD_FIELDS]
+}
+
+function openAddIndex() {
+  indexEditorMode.value = 'add'
+  indexEditorTarget.value = null
+  indexEditorOpen.value = true
+}
+
+function openEditIndex(index: IndexDefinition) {
+  if (isManagedIndex(index)) return
+  indexEditorMode.value = 'edit'
+  indexEditorTarget.value = index
+  indexEditorOpen.value = true
+}
+
+async function saveIndex(edited: IndexDefinition) {
+  const target = indexEditorTarget.value
+  const next =
+    indexEditorMode.value === 'add'
+      ? [...indexes.value, edited]
+      : indexes.value.map((index) => (index.name === target?.name ? edited : index))
+
+  const saved = await persistIndexes(
+    next,
+    indexEditorMode.value === 'add' ? 'Index created' : 'Index saved'
+  )
+  if (saved) {
+    indexEditorOpen.value = false
   }
+}
+
+function requestDeleteIndex(index: IndexDefinition) {
+  if (isManagedIndex(index)) return
+  indexDeleteTarget.value = index
+  indexDeleteOpen.value = true
+}
+
+async function confirmDeleteIndex() {
+  const target = indexDeleteTarget.value
+  if (!target) return
+  indexDeleteOpen.value = false
+  indexDeleteTarget.value = null
+  await persistIndexes(
+    indexes.value.filter((index) => index.name !== target.name),
+    'Index deleted'
+  )
+}
+
+/**
+ * Saves an index list as it is instead of deriving it from the field rows, so an index the field
+ * table cannot express - a compound one, or a second index on the same field - survives.
+ */
+async function persistIndexes(
+  nextIndexes: IndexDefinition[],
+  successMessage: string
+): Promise<boolean> {
+  if (!definition.value) return false
+  setSaving(true)
+  try {
+    const next = buildDefinitionFromRows(rows.value, nextIndexes)
+    await api.updateCollectionDefinition(collection.value, definition.value.id, next)
+    await loadDefinition()
+    toast.add({ title: successMessage, color: 'success', icon: 'i-lucide-circle-check' })
+    return true
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to save index',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+    return false
+  } finally {
+    setSaving(false)
+  }
+}
+
+function describeIndexFields(index: IndexDefinition): string {
+  return index.fields.map((field) => `${field.field} ${field.direction}`).join(', ')
 }
 </script>
 
@@ -339,6 +486,102 @@ function buildDefinitionFromRows(sourceRows: SchemaRow[]): CollectionDefinition 
         </template>
       </UTable>
     </UCard>
+
+    <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+      <div>
+        <h2 class="font-semibold">Indexes</h2>
+        <p class="text-sm text-muted">
+          Every index of this collection, including compound ones. Single-field indexes can also
+          be toggled on the field itself.
+        </p>
+      </div>
+      <UButton icon="i-lucide-plus" variant="soft" @click="openAddIndex">Add index</UButton>
+    </div>
+
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
+      <UTable :data="indexes" :columns="indexColumns" :loading="loading">
+        <template #name-cell="{ row }">
+          <div class="flex items-center gap-1.5">
+            <code>{{ row.original.name }}</code>
+            <UIcon
+              v-if="isManagedIndex(row.original)"
+              name="i-lucide-lock"
+              class="size-3.5 text-muted"
+              aria-label="Managed index"
+            />
+            <UBadge v-if="row.original.fields.length > 1" variant="soft" color="primary">
+              compound
+            </UBadge>
+          </div>
+        </template>
+        <template #fields-cell="{ row }">
+          <span class="font-mono text-sm">{{ describeIndexFields(row.original) }}</span>
+        </template>
+        <template #unique-cell="{ row }">
+          <UBadge :color="row.original.unique ? 'success' : 'neutral'" variant="soft">
+            {{ row.original.unique ? 'yes' : 'no' }}
+          </UBadge>
+        </template>
+        <template #actions-cell="{ row }">
+          <div v-if="!isManagedIndex(row.original)" class="flex justify-end gap-2" @click.stop>
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-pencil"
+              aria-label="Edit index"
+              @click="openEditIndex(row.original)"
+            />
+            <UButton
+              size="sm"
+              color="error"
+              variant="soft"
+              icon="i-lucide-trash-2"
+              aria-label="Delete index"
+              @click="requestDeleteIndex(row.original)"
+            />
+          </div>
+        </template>
+        <template #empty>
+          <p class="py-6 text-center text-sm text-muted">No indexes on this collection yet.</p>
+        </template>
+      </UTable>
+    </UCard>
+
+    <IndexEditorModal
+      v-model:open="indexEditorOpen"
+      :mode="indexEditorMode"
+      :index="indexEditorTarget"
+      :available-fields="indexableFields"
+      :taken-names="takenIndexNames"
+      :saving="saving"
+      @save="saveIndex"
+    />
+
+    <UModal v-model:open="indexDeleteOpen" portal="body" :ui="modalUi">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-triangle-alert" class="size-5 text-error" />
+              <h3 class="font-semibold">Delete index</h3>
+            </div>
+          </template>
+          <p class="text-sm text-muted">
+            Delete index "{{ indexDeleteTarget?.name }}"? Queries relying on it get slower, no data
+            is removed.
+          </p>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="indexDeleteOpen = false">Cancel</UButton>
+              <UButton color="error" :loading="saving" icon="i-lucide-trash-2" @click="confirmDeleteIndex">
+                Delete index
+              </UButton>
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
 
     <UModal v-model:open="fieldDeleteOpen" portal="body" :ui="modalUi">
       <template #content>

@@ -38,7 +38,7 @@ class CollectionRecordServiceListTest {
         // A request that never passed through ApiAuthFilter carries no authorization decision.
         // Listing unfiltered here would return every record, so the service has to refuse instead.
         CollectionRecordService.RecordResult result = Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, new Request(), 0, 25);
+                .list(ctx, collection, new Request(), 0, 25, null);
 
         assertThat(result.status(), is(CollectionRecordService.RecordResult.Status.FORBIDDEN));
         assertThat(result.body(), is((Object) null));
@@ -66,7 +66,7 @@ class CollectionRecordServiceListTest {
         AuthorizationDecision.granted(RuleOperation.VIEW).storeIn(request);
 
         CollectionRecordService.RecordResult result = Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, request, 0, 25);
+                .list(ctx, collection, request, 0, 25, null);
 
         assertThat(result.status(), is(CollectionRecordService.RecordResult.Status.FORBIDDEN));
     }

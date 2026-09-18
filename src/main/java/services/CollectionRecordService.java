@@ -18,6 +18,7 @@ import models.CollectionRules;
 import models.FieldDefinition;
 import models.HookEvent;
 import org.apache.logging.log4j.LogManager;
+import rules.ListFilterParser;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -136,26 +137,44 @@ public class CollectionRecordService {
         return RecordResult.created();
     }
 
-    public RecordResult list(TenantContext ctx, String collection, Request request, int offset, int limit) {
+    public RecordResult list(
+            TenantContext ctx,
+            String collection,
+            Request request,
+            int offset,
+            int limit,
+            String filter) {
         // The auth filter is the only place a list rule gets evaluated. Without its decision, or
         // without the scoping query that decision has to carry, there is no evidence this request
         // was scoped at all - so refuse rather than fall back to listing everything.
-        Bson filters = AuthorizationDecision.of(request)
+        Bson ruleFilter = AuthorizationDecision.of(request)
                 .flatMap(AuthorizationDecision::listFilter)
                 .orElse(null);
 
-        if (filters == null) {
+        if (ruleFilter == null) {
             return RecordResult.forbidden();
         }
 
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
+
+        Bson clientFilter;
+        try {
+            clientFilter = ListFilterParser.parse(filter, definition);
+        } catch (ListFilterParser.InvalidFilterException e) {
+            return RecordResult.badRequest(e.getMessage());
+        }
+
+        // The client filter is only ever anded onto the rule filter - it can narrow the result, never
+        // replace or widen it. Both the page and the count use the same effective filter, so total
+        // can never reveal the unfiltered match count.
+        Bson effectiveFilter = clientFilter == null ? ruleFilter : Filters.and(ruleFilter, clientFilter);
 
         int effectiveOffset = Math.max(offset, 0);
         int effectiveLimit = limit <= 0 || limit > MAX_LIMIT ? DEFAULT_LIMIT : limit;
 
         List<Document> items = new ArrayList<>();
         tenantCollections.dataCollection(ctx, collection)
-                .find(filters)
+                .find(effectiveFilter)
                 .projection(recordProjection(collection))
                 .skip(effectiveOffset)
                 .limit(effectiveLimit)
@@ -163,7 +182,7 @@ public class CollectionRecordService {
 
         FileFieldUtils.enrichRecords(items, definition, collection);
 
-        long total = tenantCollections.dataCollection(ctx, collection).countDocuments(filters);
+        long total = tenantCollections.dataCollection(ctx, collection).countDocuments(effectiveFilter);
 
         return RecordResult.ok(Map.of("items", items, "total", total));
     }

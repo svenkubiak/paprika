@@ -56,3 +56,49 @@ If file operations should participate in the hook system:
 6. Add integration tests for blocking hooks on file download and delete.
 
 Until then, file download and delete remain authenticated API operations without HTTP hook side effects.
+
+---
+
+## Collection list filtering
+
+### Current behavior
+
+`GET /api/collections/{collection}` accepts an optional `filter` query parameter:
+
+```
+GET /api/collections/{collection}?filter=<field>:eq:<value>&offset=0&limit=25
+```
+
+- Exactly one field, one operator, and the operator is always `eq`.
+- Parsing splits on the **first two colons only**, so the value may itself contain colons.
+- The value is URL-encoded on the wire (Undertow decodes it before binding).
+- An absent or empty `filter` behaves exactly as before — no filter is applied.
+
+The client filter is combined with the authorization filter via `Filters.and` in
+`CollectionRecordService.list` and can only **narrow** a list, never replace or widen it. The
+rule evaluation, `AuthorizationDecision`, and the fail-closed behavior of the list path are
+untouched. Both the returned page and `total` use the same effective filter.
+
+Parsing and type conversion live in `rules/ListFilterParser`:
+
+- Allowed fields are the collection's schema fields plus the indexable system fields
+  (`id`, `createdAt`, `updatedAt`). An unknown field is a `400`.
+- Values are converted to the field's BSON type (`BOOLEAN`, `NUMBER`, string types). `DATE`,
+  `TIME`, `DATETIME` and the timestamp system fields are stored as ISO strings and compared as
+  strings. `JSON` and `FILE` are not filterable and return `400`.
+
+An index is **not** required. Without one the filter costs a collection scan, but the rule
+filter already bounds the candidate set — this is an operational tuning question, not a reason
+to reject the request.
+
+### Deliberately not implemented
+
+The following are intentionally out of scope for now and would be the natural follow-ups:
+
+- **Bulk mutations** — `DELETE`/`PATCH` with a filter. `beforeUpdate`/`beforeDelete` hooks and
+  the field guards run per record, so a bulk mutation has to clarify how those apply before it
+  can exist.
+- **More operators and composition** — anything beyond `eq`, plus `and`/`or`, bracketing,
+  ordering comparisons, full-text search, sorting, and relation traversal.
+- **Admin UI search** — the data view could grow a search box on top of this parameter
+  (`admin-ui/src/lib/api.ts` currently builds only `?offset=&limit=`).

@@ -52,6 +52,55 @@ public class AdminControllerTest {
     }
 
     /**
+     * Every client side route of the admin UI needs a server side counterpart. Without one a
+     * reload (or any full page load the SPA triggers itself) ends on the framework's 404 page
+     * instead of the UI, and an expired session there never even reaches the login redirect.
+     */
+    @Test
+    public void testEveryAdminUiRouteIsServedByTheShell() {
+        for (String path : new String[]{
+                "/admin/tenants", "/admin/settings", "/admin/global-hooks", "/admin/tenant-settings",
+                "/admin/logs", "/admin/users", "/admin/user-settings", "/admin/backup",
+                "/admin/superadmins", "/admin/collections/users/data"}) {
+            TestResponse response = TestRequest.get(path).withDisabledRedirects().execute();
+
+            assertThat("no server route for " + path,
+                    response.getStatusCode(), equalTo(StatusCodes.FOUND));
+            assertThat(response.getHeader("Location"), startsWith("/login?origin="));
+        }
+    }
+
+    /**
+     * The bootstrap payload is how the admin UI asks whether it still has a session, so it must
+     * answer that question in JSON rather than by redirecting to the login page - a redirect
+     * arrives at the SPA as an HTML body with status 200, which it cannot tell from real data.
+     * What it must not do is hand out anything about the instance to a caller without a session.
+     */
+    @Test
+    public void testBootstrapReportsAMissingSessionAsJson() {
+        TestResponse response = TestRequest.get("/admin/bootstrap").withDisabledRedirects().execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(response.getContentType(), containsString("application/json"));
+        assertThat(response.getContent(), containsString("\"authenticated\":false"));
+        assertThat(response.getContent(), containsString("\"tenants\":[]"));
+        assertThat(response.getContent(), containsString("\"collections\":[]"));
+        assertThat(response.getContent(), containsString("\"activeTenant\":null"));
+    }
+
+    /**
+     * The login page must be reachable no matter what state the instance is in - it used to run
+     * through a filter that answers with 403 whenever it cannot resolve a tenant.
+     */
+    @Test
+    public void testTheLoginPageIsServedWithoutATenant() {
+        TestResponse response = TestRequest.get("/login").execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(response.getContent(), containsString("id=\"app\""));
+    }
+
+    /**
      * The admin and meta API do not redirect - they sit behind AdminAuthFilter and answer an
      * expired cookie with a 401, which is the signal the admin UI turns into the "you have been
      * signed out" notice. A different status here would leave that notice unreachable.

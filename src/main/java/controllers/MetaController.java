@@ -3,7 +3,6 @@ package controllers;
 import auth.TenantContext;
 import auth.TenantContextHolder;
 import com.mongodb.MongoNamespace;
-import com.mongodb.client.MongoCollection;
 import constants.CollectionName;
 import constants.SystemCollections;
 import filters.RequiredTenantContextFilter;
@@ -29,7 +28,6 @@ import services.TenantDatabaseResolver;
 import utils.DbUtils;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @FilterWith({AdminAuthFilter.class, TenantContextFilter.class, RequiredTenantContextFilter.class})
 public class MetaController {
@@ -77,9 +75,12 @@ public class MetaController {
                 false
         );
 
+        // IllegalArgumentException carries everything validateDefinition() rejects that is not a
+        // rule - an unknown or duplicated index field, a reserved field name, a duplicate index
+        // name. All of those describe the request, so they must not leave as a 500.
         try {
             tenantCollections.validateDefinition(definition);
-        } catch (RuleParseException e) {
+        } catch (RuleParseException | IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
 
@@ -96,8 +97,10 @@ public class MetaController {
             throw e;
         }
 
-        for (IndexDefinition index : definition.indexes()) {
-            tenantCollections.createIndex(ctx, collection, index);
+        try {
+            tenantCollections.syncIndexes(ctx, collection, definition.indexes());
+        } catch (IllegalArgumentException e) {
+            return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
 
         return Response.created();
@@ -170,7 +173,7 @@ public class MetaController {
 
         try {
             tenantCollections.validateDefinition(updated);
-        } catch (RuleParseException e) {
+        } catch (RuleParseException | IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
 
@@ -184,32 +187,23 @@ public class MetaController {
 
         var database = resolver.tenant(ctx);
         String currentPhysical = CollectionName.physicalTenantData(current.name());
-        MongoCollection<Document> mongoCollection = database.getCollection(currentPhysical);
 
         if (renamed && database.listCollectionNames().into(new HashSet<>()).contains(currentPhysical)) {
-            String newPhysical = CollectionName.physicalTenantData(newName);
-            mongoCollection.renameCollection(new MongoNamespace(database.getName(), newPhysical));
-            mongoCollection = database.getCollection(newPhysical);
-        } else if (renamed) {
-            mongoCollection = database.getCollection(CollectionName.physicalTenantData(newName));
+            database.getCollection(currentPhysical)
+                    .renameCollection(new MongoNamespace(
+                            database.getName(),
+                            CollectionName.physicalTenantData(newName)));
         }
 
-        Set<String> desiredIndexes = updated.indexes().stream()
-                .map(IndexDefinition::name)
-                .collect(Collectors.toSet());
-
-        for (Document existingIndex : mongoCollection.listIndexes()) {
-            String existingName = existingIndex.getString("name");
-            if ("_id_".equals(existingName)) {
-                continue;
-            }
-            if (!desiredIndexes.contains(existingName)) {
-                mongoCollection.dropIndex(existingName);
-            }
-        }
-
-        for (IndexDefinition index : updated.indexes()) {
-            tenantCollections.createIndex(ctx, newName, index);
+        // Drops what is gone, rebuilds what changed, creates what is new. An index whose options
+        // changed - flipping unique on an existing one is the common case - has to be dropped
+        // first; reusing the name is what MongoDB answers with IndexOptionsConflict.
+        try {
+            tenantCollections.syncIndexes(ctx, newName, updated.indexes());
+        } catch (IllegalArgumentException e) {
+            // The definition is not stored, so the collection keeps working with the schema it
+            // had. Telling the admin which index and why beats a 500.
+            return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
 
         tenantCollections.replaceDefinition(ctx, updated);

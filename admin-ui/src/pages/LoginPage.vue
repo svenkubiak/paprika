@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLogo from '@/components/AppLogo.vue'
-import { api } from '@/lib/api'
+import { api, resetSessionExpired } from '@/lib/api'
 import { useBootstrap } from '@/composables/useBootstrap'
 
 const route = useRoute()
@@ -51,6 +51,8 @@ async function submitTwoFactor() {
 }
 
 async function completeLogin() {
+  // There is a session again, so the next one that runs out has to be reported again.
+  resetSessionExpired()
   await load(true)
   // `redirect` is set when the SPA itself bounced us here, `origin` when the server did - mangoo
   // appends it to its login redirect because authentication.origin is on.

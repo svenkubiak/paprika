@@ -345,6 +345,12 @@ export function buildCollectionApiDocs(collection: string, fields: FieldDefiniti
           code: `GET ${base}?offset=0&limit=25`
         },
         {
+          title: 'Request',
+          description:
+            'Optional single-field equality filter: filter=<field>:eq:<value>. The value is URL-encoded and may contain colons; only the first two colons separate field, operator and value. The filter only narrows the rule-scoped result, never widens it. Unknown fields and non-filterable types (JSON, FILE) return 400. Filtering without an index triggers a collection scan, but the rule filter already bounds the set.',
+          code: `GET ${base}?filter=<field>:eq:<value>&offset=0&limit=25`
+        },
+        {
           title: 'Response',
           description: '200 OK',
           code: `{\n  "items": [\n${listItem
