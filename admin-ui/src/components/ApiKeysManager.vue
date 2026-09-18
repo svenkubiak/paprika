@@ -14,9 +14,12 @@ const users = ref<TenantUser[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const revoking = ref(false)
+const deleting = ref(false)
 const createOpen = ref(false)
 const revokeOpen = ref(false)
+const deleteOpen = ref(false)
 const revokingKey = ref<ApiKey | null>(null)
+const deletingKey = ref<ApiKey | null>(null)
 
 const form = ref<{ name: string; userId: string; expiresAt: string; bypassRules: boolean }>({
   name: '',
@@ -162,6 +165,11 @@ function confirmRevoke(key: ApiKey) {
   revokeOpen.value = true
 }
 
+function confirmDelete(key: ApiKey) {
+  deletingKey.value = key
+  deleteOpen.value = true
+}
+
 async function revokeKey() {
   const tenant = activeTenant.value
   if (!tenant || !revokingKey.value) return
@@ -180,6 +188,27 @@ async function revokeKey() {
     })
   } finally {
     revoking.value = false
+  }
+}
+
+async function deleteKey() {
+  const tenant = activeTenant.value
+  if (!tenant || !deletingKey.value) return
+
+  deleting.value = true
+  try {
+    await api.deleteApiKey(tenant.id, deletingKey.value.id)
+    deleteOpen.value = false
+    await refresh()
+    toast.add({ title: 'API key deleted', color: 'success', icon: 'i-lucide-circle-check' })
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to delete API key',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+  } finally {
+    deleting.value = false
   }
 }
 </script>
@@ -235,7 +264,7 @@ async function revokeKey() {
           </UBadge>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end" @click.stop>
+          <div class="flex justify-end gap-2" @click.stop>
             <UButton
               v-if="!row.original.revokedAt"
               size="sm"
@@ -246,6 +275,15 @@ async function revokeKey() {
             >
               Revoke
             </UButton>
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-trash-2"
+              :aria-label="'Delete ' + row.original.name"
+              title="Remove this key and its record entirely"
+              @click="confirmDelete(row.original)"
+            />
           </div>
         </template>
         <template #empty>
@@ -392,6 +430,42 @@ async function revokeKey() {
               <UButton variant="ghost" color="neutral" @click="revokeOpen = false">Cancel</UButton>
               <UButton color="error" :loading="revoking" icon="i-lucide-ban" @click="revokeKey">
                 Revoke key
+              </UButton>
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
+    <UModal v-model:open="deleteOpen" portal="body" :ui="modalUi">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-triangle-alert" class="size-5 text-error" />
+              <h3 class="font-semibold">Delete API key</h3>
+            </div>
+          </template>
+
+          <div class="space-y-3">
+            <p class="text-sm text-muted">
+              Delete "{{ deletingKey?.name }}" including its record? It disappears from this list,
+              so you lose the history of when it was last used.
+            </p>
+            <UAlert
+              v-if="deletingKey && !deletingKey.revokedAt"
+              color="warning"
+              variant="soft"
+              icon="i-lucide-triangle-alert"
+              title="This key is still active"
+              description="Deleting it stops every request using it immediately, without leaving a trace that it existed. If you only want to retire it, revoke it instead."
+            />
+          </div>
+
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="deleteOpen = false">Cancel</UButton>
+              <UButton color="error" :loading="deleting" icon="i-lucide-trash-2" @click="deleteKey">
+                Delete key
               </UButton>
             </div>
           </template>

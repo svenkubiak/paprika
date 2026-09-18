@@ -314,7 +314,16 @@ export const api = {
     })
   },
 
+  /** Stops the key from authenticating, but keeps its record visible in the list. */
   revokeApiKey(tenantId: string, keyId: string): Promise<void> {
+    return request(
+      `/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys/${encodeURIComponent(keyId)}/revoke`,
+      { method: 'POST' }
+    )
+  },
+
+  /** Removes the record as well - the key is gone from the list afterwards. */
+  deleteApiKey(tenantId: string, keyId: string): Promise<void> {
     return request(
       `/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys/${encodeURIComponent(keyId)}`,
       { method: 'DELETE' }

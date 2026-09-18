@@ -189,6 +189,30 @@ public class ApiKeyService {
                 .getModifiedCount() == 1;
     }
 
+    /**
+     * Removes a key for good, record included. Revoking is the safer of the two - it keeps the
+     * entry so it stays visible that this named key existed and when it was last used - so this
+     * exists for housekeeping: a mistyped or superseded key that nobody wants to keep reading
+     * about. A key that is still active dies with the record, silently for whoever holds it.
+     */
+    public boolean delete(String tenantId, String keyId) {
+        if (StringUtils.isBlank(keyId)) {
+            return false;
+        }
+
+        String normalizedKeyId = keyId.trim();
+        boolean deleted = keys()
+                .deleteOne(and(eq("tenantId", tenantId), eq("id", normalizedKeyId)))
+                .getDeletedCount() == 1;
+
+        if (deleted) {
+            // Otherwise the throttle map keeps an entry for a key that no longer exists
+            lastTouch.remove(normalizedKeyId);
+        }
+
+        return deleted;
+    }
+
     /** Called when a tenant user is removed: their keys must stop working with them. */
     public void revokeForUser(String tenantId, String userId) {
         keys().updateMany(
@@ -198,6 +222,9 @@ public class ApiKeyService {
 
     /** Called when a tenant is deleted: its keys have nothing left to resolve to. */
     public void deleteForTenant(String tenantId) {
+        for (Document document : keys().find(eq("tenantId", tenantId))) {
+            lastTouch.remove(document.getString("id"));
+        }
         keys().deleteMany(eq("tenantId", tenantId));
     }
 

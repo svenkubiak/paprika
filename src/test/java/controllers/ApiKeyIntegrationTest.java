@@ -88,9 +88,12 @@ class ApiKeyIntegrationTest {
 
         CreatedKey revoked = createKey("apikey-revoked", boundId);
         AdminTestUtils.AdminCookies cookies = adminCookies();
-        TestResponse revoke = AdminTestUtils.deleteWithAdminCookies(
-                "/api/meta/tenants/" + TenantTestUtils.defaultTenant().id() + "/api-keys/" + revoked.id(),
-                cookies);
+        TestResponse revoke = AdminTestUtils.postWithAdminCookies(
+                "/api/meta/tenants/" + TenantTestUtils.defaultTenant().id()
+                        + "/api-keys/" + revoked.id() + "/revoke",
+                cookies,
+                "",
+                "application/json");
         assertThat(revoke.getStatusCode(), equalTo(StatusCodes.NO_CONTENT));
 
         String expiredKey = createKey(
@@ -101,6 +104,62 @@ class ApiKeyIntegrationTest {
         assertThat(listStatus(collection, revoked.key()), equalTo(StatusCodes.UNAUTHORIZED));
         assertThat(listStatus(collection, expiredKey), equalTo(StatusCodes.UNAUTHORIZED));
         assertThat(listStatus(collection, "pk_totally-unknown-key-value-000000000000"), equalTo(StatusCodes.UNAUTHORIZED));
+    }
+
+    @Test
+    void deletingAKeyRemovesItsRecordAndStopsItWorking() {
+        UserService userService = Application.getInstance(UserService.class);
+        String boundId = userId(userService.createUser("apikey-delete-user", null, "secret-password-123"));
+        TenantDefinition tenant = TenantTestUtils.defaultTenant();
+
+        String collection = "posts_apikey_delete_test";
+        TenantTestUtils.seedCollection(collection, authListRules());
+
+        CreatedKey key = createKey("apikey-delete-key", boundId);
+        assertThat(listStatus(collection, key.key()), equalTo(StatusCodes.OK));
+
+        String path = "/api/meta/tenants/" + tenant.id() + "/api-keys/" + key.id();
+        TestResponse deleted = AdminTestUtils.deleteWithAdminCookies(path, adminCookies());
+        assertThat(deleted.getStatusCode(), equalTo(StatusCodes.NO_CONTENT));
+
+        // Unlike revoking, the record is gone as well
+        TestResponse list = AdminTestUtils.getWithAdminCookies(
+                "/api/meta/tenants/" + tenant.id() + "/api-keys", adminCookies());
+        assertThat(list.getContent(), not(containsString("apikey-delete-key")));
+
+        assertThat(listStatus(collection, key.key()), equalTo(StatusCodes.UNAUTHORIZED));
+
+        // Deleting the same key twice is a 404, not a silent success
+        TestResponse again = AdminTestUtils.deleteWithAdminCookies(path, adminCookies());
+        assertThat(again.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+    }
+
+    @Test
+    void revokedKeyKeepsItsRecordUntilItIsDeleted() {
+        UserService userService = Application.getInstance(UserService.class);
+        String boundId = userId(userService.createUser("apikey-retire-user", null, "secret-password-123"));
+        TenantDefinition tenant = TenantTestUtils.defaultTenant();
+        CreatedKey key = createKey("apikey-retire-key", boundId);
+
+        TestResponse revoke = AdminTestUtils.postWithAdminCookies(
+                "/api/meta/tenants/" + tenant.id() + "/api-keys/" + key.id() + "/revoke",
+                adminCookies(),
+                "",
+                "application/json");
+        assertThat(revoke.getStatusCode(), equalTo(StatusCodes.NO_CONTENT));
+
+        TestResponse afterRevoke = AdminTestUtils.getWithAdminCookies(
+                "/api/meta/tenants/" + tenant.id() + "/api-keys", adminCookies());
+        assertThat("a revoked key stays visible, so it remains auditable",
+                afterRevoke.getContent(), containsString("apikey-retire-key"));
+
+        assertThat(AdminTestUtils.deleteWithAdminCookies(
+                        "/api/meta/tenants/" + tenant.id() + "/api-keys/" + key.id(), adminCookies())
+                .getStatusCode(), equalTo(StatusCodes.NO_CONTENT));
+
+        TestResponse afterDelete = AdminTestUtils.getWithAdminCookies(
+                "/api/meta/tenants/" + tenant.id() + "/api-keys", adminCookies());
+        assertThat(afterDelete.getContent(), not(containsString("apikey-retire-key")));
     }
 
     @Test

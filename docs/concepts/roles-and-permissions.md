@@ -76,7 +76,8 @@ Consequences worth spelling out:
 - **The plaintext exists once.** Paprika stores only a hash, so a key is shown exactly once, in
   the response that creates it.
 - **Keys are revocable and named**, which a shared password is not: revoke one key without
-  touching anyone else, and see per key when it was last used. The request log records which key
+  touching anyone else, and see per key when it was last used. A revoked key keeps its record so
+  it stays auditable; deleting a key removes that record too, for housekeeping. The request log records which key
   authenticated a request (id and name, never the key).
 
 ::: danger Security assumption
@@ -109,7 +110,7 @@ What such a key may and may not do:
 | read, create, update, delete records of every collection of its tenant, regardless of the rules | reach the management API (`/api/meta/**`, `/api/admin/**`): tenant, schema, rule, hook, backup, settings and superadmin management stay closed - every request with a bearer header is refused there |
 | see all records on an `Own records` collection, not only those of the bound user | touch another tenant: the key resolves to its own tenant only, an unknown collection is still a `404` |
 | skip the owner field being forced on create, so it can write records on behalf of any user | become a superadmin: keys can only be bound to users with the `user` role, at creation and again at every resolve |
-| be revoked at any time, like any other key | skip the hooks: `beforeCreate` and friends run unchanged, and a blocking hook stops a bypass request like any other |
+| be revoked (record kept) or deleted (record removed) at any time | skip the hooks: `beforeCreate` and friends run unchanged, and a blocking hook stops a bypass request like any other |
 | | write credential fields or roles through `/api/collections/users`: the usual data-plane protections apply |
 
 So this is emphatically **not a superadmin**. It is full access to the tenant's *data*, with the

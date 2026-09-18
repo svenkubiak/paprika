@@ -104,6 +104,9 @@ Operational hints:
 - **Rotate by overlap:** create the new key, deploy it, then revoke the old one. Both work at the
   same time, so a rotation needs no downtime. Set an expiry if you want rotation to be enforced
   rather than remembered.
+- **Revoke, don't delete, when retiring a key.** Both stop it working, but a revoked key keeps its
+  entry - name, bound user, last use - which is what you want to look at after an incident or
+  during a review. Delete is for housekeeping once that history is no longer interesting.
 - **Store keys like passwords:** in the consumer's secret store, never in a repository, never in
   a mobile or browser client. Whoever holds the key *is* the bound user.
 - **A leaked key is revoked, not rotated in place.** Revocation is immediate.
@@ -123,6 +126,8 @@ most sensitive credential your application tier holds:
   inside the rules of its user; an `Own records` service account covers more cases than it looks.
 - **Rotate by revoke and re-issue.** The flag cannot be flipped on an existing key, and there is
   no way to read a key back, so rotation is: create the new key, deploy it, revoke the old one.
+  Keep the revoked entry around - for a credential this powerful the record of who held it and
+  when it was last used is worth more than a tidy list.
 - **Environment variables only.** Never in a repository, a build artefact, a container image
   layer you push, or anything that reaches a client. Whoever holds it can read and write all data
   of that tenant.

@@ -173,9 +173,18 @@ public class TenantController {
         }
     }
 
+    /** Stops a key from authenticating but keeps its record, so it stays auditable. */
     public Response revokeApiKey(String tenantId, String keyId) {
         return tenantService.findById(tenantId)
                 .filter(tenant -> apiKeyService.revoke(tenant.id(), keyId))
+                .map(tenant -> Response.status(StatusCodes.NO_CONTENT))
+                .orElseGet(Response::notFound);
+    }
+
+    /** Removes the record as well - housekeeping, not the usual way to retire a key. */
+    public Response deleteApiKey(String tenantId, String keyId) {
+        return tenantService.findById(tenantId)
+                .filter(tenant -> apiKeyService.delete(tenant.id(), keyId))
                 .map(tenant -> Response.status(StatusCodes.NO_CONTENT))
                 .orElseGet(Response::notFound);
     }

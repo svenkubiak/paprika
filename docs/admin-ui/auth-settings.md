@@ -90,9 +90,18 @@ password at all.
 
 **The list** shows each key's name, its non-secret prefix, the bound user, when it was last used
 (updated at most once per minute, so it never slows a request down), its expiry and its status.
-**Revoke** stops it from authenticating immediately; the entry stays visible so you can still see
-that the key existed and when it was last used. Deleting the bound user revokes its keys, and
-deleting the tenant removes them.
+
+Two ways to get rid of a key, and the difference matters:
+
+| | What happens | When to use it |
+|---|---|---|
+| **Revoke** | The key stops authenticating immediately, its entry stays in the list marked `revoked` | Retiring a key, rotating one out, reacting to a leak - you keep the record of what existed and when it was last used |
+| **Delete** | The key stops working *and* its record is removed from the list | Housekeeping: a mistyped key, a test key, a service that is gone for good and should stop cluttering the list |
+
+Revoke is the safer default. Deleting a key that is still active cuts off whoever holds it without
+leaving any trace that it ever existed, so the dialog warns about exactly that; revoke first if
+you want the history. Deleting the bound user revokes its keys (the records stay), and deleting
+the tenant removes them.
 
 ### Bypass collection rules
 
