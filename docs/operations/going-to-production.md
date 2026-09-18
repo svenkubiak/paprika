@@ -108,8 +108,30 @@ Operational hints:
   a mobile or browser client. Whoever holds the key *is* the bound user.
 - **A leaked key is revoked, not rotated in place.** Revocation is immediate.
 
-A key never grants superadmin rights and never bypasses collection rules; for administrative
+A key never grants superadmin rights and never reaches the admin API; for administrative
 automation use `POST /api/admin/token` instead.
+
+### If the service needs to bypass the rules
+
+A service that works across user boundaries while the collections stay *No access* for clients
+needs a [rule-bypassing key](/admin-ui/auth-settings#bypass-collection-rules). Treat it as the
+most sensitive credential your application tier holds:
+
+- **Exactly one bypassing key per service** (and per environment). Never share one between two
+  consumers - revocation and the request log then no longer tell you who did what.
+- **Prefer an ordinary key.** Only switch the bypass on if the service genuinely cannot live
+  inside the rules of its user; an `Own records` service account covers more cases than it looks.
+- **Rotate by revoke and re-issue.** The flag cannot be flipped on an existing key, and there is
+  no way to read a key back, so rotation is: create the new key, deploy it, revoke the old one.
+- **Environment variables only.** Never in a repository, a build artefact, a container image
+  layer you push, or anything that reaches a client. Whoever holds it can read and write all data
+  of that tenant.
+- **Keep it away from the public listener.** A bypassing key is used server-to-server; if that
+  traffic can stay inside your network, let it.
+
+It still cannot reach `/api/meta/**` or `/api/admin/**`, so a leaked bypassing key cannot reshape
+schemas, rules, hooks or tenants - it is a data breach, not a takeover. That is the line the
+feature is built on.
 
 ## Keep the token-issuing endpoint off the public internet
 

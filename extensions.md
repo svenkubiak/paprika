@@ -163,3 +163,18 @@ Two decisions worth knowing:
 - **Key rotation endpoint / usage analytics.** Rotation is "create new, revoke old" by hand, and
   usage visibility is `lastUsedAt` plus the key name in the request log; there is no per-key call
   count or last-IP.
+
+### Rule-bypassing keys: deliberately not implemented
+
+The `bypassRules` flag is all-or-nothing on the data plane. Two refinements were considered and
+left out:
+
+- **A collection allowlist per key** (`bypassRules` limited to e.g. `invoices`, `exports`). It
+  would document a service's reach in the key itself and shrink the blast radius of a leak, at the
+  cost of one more field, one more check in `ApiAuthFilter`, and a UI that has to stay in sync
+  with the collection list. Worth doing if bypassing keys turn out to be common; the current
+  answer is "one key per service, bound to a user whose rules are as narrow as possible".
+- **An audit trail of bypassing access.** Today a bypassing request is recognisable in the
+  request log (key id, key name, `rulesBypassed`), which is per request and subject to the log
+  retention setting. A separate, non-purged audit collection of what a bypassing key read or
+  wrote - including record ids - is a different feature with its own storage and retention story.

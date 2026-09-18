@@ -78,7 +78,7 @@ public class ApiKeyService {
     }
 
     /** The key that authenticated a request, for logging. Never carries the key itself. */
-    public record ResolvedApiKey(AuthContext auth, String keyId, String keyName) {}
+    public record ResolvedApiKey(AuthContext auth, String keyId, String keyName, boolean bypassRules) {}
 
     /** A freshly created key: the record plus the plaintext, which is returned exactly once. */
     public record CreatedApiKey(Map<String, Object> key, String plaintext) {}
@@ -101,11 +101,26 @@ public class ApiKeyService {
         ensureIndex(collection, TENANT_INDEX, Indexes.ascending("tenantId"), false);
     }
 
+    /** Creates an ordinary key, bound to the rules of its user. */
+    public CreatedApiKey create(TenantDefinition tenant, String name, String userId, String expiresAt) {
+        return create(tenant, name, userId, expiresAt, false);
+    }
+
     /**
      * Creates a key for a user of this tenant. Returns the plaintext alongside the record; it is
      * never stored and cannot be retrieved afterwards.
+     * <p>
+     * {@code bypassRules} makes this a service credential: requests with it skip the collection
+     * rules on the data plane, which is the only way to express "this one caller, and nobody
+     * else" with the four rule presets. It stays bound to this tenant and this user, and it never
+     * reaches the management API. There is deliberately no way to set the flag afterwards.
      */
-    public CreatedApiKey create(TenantDefinition tenant, String name, String userId, String expiresAt) {
+    public CreatedApiKey create(
+            TenantDefinition tenant,
+            String name,
+            String userId,
+            String expiresAt,
+            boolean bypassRules) {
         if (StringUtils.isBlank(name)) {
             throw new IllegalArgumentException("Name is required");
         }
@@ -136,9 +151,16 @@ public class ApiKeyService {
                 SystemFields.timestamp(),
                 null,
                 normalizedExpiry,
-                null);
+                null,
+                bypassRules);
 
         keys().insertOne(toDocument(key));
+
+        // Issuing a credential that is not subject to the rules is a security relevant event
+        if (bypassRules) {
+            LOG.info("Issued a rule-bypassing API key {} for user {} in tenant {}",
+                    key.id(), key.userId(), tenant.id());
+        }
 
         return new CreatedApiKey(toPublicMap(key), plaintext);
     }
@@ -217,7 +239,7 @@ public class ApiKeyService {
 
         touch(key);
 
-        return Optional.of(new ResolvedApiKey(auth, key.id(), key.name()));
+        return Optional.of(new ResolvedApiKey(auth, key.id(), key.name(), key.bypassRules()));
     }
 
     private void touch(ApiKeyDefinition key) {
@@ -290,7 +312,8 @@ public class ApiKeyService {
                 .append(SystemFields.CREATED_AT, key.createdAt())
                 .append("lastUsedAt", key.lastUsedAt())
                 .append("expiresAt", key.expiresAt())
-                .append("revokedAt", key.revokedAt());
+                .append("revokedAt", key.revokedAt())
+                .append("bypassRules", key.bypassRules());
     }
 
     private ApiKeyDefinition fromDocument(Document doc) {
@@ -304,7 +327,9 @@ public class ApiKeyService {
                 doc.getString(SystemFields.CREATED_AT),
                 doc.getString("lastUsedAt"),
                 doc.getString("expiresAt"),
-                doc.getString("revokedAt"));
+                doc.getString("revokedAt"),
+                // Keys written before this flag existed are ordinary keys
+                doc.getBoolean("bypassRules", false));
     }
 
     /** The view the admin UI gets: everything but the hash, which never leaves this service. */
@@ -318,6 +343,7 @@ public class ApiKeyService {
         map.put("lastUsedAt", key.lastUsedAt());
         map.put("expiresAt", key.expiresAt());
         map.put("revokedAt", key.revokedAt());
+        map.put("bypassRules", key.bypassRules());
         return map;
     }
 }

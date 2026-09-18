@@ -59,6 +59,8 @@ keys** card at the bottom of this page (it needs an active tenant).
 - **Bound user** - the tenant user the key authenticates as. The key inherits exactly that user's
   permissions, no more and no less.
 - **Expires** - optional. Without it the key is valid until revoked.
+- **Bypass collection rules** - off by default. Switch it on only for a trusted backend service
+  (see below).
 
 The plaintext key is shown **once**, right after creating it, with a copy button:
 
@@ -91,6 +93,36 @@ password at all.
 **Revoke** stops it from authenticating immediately; the entry stays visible so you can still see
 that the key existed and when it was last used. Deleting the bound user revokes its keys, and
 deleting the tenant removes them.
+
+### Bypass collection rules
+
+The four rule presets (*No access*, *Public*, *Signed in*, *Own records*) cannot express "this one
+caller, and nobody else". A backend service that has to work on records of *all* users, while the
+collections stay *No access* for clients, therefore gets its own switch: a key created with
+**Bypass collection rules** is not checked against the rules on `/api/collections/**` at all.
+
+Such a key is marked with a red **bypasses rules** badge in the key list, and the request log
+shows a **rules bypassed** badge on every request made with it.
+
+What stays true for a bypassing key:
+
+- it cannot reach the admin API (`/api/meta/**`, `/api/admin/**`) - no schema, rules, hooks,
+  tenants, backups or settings;
+- it cannot reach another tenant, and an unknown collection is still a `404`;
+- it cannot be bound to a superadmin;
+- **hooks still fire** - a blocking `beforeCreate` stops it like any other caller, so field
+  guards and approval gates keep working;
+- the `users` collection keeps its credential and role protections.
+
+The switch is only available **while creating** the key. There is no way to turn it on or off
+afterwards: revoke the key and issue a new one, which is the safe path anyway.
+
+::: danger Whoever holds a bypassing key has all the data
+A rule-bypassing key reads and writes every record of every collection of this tenant, across all
+users - but it has no access to the tenant's configuration. Issue one per service, keep it in that
+service's environment variables, and use an ordinary key whenever the service fits inside the
+rules of its user.
+:::
 
 ::: danger Whoever holds the key is the bound user
 A key carries every permission the bound user's [rules](/admin-ui/collection-rules) grant,

@@ -65,11 +65,12 @@ a key cannot do more (or less) than the user it belongs to.
 
 Consequences worth spelling out:
 
-- **A key never grants superadmin rights and never bypasses rules.** Keys can only be bound to
-  users with the `user` role; a key whose user is elevated afterwards stops working. Hitting a
-  locked rule with a key gives `403`, exactly like any other authenticated tenant user - the same
-  guarantee the [admin bypass](#admin-bypass-on-tenant-data) test suite enforces for admin
-  cookies presented as bearer tokens.
+- **A key never grants superadmin rights.** Keys can only be bound to users with the `user` role;
+  a key whose user is elevated afterwards stops working. By default a key is also fully subject to
+  the collection rules - hitting a locked rule gives `403`, exactly like any other authenticated
+  tenant user. A key can optionally be issued as
+  [rule-bypassing](#rule-bypassing-keys) for a trusted backend service, which changes that one
+  thing and nothing else: no admin access, no other tenant, no superadmin, hooks still run.
 - **A key is tenant-bound.** It resolves to its own tenant only; a collection of another tenant
   simply does not exist for it.
 - **The plaintext exists once.** Paprika stores only a hash, so a key is shown exactly once, in
@@ -82,6 +83,43 @@ Consequences worth spelling out:
 **Whoever holds the key is the bound user** - including every permission that user's rules grant,
 and `tokenIssuers` membership if the user has it. Bind keys to a dedicated service account with
 exactly the rules that service needs, keep them server-side, and rotate them.
+:::
+
+### Rule-bypassing keys
+
+One case the four rule presets cannot express is **"this one caller, and nobody else"**. A trusted
+backend service needs to work on a tenant's data *across* user boundaries (an export job touches
+records of every user), while the collections stay `No access` for clients. `Own records` says the
+opposite, and `Signed in` would open the data to every end user - so neither fits, and Paprika
+deliberately does not grow free-form rule expressions to close the gap.
+
+Instead, an API key can be issued as **rule-bypassing**. Requests made with such a key are not
+checked against the collection rules on the data plane (`/api/collections/**`) at all - the same
+treatment an admin UI session gets on tenant data. This is Paprika's equivalent of Supabase's
+`service_role` key.
+
+The flag is set **when the key is created and never afterwards**. To change the classification of
+a key, revoke it and issue a new one; a credential that is already distributed must not silently
+become more powerful.
+
+What such a key may and may not do:
+
+| A rule-bypassing key **can** | A rule-bypassing key **cannot** |
+|---|---|
+| read, create, update, delete records of every collection of its tenant, regardless of the rules | reach the management API (`/api/meta/**`, `/api/admin/**`): tenant, schema, rule, hook, backup, settings and superadmin management stay closed - every request with a bearer header is refused there |
+| see all records on an `Own records` collection, not only those of the bound user | touch another tenant: the key resolves to its own tenant only, an unknown collection is still a `404` |
+| skip the owner field being forced on create, so it can write records on behalf of any user | become a superadmin: keys can only be bound to users with the `user` role, at creation and again at every resolve |
+| be revoked at any time, like any other key | skip the hooks: `beforeCreate` and friends run unchanged, and a blocking hook stops a bypass request like any other |
+| | write credential fields or roles through `/api/collections/users`: the usual data-plane protections apply |
+
+So this is emphatically **not a superadmin**. It is full access to the tenant's *data*, with the
+tenant's *configuration* out of reach - and because hooks still fire, business guards (field
+protection, immutability, approval gates) keep applying.
+
+::: danger Security assumption
+**Whoever holds a rule-bypassing key has full access to the data of that tenant - but no access
+to its configuration.** Issue one such key per service, keep it in the service's environment
+only, and prefer an ordinary key whenever the service can live inside the rules of its user.
 :::
 
 Managing keys: [Auth settings → API keys](/admin-ui/auth-settings#api-keys). Password login,

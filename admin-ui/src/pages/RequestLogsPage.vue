@@ -284,6 +284,15 @@ function statusColor(code: number) {
                     >
                       key: {{ entry.apiKeyName || entry.apiKeyId }}
                     </UBadge>
+                    <UBadge
+                      v-if="entry.rulesBypassed"
+                      color="error"
+                      variant="subtle"
+                      size="xs"
+                      title="This request skipped the collection rules (rule-bypassing API key)"
+                    >
+                      rules bypassed
+                    </UBadge>
                   </div>
                   <span v-else class="text-muted">—</span>
                 </td>

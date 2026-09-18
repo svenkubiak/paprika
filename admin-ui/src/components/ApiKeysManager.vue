@@ -18,10 +18,11 @@ const createOpen = ref(false)
 const revokeOpen = ref(false)
 const revokingKey = ref<ApiKey | null>(null)
 
-const form = ref<{ name: string; userId: string; expiresAt: string }>({
+const form = ref<{ name: string; userId: string; expiresAt: string; bypassRules: boolean }>({
   name: '',
   userId: '',
-  expiresAt: ''
+  expiresAt: '',
+  bypassRules: false
 })
 
 /** Shown exactly once, right after creating: the server cannot hand it out again. */
@@ -89,7 +90,7 @@ async function refresh() {
 }
 
 function openCreate() {
-  form.value = { name: '', userId: '', expiresAt: '' }
+  form.value = { name: '', userId: '', expiresAt: '', bypassRules: false }
   createdKey.value = null
   copied.value = false
   createOpen.value = true
@@ -126,7 +127,8 @@ async function createKey() {
     const created = await api.createApiKey(tenant.id, {
       name,
       userId: form.value.userId,
-      expiresAt: form.value.expiresAt ? new Date(form.value.expiresAt).toISOString() : null
+      expiresAt: form.value.expiresAt ? new Date(form.value.expiresAt).toISOString() : null,
+      bypassRules: form.value.bypassRules
     })
     createdKey.value = created.key
     await refresh()
@@ -201,6 +203,20 @@ async function revokeKey() {
 
     <div class="mt-4 -mx-4 sm:-mx-4">
       <UTable :data="keys" :columns="columns" :loading="loading">
+        <template #name-cell="{ row }">
+          <div class="flex items-center gap-2">
+            <span>{{ row.original.name }}</span>
+            <UBadge
+              v-if="row.original.bypassRules"
+              color="error"
+              variant="soft"
+              size="xs"
+              title="Requests with this key skip the collection rules of this tenant"
+            >
+              bypasses rules
+            </UBadge>
+          </div>
+        </template>
         <template #keyPrefix-cell="{ row }">
           <code class="text-sm">{{ row.original.keyPrefix }}…</code>
         </template>
@@ -272,6 +288,10 @@ async function revokeKey() {
               Anyone holding this key <strong>is</strong> the bound user
               ({{ usernameFor(form.userId) }}), with every permission that user's rules grant.
               Store it server-side only.
+              <template v-if="form.bypassRules">
+                This key <strong>bypasses the collection rules</strong>: it can read and write all
+                data of this tenant.
+              </template>
             </p>
           </div>
 
@@ -300,6 +320,27 @@ async function revokeKey() {
                 class="w-full"
               />
             </UFormField>
+
+            <div class="space-y-3 rounded-lg border border-default p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-medium">Bypass collection rules</p>
+                  <p class="mt-1 text-sm text-muted">
+                    For a trusted backend service. Requests with this key are not checked against
+                    the collection rules at all.
+                  </p>
+                </div>
+                <USwitch v-model="form.bypassRules" />
+              </div>
+              <UAlert
+                v-if="form.bypassRules"
+                color="error"
+                variant="soft"
+                icon="i-lucide-shield-alert"
+                title="This key reads and writes all data of this tenant"
+                description="Every record of every collection, across all users, even where the rules say No access. It still cannot reach the admin API, another tenant, or superadmin functions, and hooks keep running. The flag cannot be changed later — revoke the key and create a new one instead."
+              />
+            </div>
 
             <UFormField
               label="Expires"

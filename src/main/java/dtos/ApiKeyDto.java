@@ -10,5 +10,11 @@ public record ApiKeyDto(
         String userId,
 
         /** Optional ISO-8601 instant; null means the key does not expire on its own. */
-        String expiresAt) {
+        String expiresAt,
+
+        /**
+         * Whether this key skips the collection rules on the data plane. Absent or false creates
+         * an ordinary key; the flag cannot be changed after creation.
+         */
+        Boolean bypassRules) {
 }

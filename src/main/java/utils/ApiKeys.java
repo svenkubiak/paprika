@@ -31,6 +31,13 @@ public final class ApiKeys {
     public static final String ATTRIBUTE_ID = "paprika.apikey.id";
     public static final String ATTRIBUTE_NAME = "paprika.apikey.name";
 
+    /**
+     * Set when the key that authenticated this request is allowed to skip the collection rules.
+     * Written once in the auth layer and only read by the data-plane auth filter and the request
+     * log; the authorization itself is still expressed as an {@code AuthorizationDecision}.
+     */
+    public static final String ATTRIBUTE_BYPASS_RULES = "paprika.apikey.bypassRules";
+
     private static final int SECRET_LENGTH = 40;
 
     /**

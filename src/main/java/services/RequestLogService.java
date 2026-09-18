@@ -104,6 +104,9 @@ public class RequestLogService {
             entry.append("apiKeyId", keyId);
             Object apiKeyName = request.getAttribute(ApiKeys.ATTRIBUTE_NAME);
             entry.append("apiKeyName", apiKeyName instanceof String name ? name : null);
+            if (Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES))) {
+                entry.append("rulesBypassed", true);
+            }
         }
 
         Boolean hookFired = (Boolean) request.getAttribute("paprika.hook.fired");

@@ -99,6 +99,9 @@ public class AuthService {
                 .map(resolved -> {
                     request.addAttribute(ApiKeys.ATTRIBUTE_ID, resolved.keyId());
                     request.addAttribute(ApiKeys.ATTRIBUTE_NAME, resolved.keyName());
+                    if (resolved.bypassRules()) {
+                        request.addAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES, Boolean.TRUE);
+                    }
                     return resolved.auth();
                 })
                 .orElseGet(AuthContext::guest);

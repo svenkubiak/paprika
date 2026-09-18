@@ -23,6 +23,7 @@ import rules.RuleService;
 import services.AuthService;
 import services.RequestLogService;
 import services.TenantCollectionService;
+import utils.ApiKeys;
 import utils.MultipartSupport;
 
 import java.util.HashMap;
@@ -78,7 +79,11 @@ public class ApiAuthFilter implements PerRequestFilter {
                         .end());
             }
             request.addAttribute(TenantContextFilter.AUTH_ATTRIBUTE, bearer);
-            return continueWithAuth(new ResolvedAuth(bearer, false), request, response, tenantContext);
+            return continueWithAuth(
+                    new ResolvedAuth(bearer, bypassesRules(request)),
+                    request,
+                    response,
+                    tenantContext);
         }
 
         ResolvedAuth resolvedAuth = resolveAuth(request);
@@ -132,6 +137,17 @@ public class ApiAuthFilter implements PerRequestFilter {
         };
     }
 
+    /**
+     * Whether the API key that authenticated this request may skip the rules. The flag is read off
+     * the request because the auth layer is the only place that sees the key, and it travels as an
+     * attribute rather than on {@link AuthContext} on purpose: the context has to stay identical
+     * to the one an access token of the same user produces, otherwise rules, owner filtering and
+     * the hook envelope would start telling the two credentials apart.
+     */
+    private static boolean bypassesRules(Request request) {
+        return Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES));
+    }
+
     private ResolvedAuth resolveAuth(Request request) {
         Optional<AuthContext> admin = authService.resolveAdmin(request);
         return admin
@@ -139,6 +155,14 @@ public class ApiAuthFilter implements PerRequestFilter {
                 .orElseGet(() -> new ResolvedAuth(TenantContextHolder.auth(request), false));
     }
 
+    /**
+     * {@code adminBypass} covers both callers that skip the rule evaluation: the admin UI session
+     * and a rule-bypassing API key. They are treated as one case deliberately - the downstream
+     * behaviour is meant to be identical (unscoped LIST, no owner field forced on create), and a
+     * second flag would only invite the two paths to drift apart. Who the caller actually was
+     * stays visible: the request log records the key id and name plus the bypass itself, and
+     * {@code context.auth} in hooks is the bound tenant user, never an admin.
+     */
     private record ResolvedAuth(AuthContext auth, boolean adminBypass) { }
 
     private Response applyListRule(Request request, Response response, String rule, String ownerField, AuthContext auth) {

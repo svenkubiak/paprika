@@ -294,7 +294,13 @@ export const api = {
   /** The response of this call is the only place the plaintext key is ever available. */
   createApiKey(
     tenantId: string,
-    payload: { name: string; userId: string; expiresAt?: string | null }
+    payload: {
+      name: string
+      userId: string
+      expiresAt?: string | null
+      /** Only settable here: the flag cannot be changed after creation. */
+      bypassRules?: boolean
+    }
   ): Promise<CreatedApiKey> {
     return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys`, {
       method: 'POST',
@@ -302,7 +308,8 @@ export const api = {
       body: JSON.stringify({
         name: payload.name,
         userId: payload.userId,
-        expiresAt: payload.expiresAt || undefined
+        expiresAt: payload.expiresAt || undefined,
+        bypassRules: payload.bypassRules === true
       })
     })
   },

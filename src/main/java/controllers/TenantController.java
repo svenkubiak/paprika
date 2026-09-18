@@ -160,7 +160,8 @@ public class TenantController {
                                 tenant,
                                 apiKeyDto.name(),
                                 apiKeyDto.userId(),
-                                apiKeyDto.expiresAt());
+                                apiKeyDto.expiresAt(),
+                                Boolean.TRUE.equals(apiKeyDto.bypassRules()));
 
                         Map<String, Object> body = new LinkedHashMap<>(created.key());
                         body.put("key", created.plaintext());

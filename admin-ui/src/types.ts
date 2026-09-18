@@ -158,6 +158,8 @@ export interface ApiKey {
   lastUsedAt?: string | null
   expiresAt?: string | null
   revokedAt?: string | null
+  /** Requests with this key skip the collection rules. Set at creation, never changeable. */
+  bypassRules?: boolean
 }
 
 /** Only the create response carries the plaintext key, and only once. */
@@ -258,6 +260,7 @@ export interface RequestLogEntry {
   userRole?: string | null
   apiKeyId?: string | null
   apiKeyName?: string | null
+  rulesBypassed?: boolean
   hookFired?: boolean
   hookBlocked?: boolean
 }
