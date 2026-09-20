@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/lib/api'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
+import RequestLogDetailSheet from '@/components/RequestLogDetailSheet.vue'
 import type { RequestLogEntry } from '@/types'
 
 const toast = useAppToast()
@@ -16,6 +17,8 @@ const statusFilter = ref<'all' | 'success' | 'error'>('all')
 const hookFilter = ref<'any' | 'fired' | 'blocked'>('any')
 const page = ref(1)
 const pageSize = ref(50)
+const detailOpen = ref(false)
+const selectedEntry = ref<RequestLogEntry | null>(null)
 
 const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 
@@ -125,8 +128,18 @@ function formatTimestamp(value: string) {
   })
 }
 
-function copyUserId(id: string) {
-  navigator.clipboard.writeText(id)
+function copyValue(value: string) {
+  navigator.clipboard.writeText(value)
+  toast.add({
+    title: 'Copied to clipboard',
+    color: 'success',
+    icon: 'i-lucide-clipboard-check'
+  })
+}
+
+function openDetail(entry: RequestLogEntry) {
+  selectedEntry.value = entry
+  detailOpen.value = true
 }
 
 function statusColor(code: number) {
@@ -218,60 +231,67 @@ function statusColor(code: number) {
         </div>
 
         <div class="overflow-x-auto rounded-lg border border-default">
-          <table class="min-w-full divide-y divide-default text-sm">
+          <table class="min-w-full divide-y divide-default text-base">
             <thead class="bg-muted/40">
               <tr>
                 <th
                   v-for="column in columns"
                   :key="column.key"
-                  class="px-3 py-2 text-left font-medium text-muted"
+                  class="px-3 py-2.5 text-left text-sm font-semibold text-muted"
                 >
                   {{ column.header }}
                 </th>
+                <th class="px-3 py-2.5"><span class="sr-only">Details</span></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-default bg-default">
               <tr v-if="loading">
-                <td :colspan="columns.length" class="px-3 py-8 text-center text-muted">
+                <td :colspan="columns.length + 1" class="px-3 py-8 text-center text-muted">
                   Loading…
                 </td>
               </tr>
               <tr v-else-if="logs.length === 0">
-                <td :colspan="columns.length" class="px-3 py-8 text-center text-muted">
+                <td :colspan="columns.length + 1" class="px-3 py-8 text-center text-muted">
                   No requests logged yet for this tenant.
                 </td>
               </tr>
-              <tr v-for="entry in logs" :key="entry.id" class="hover:bg-muted/20">
-                <td class="whitespace-nowrap px-3 py-2 font-mono text-xs">
+              <tr
+                v-for="entry in logs"
+                :key="entry.id"
+                class="cursor-pointer hover:bg-muted/20"
+                :class="{ 'bg-muted/30': selectedEntry?.id === entry.id && detailOpen }"
+                @click="openDetail(entry)"
+              >
+                <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm">
                   {{ formatTimestamp(entry.timestamp) }}
                 </td>
-                <td class="whitespace-nowrap px-3 py-2">
-                  <UBadge color="neutral" variant="soft" size="sm">{{ entry.method }}</UBadge>
+                <td class="whitespace-nowrap px-3 py-2.5">
+                  <UBadge color="neutral" variant="soft" size="md">{{ entry.method }}</UBadge>
                 </td>
-                <td class="max-w-md truncate px-3 py-2 font-mono text-xs" :title="entry.url">
+                <td class="max-w-md truncate px-3 py-2.5 font-mono text-sm" :title="entry.url">
                   {{ entry.url }}
                 </td>
-                <td class="whitespace-nowrap px-3 py-2">
-                  <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="sm">
+                <td class="whitespace-nowrap px-3 py-2.5">
+                  <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="md">
                     {{ entry.statusCode }}
                   </UBadge>
                 </td>
-                <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-muted">
+                <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-muted">
                   {{ entry.execTimeMs != null ? `${entry.execTimeMs}ms` : '—' }}
                 </td>
-                <td class="px-3 py-2">
-                  <div v-if="entry.userId" class="flex items-center gap-1.5">
+                <td class="px-3 py-2.5">
+                  <div v-if="entry.userId" class="flex flex-wrap items-center gap-1.5">
                     <button
-                      class="font-mono text-xs text-muted hover:text-default"
+                      class="max-w-[16rem] truncate font-mono text-sm hover:text-primary"
                       :title="'Click to copy: ' + entry.userId"
-                      @click="copyUserId(entry.userId!)"
+                      @click.stop="copyValue(entry.userId!)"
                     >
                       {{ entry.userId }}
                     </button>
                     <UBadge
                       :color="entry.userRole === 'superadmin' ? 'neutral' : 'primary'"
                       :variant="entry.userRole === 'superadmin' ? 'outline' : 'subtle'"
-                      size="xs"
+                      size="md"
                     >
                       {{ entry.userRole === 'superadmin' ? 'superadmin' : 'user' }}
                     </UBadge>
@@ -279,7 +299,7 @@ function statusColor(code: number) {
                       v-if="entry.apiKeyId"
                       color="warning"
                       variant="subtle"
-                      size="xs"
+                      size="md"
                       :title="'Authenticated with API key ' + (entry.apiKeyName || entry.apiKeyId)"
                     >
                       key: {{ entry.apiKeyName || entry.apiKeyId }}
@@ -288,7 +308,7 @@ function statusColor(code: number) {
                       v-if="entry.rulesBypassed"
                       color="error"
                       variant="subtle"
-                      size="xs"
+                      size="md"
                       title="This request skipped the collection rules (rule-bypassing API key)"
                     >
                       rules bypassed
@@ -296,13 +316,23 @@ function statusColor(code: number) {
                   </div>
                   <span v-else class="text-muted">—</span>
                 </td>
-                <td class="whitespace-nowrap px-3 py-2">
-                  <UBadge v-if="entry.hookBlocked" color="warning" variant="soft" size="sm">blocked</UBadge>
-                  <UBadge v-else-if="entry.hookFired" color="success" variant="soft" size="sm">fired</UBadge>
+                <td class="whitespace-nowrap px-3 py-2.5">
+                  <UBadge v-if="entry.hookBlocked" color="warning" variant="soft" size="md">blocked</UBadge>
+                  <UBadge v-else-if="entry.hookFired" color="success" variant="soft" size="md">fired</UBadge>
                   <span v-else class="text-muted">—</span>
                 </td>
-                <td class="max-w-xs truncate px-3 py-2 text-sm" :title="entry.errorMessage || ''">
+                <td class="max-w-xs truncate px-3 py-2.5 text-sm" :title="entry.errorMessage || ''">
                   {{ entry.errorMessage || '—' }}
+                </td>
+                <td class="whitespace-nowrap px-3 py-2.5 text-right">
+                  <UButton
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    icon="i-lucide-panel-right-open"
+                    title="Show details"
+                    @click.stop="openDetail(entry)"
+                  />
                 </td>
               </tr>
             </tbody>
@@ -338,5 +368,11 @@ function statusColor(code: number) {
         </div>
       </template>
     </UCard>
+
+    <RequestLogDetailSheet
+      v-model:open="detailOpen"
+      :entry="selectedEntry"
+      @copy="copyValue"
+    />
   </div>
 </template>
