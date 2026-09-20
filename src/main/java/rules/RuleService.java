@@ -3,6 +3,7 @@ package rules;
 import auth.AuthContext;
 import auth.TenantContext;
 import com.mongodb.client.model.Filters;
+import constants.SystemFields;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.CollectionRules;
@@ -194,6 +195,20 @@ public final class RuleService {
         if (usesGroup && StringUtils.isBlank(rules.groupRecordField())) {
             throw new RuleParseException(missing("groupRecordField",
                     "the field of this collection carrying the group"));
+        }
+
+        // groupRecordField "id" means the record is the group itself. A "group" create rule could
+        // then never be satisfied: "id" is read-only on write, so the body cannot name the group -
+        // and nobody is a member of a group that does not exist yet. A rule that always denies
+        // without saying so is worse than a refused save; who may create a group is decided by a
+        // different preset ("auth" or "owner").
+        if (isGroupRule(rules.createRule())
+                && SystemFields.ID.equals(StringUtils.trimToEmpty(rules.groupRecordField()))) {
+            throw new RuleParseException(
+                    "A \"group\" create rule cannot be combined with groupRecordField \"" + SystemFields.ID
+                            + "\": the record is the group itself, so no caller could ever be a member of it "
+                            + "beforehand and \"" + SystemFields.ID + "\" is read-only on write. "
+                            + "Use \"auth\" or \"owner\" for create.");
         }
     }
 

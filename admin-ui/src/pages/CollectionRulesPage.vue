@@ -146,7 +146,12 @@ function lookupFieldOptions(fields: FieldDefinition[]) {
 }
 
 const membershipFieldOptions = computed(() => lookupFieldOptions(membershipFields.value))
-const recordFieldOptions = computed(() => lookupFieldOptions(definition.value?.fields ?? []))
+// "id" is offered on top of the declared fields: it configures the third shape of the preset -
+// the records of this collection *are* the groups, so there is no field pointing at one.
+const recordFieldOptions = computed(() => [
+  { label: 'id (the record is the group)', value: 'id' },
+  ...lookupFieldOptions(definition.value?.fields ?? [])
+])
 
 // The field selectors can only be filled once the membership collection's schema is known, and
 // that is a separate request - the rules page only ever loads its own collection.
@@ -392,7 +397,7 @@ async function saveRules() {
               <template #label>
                 <FieldLabelHelp
                   label="Group field on this collection"
-                  hint="Field of this collection carrying the group. Clients set it on create; Paprika never fills it in."
+                  hint="Field of this collection carrying the group. Clients set it on create; Paprika never fills it in. Choose 'id' if the records of this collection are the groups themselves - then create needs another preset, because nobody can be a member of a group that does not exist yet."
                 />
               </template>
               <USelect

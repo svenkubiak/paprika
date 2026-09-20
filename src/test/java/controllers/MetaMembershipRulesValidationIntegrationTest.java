@@ -97,6 +97,49 @@ class MetaMembershipRulesValidationIntegrationTest {
         assertThat(response.getContent(), containsString("peers"));
     }
 
+    /**
+     * "id" is the group collection itself: the record is the group. The only system field that may
+     * be used here - a timestamp is not an identity.
+     */
+    @Test
+    void theRecordIdIsAcceptedAsTheRecordField() {
+        String collection = "val_self_" + DbUtils.id();
+        TestResponse response = create(collection, new CollectionRules(
+                "group", "group", "auth", "group", "group",
+                "owner", MEMBERSHIPS, "user", "crew", "id"));
+
+        assertThat(response.getContent(), response.getStatusCode(), equalTo(StatusCodes.CREATED));
+
+        CollectionRules stored = Application.getInstance(TenantCollectionService.class)
+                .findDefinition(TenantTestUtils.defaultTenantContext(), collection)
+                .rules();
+        assertThat(stored.groupRecordField(), equalTo("id"));
+    }
+
+    /** A create rule on the record's own id could never be satisfied, so it is not stored. */
+    @Test
+    void aGroupCreateRuleOnTheRecordIdIsRejected() {
+        String collection = "val_self_create_" + DbUtils.id();
+        TestResponse response = create(collection, rules(MEMBERSHIPS, "user", "crew", "id"));
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(response.getContent(), containsString("create"));
+        assertThat(response.getContent(), containsString("id"));
+
+        assertThat(Application.getInstance(TenantCollectionService.class)
+                .findDefinition(TenantTestUtils.defaultTenantContext(), collection), nullValue());
+    }
+
+    /** Other system fields stay refused: they are not an identity and could never match. */
+    @Test
+    void anotherSystemFieldAsTheRecordFieldIsRejected() {
+        TestResponse response = create(rules(MEMBERSHIPS, "user", "crew", "createdAt"));
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(response.getContent(), containsString("groupRecordField"));
+        assertThat(response.getContent(), containsString("createdAt"));
+    }
+
     @Test
     void aCompleteConfigurationIsAccepted() {
         String collection = "val_ok_" + DbUtils.id();

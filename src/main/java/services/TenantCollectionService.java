@@ -147,7 +147,11 @@ public class TenantCollectionService {
         requireLookupField(membershipCollection, rules.groupMemberField(), "groupMemberField");
         requireLookupField(membershipCollection, rules.groupField(), "groupField");
 
-        if (StringUtils.isNotBlank(rules.groupRecordField())) {
+        // "id" is the third case: the records of this collection *are* the groups, so the group
+        // is the record's own identity and no declared field points at it. It is the only system
+        // field that may be used here - a timestamp is not an identity and would never match.
+        if (StringUtils.isNotBlank(rules.groupRecordField())
+                && !SystemFields.ID.equals(rules.groupRecordField())) {
             requireLookupField(definition, rules.groupRecordField(), "groupRecordField");
         }
     }

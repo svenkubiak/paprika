@@ -50,6 +50,19 @@ They say where the memberships live; the concept behind them is
 | **Group field** | `groupField` | The field in there pointing at the group. |
 | **Group field on this collection** | `groupRecordField` | The field of *this* collection carrying the group. Only shown for **Group members**; **Group peers** matches on the record id. |
 
+### When this collection *is* the group
+
+On the group collection itself — `teams` in the example — no field points at a group, because each
+record is one. **Group field on this collection** therefore offers `id` on top of the declared
+fields: picking it means *the record is the group*, and every member of a team reaches their team's
+record without a second field duplicating its id.
+
+The **Create rule** has to be a different preset there — **Signed in** or **Own records**. A
+**Group members** create rule with `id` could never be satisfied (`id` cannot be sent by a client,
+and nobody is a member of a group that does not exist yet), so saving that combination is refused
+with `400`. Update and delete stay open to every member of the group; use **Own records** if only
+the creator should change it.
+
 The field dropdowns are filled from the schema of the collection you pick, so pick the membership
 collection first. Saving with an incomplete configuration, an unknown collection or an unknown
 field is refused with `400` and a message naming what is wrong — the rules are never stored in a

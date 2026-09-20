@@ -65,6 +65,14 @@ Three collections, all inside one tenant:
 | `team_members` | one record per membership | `user` → `users`, `team` → `teams` |
 | `documents` | the data to protect | `team` → `teams` |
 
+Three shapes follow from this, one per collection:
+
+| Collection | Rule | How the group hangs off the record |
+|---|---|---|
+| `documents` — the data of a group | `group` | a field: `"groupRecordField": "team"` |
+| `users` — the members themselves | `peers` | the record's identity; `groupRecordField` is unused |
+| `teams` — the group collection itself | `group` | the record *is* the group: `"groupRecordField": "id"` |
+
 On `documents` the rules are set to `group` with this configuration (Rules tab, or the collection's
 `rules` object):
 
@@ -82,6 +90,35 @@ On `documents` the rules are set to `group` with this configuration (Rules tab, 
 On `users` the rules are set to `peers` with the same `groupCollection`, `groupMemberField` and
 `groupField` — `groupRecordField` is not used there, because a user record *is* the thing being
 matched.
+
+### The group collection itself
+
+On `teams` the records **are** the groups, so no field points at one — the group is the record's
+own `id`. Setting `groupRecordField` to `"id"` says exactly that, and every member of a team then
+sees and edits their team's record without a second field duplicating its id:
+
+```json
+{
+  "listRule": "group", "viewRule": "group", "createRule": "auth",
+  "updateRule": "group", "deleteRule": "group",
+  "groupCollection": "team_members",
+  "groupMemberField": "user",
+  "groupField": "team",
+  "groupRecordField": "id"
+}
+```
+
+**Create needs a different preset here** — `auth` or `owner`. A `group` create rule combined with
+`"groupRecordField": "id"` could never be satisfied: `id` is read-only on write, so the body cannot
+name the group, and nobody is a member of a group that does not exist yet. Such a configuration is
+rejected with `400` when the collection is saved rather than stored as a rule that always denies.
+`id` is the only system field accepted here; `createdAt` and `updatedAt` are not an identity and
+stay refused.
+
+Update and delete are granted to **every member** of the group, not only to whoever created it. An
+application that wants the group record to be editable by its creator alone uses `owner` there —
+that is a decision of the application, not of the preset. Creating a membership when a group is
+created is the application's job as well; Paprika never writes one on its own.
 
 Like the owner field, this is **configuration of the collection**, not part of the rule string: the
 rule values stay a fixed allowlist. A `group` or `peers` rule without a complete configuration is

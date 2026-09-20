@@ -17,6 +17,10 @@ import org.apache.commons.lang3.StringUtils;
  * groupRecordField  crew           field of *this* collection carrying the group ("group" only)
  * </pre>
  *
+ * {@code groupRecordField} may also be {@code "id"}: then the records of this collection are the
+ * groups themselves - the case of a {@code teams} collection, where every member of a team reaches
+ * its record. Create is not available in that shape; see {@code RuleService}.
+ *
  * Like the owner field, this is configuration of the collection rather than part of the rule
  * string: the rule values stay a fixed allowlist.
  */
