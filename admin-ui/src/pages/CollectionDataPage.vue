@@ -31,6 +31,9 @@ const editorRecord = ref<Record<string, unknown>>({})
 const saving = ref(false)
 const bulkDeleteOpen = ref(false)
 const recordDeleteOpen = ref(false)
+// The delete confirmation is reached from the editor sheet and from a row action, so the record it
+// refers to cannot be read off the editor state.
+const deletingRecord = ref<Record<string, unknown> | null>(null)
 
 /** Identifies the newest record request so an overtaken one cannot write its result. */
 let latestRecordsRequest = 0
@@ -59,7 +62,8 @@ const columns = computed(() => {
     { accessorKey: 'id', header: 'id' },
     ...fields.map((field) => ({ accessorKey: field.name, header: field.name })),
     { accessorKey: 'createdAt', header: 'createdAt' },
-    { accessorKey: 'updatedAt', header: 'updatedAt' }
+    { accessorKey: 'updatedAt', header: 'updatedAt' },
+    { id: 'actions', header: 'Actions' }
   ]
 })
 
@@ -275,12 +279,16 @@ async function saveRecord(payload: RecordSavePayload) {
 }
 
 async function deleteCurrentRecord() {
-  if (!editorRecord.value.id) return
+  const id = deletingRecord.value?.id
+  if (!id) return
   saving.value = true
   try {
-    await api.deleteRecord(collection.value, String(editorRecord.value.id))
+    await api.deleteRecord(collection.value, String(id))
     recordDeleteOpen.value = false
-    editorOpen.value = false
+    if (String(editorRecord.value.id || '') === String(id)) {
+      editorOpen.value = false
+    }
+    deletingRecord.value = null
     toast.add({ title: 'Record deleted', color: 'success', icon: 'i-lucide-circle-check' })
     await refreshRecords()
   } catch (error) {
@@ -295,6 +303,12 @@ async function deleteCurrentRecord() {
 }
 
 function requestDeleteRecord() {
+  deletingRecord.value = { ...editorRecord.value }
+  recordDeleteOpen.value = true
+}
+
+function confirmDeleteRecord(record: Record<string, unknown>) {
+  deletingRecord.value = record
   recordDeleteOpen.value = true
 }
 
@@ -412,6 +426,27 @@ async function bulkDelete() {
         <template #updatedAt-cell="{ row }">
           <span class="font-mono text-sm text-muted">{{ row.original.updatedAt }}</span>
         </template>
+        <template #actions-cell="{ row }">
+          <div class="flex gap-2" @click.stop>
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="i-lucide-pencil"
+              @click="openEditRecord(row.original)"
+            >
+              Edit
+            </UButton>
+            <UButton
+              size="sm"
+              color="error"
+              variant="soft"
+              icon="i-lucide-trash-2"
+              @click="confirmDeleteRecord(row.original)"
+            >
+              Delete
+            </UButton>
+          </div>
+        </template>
         <template #empty>
           <div class="py-10 text-center text-muted">No records found.</div>
         </template>
@@ -463,7 +498,7 @@ async function bulkDelete() {
             </div>
           </template>
           <p class="text-sm text-muted">
-            Delete record <code>{{ editorRecord.id }}</code>? This cannot be undone.
+            Delete record <code>{{ deletingRecord?.id }}</code>? This cannot be undone.
           </p>
           <template #footer>
             <div class="flex justify-end gap-2">

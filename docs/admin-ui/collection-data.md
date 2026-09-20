@@ -12,7 +12,7 @@ Paprika's list API only supports `offset`/`limit` — it has no server-side sear
 
 ## Creating and editing records
 
-**New record** opens an empty record editor built from the collection's schema — one input per field, using the appropriate control for its type (text, number, toggle, date/time picker, select, relation picker, file upload). Clicking a row (or its id) opens the same editor pre-filled for editing.
+**New record** opens an empty record editor built from the collection's schema — one input per field, using the appropriate control for its type (text, number, toggle, date/time picker, select, relation picker, file upload). Clicking a row (or its id), or the **Edit** button in the row's Actions column, opens the same editor pre-filled for editing.
 
 - Fields with a configured **default value** are pre-filled on the new-record form.
 - **FILE** fields upload via `multipart/form-data` behind the scenes automatically when the form is submitted — no separate action needed.
@@ -20,7 +20,7 @@ Paprika's list API only supports `offset`/`limit` — it has no server-side sear
 
 ## Deleting records
 
-Delete a single record from its editor, or select multiple rows with the checkboxes and use **Delete selected** for a bulk delete. Both are permanent — there's no trash/undo.
+Delete a single record with the **Delete** button in its row's Actions column or from inside its editor, or select multiple rows with the checkboxes and use **Delete selected** for a bulk delete. Each asks for confirmation first, and all of them are permanent — there's no trash/undo.
 
 ## Note on rules while editing here
 
