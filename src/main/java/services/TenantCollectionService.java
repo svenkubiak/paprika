@@ -7,10 +7,12 @@ import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import constants.CollectionName;
 import constants.SystemFields;
+import enums.FieldType;
 import enums.IndexDirection;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.*;
+import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.slf4j.Logger;
@@ -102,13 +104,84 @@ public class TenantCollectionService {
 
     public void validateDefinition(CollectionDefinition definition) throws RuleParseException {
         validateSchemaFields(definition.fields());
-        ruleService.validateRules(definition.rules());
+        ruleService.validateRules(definition.rules(), definition.name());
 
         for (IndexDefinition index : definition.indexes()) {
             validateIndex(definition, index);
         }
 
         validateUniqueIndexNames(definition.indexes());
+    }
+
+    /**
+     * Everything {@link #validateDefinition(CollectionDefinition)} checks, plus what can only be
+     * checked against the other collections of the tenant: the membership configuration of the
+     * {@code group} and {@code peers} presets.
+     */
+    public void validateDefinition(TenantContext ctx, CollectionDefinition definition) throws RuleParseException {
+        validateDefinition(definition);
+        validateMembershipTargets(ctx, definition);
+    }
+
+    /**
+     * A membership rule that points at a collection or a field that does not exist would deny
+     * every request at runtime, and look like a broken application rather than a typo in the
+     * rules. It is rejected while the collection is being saved, where the message can still say
+     * what is wrong.
+     */
+    private void validateMembershipTargets(TenantContext ctx, CollectionDefinition definition)
+            throws RuleParseException {
+
+        CollectionRules rules = definition.rules();
+        if (rules == null || !usesMembershipRule(rules)) {
+            return;
+        }
+
+        CollectionDefinition membershipCollection = findDefinition(ctx, rules.groupCollection());
+        if (membershipCollection == null) {
+            throw new RuleParseException(
+                    "Unknown membership collection: " + rules.groupCollection()
+                            + ". Create it first, with a field pointing at the user and one pointing at the group.");
+        }
+
+        requireLookupField(membershipCollection, rules.groupMemberField(), "groupMemberField");
+        requireLookupField(membershipCollection, rules.groupField(), "groupField");
+
+        if (StringUtils.isNotBlank(rules.groupRecordField())) {
+            requireLookupField(definition, rules.groupRecordField(), "groupRecordField");
+        }
+    }
+
+    private static boolean usesMembershipRule(CollectionRules rules) {
+        return RuleService.isMembershipRule(rules.listRule())
+                || RuleService.isMembershipRule(rules.viewRule())
+                || RuleService.isMembershipRule(rules.createRule())
+                || RuleService.isMembershipRule(rules.updateRule())
+                || RuleService.isMembershipRule(rules.deleteRule());
+    }
+
+    /**
+     * A membership is matched by comparing ids, so the field has to hold one: a RELATION or, for
+     * schemas that store the id plainly, a STRING. Any other type would compare against something
+     * that is not an id and never match.
+     */
+    private static void requireLookupField(CollectionDefinition definition, String fieldName, String setting)
+            throws RuleParseException {
+
+        FieldDefinition field = definition.fields() == null ? null : definition.fields().stream()
+                .filter(candidate -> fieldName.equals(candidate.name()))
+                .findFirst()
+                .orElse(null);
+
+        if (field == null) {
+            throw new RuleParseException("Unknown " + setting + ": " + definition.name() + " has no field \""
+                    + fieldName + "\".");
+        }
+
+        if (field.type() != FieldType.RELATION && field.type() != FieldType.STRING) {
+            throw new RuleParseException("Invalid " + setting + ": " + definition.name() + "." + fieldName
+                    + " is " + field.type() + ", but a membership field has to be RELATION or STRING.");
+        }
     }
 
     public void createIndex(TenantContext ctx, String logicalName, IndexDefinition index) {

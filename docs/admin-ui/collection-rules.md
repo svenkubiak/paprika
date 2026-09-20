@@ -14,12 +14,14 @@ Five independent rules, each shown with the exact HTTP endpoint it governs:
 | Update | `PATCH /api/collections/{collection}/{id}` |
 | Delete | `DELETE /api/collections/{collection}/{id}` |
 
-Each has a dropdown with four levels:
+Each has a dropdown with these levels:
 
 - **No access** — locked, nobody can call it.
 - **Public** — anyone, no authentication.
 - **Signed in** — any authenticated tenant user.
 - **Own records** — only the tenant user referenced by the owner field.
+- **Group members** — only users who are members of the group the record belongs to. Offered on every collection except `users`.
+- **Group peers** — only users who share a group with the caller, plus the caller's own record. Offered on `users` only.
 
 ## Presets
 
@@ -27,13 +29,47 @@ The **Presets** card applies all five rules at once for a common pattern (e.g. "
 
 ## No custom expressions
 
-Unlike PocketBase, Paprika deliberately does not expose a custom rule expression syntax. The four presets — **No access / Public / Signed in / Own records** — are the only values the API accepts for `listRule`/`viewRule`/`createRule`/`updateRule`/`deleteRule`; anything else sent via the collection's meta API (`PATCH /api/meta/collections/{collection}/{id}`) is rejected with an error. This keeps rule configuration simple and fully representable in the admin UI, at the cost of not supporting more specific per-field or conditional access patterns.
+Unlike PocketBase, Paprika deliberately does not expose a custom rule expression syntax. The presets — **No access / Public / Signed in / Own records / Group members / Group peers** — are the only values the API accepts for `listRule`/`viewRule`/`createRule`/`updateRule`/`deleteRule`; anything else sent via the collection's meta API (`PATCH /api/meta/collections/{collection}/{id}`) is rejected with an error. This keeps rule configuration simple and fully representable in the admin UI, at the cost of not supporting more specific per-field or conditional access patterns.
 
 ## Owner field
 
 When any rule is set to **Own records**, an **Owner field** selector appears. It must be a `RELATION → users` field on this collection (see [Collections → Relations](/concepts/collections#relations)); Paprika sets it automatically to the creating user's id when a record is made. If the collection has no such relation field yet, add one on the [Schema tab](/admin-ui/collection-schema) first — the dropdown here falls back to a placeholder `owner` value until you do.
 
 **Except on the `users` collection**, where no owner field is involved at all — see below. The selector is not shown there.
+
+## Group configuration
+
+As soon as one rule is set to **Group members** or **Group peers**, four more selectors appear.
+They say where the memberships live; the concept behind them is
+[Group membership](/concepts/roles-and-permissions#group-membership-group-and-peers).
+
+| Selector | Stored as | Meaning |
+|---|---|---|
+| **Membership collection** | `groupCollection` | The collection with one record per membership, e.g. `team_members`. |
+| **Member field** | `groupMemberField` | The field in there pointing at the user — a `RELATION → users` or a `STRING` holding the id. |
+| **Group field** | `groupField` | The field in there pointing at the group. |
+| **Group field on this collection** | `groupRecordField` | The field of *this* collection carrying the group. Only shown for **Group members**; **Group peers** matches on the record id. |
+
+The field dropdowns are filled from the schema of the collection you pick, so pick the membership
+collection first. Saving with an incomplete configuration, an unknown collection or an unknown
+field is refused with `400` and a message naming what is wrong — the rules are never stored in a
+state where they do not mean what they say.
+
+::: warning Add the two indexes
+Every API request against this collection queries the membership collection to resolve the
+caller's groups. On its [Schema tab](/admin-ui/collection-schema), add an index on the **member
+field** and one on the **group field** — without them, each request costs a full scan of that
+collection.
+:::
+
+On `users`, **Group peers** treats Update like View: a user could then edit their teammates'
+records, not just read them. If the application only needs to *show* teammates, set View (and
+List) to **Group peers** and leave Update on **Own records**. Create is never granted by it at all: sign-up goes through `POST /api/auth/register`.
+
+Two things that are easy to expect and do not happen: the group field is **not** filled in on
+create (unlike the owner field — the client sends it, the rule checks it), and the membership
+collection's own rules are **not** consulted for this lookup. Give that collection its own rules;
+locked or **Group members** are the usual choices.
 
 ## The users collection
 
@@ -46,7 +82,8 @@ Rules on the [`users` collection](/admin-ui/tenant-users) gate `/api/collections
 
 ## Things worth knowing
 
-- **List rules also filter results**, not just gate the endpoint: an "Own records" list rule only ever returns the calling user's own records, never the full collection — on `users` that is exactly one record, the caller's own.
+- **List rules also filter results**, not just gate the endpoint: an "Own records" list rule only ever returns the calling user's own records, never the full collection — on `users` that is exactly one record, the caller's own. A "Group members" list rule returns the records of the caller's groups, and an empty list for a caller who is in none.
+- **Removing a membership takes effect immediately.** The next request no longer sees the records; nothing is cached beyond the request that resolved it.
 - **Rules are part of a schema export.** They belong to the collection definition, so the tenant-level schema export and import carry them along — and an import overwrites the rules of an existing collection with whatever the file says. The one exception: if a collection's entry has no `rules` object at all (a hand-edited or generated file), the import keeps the rules that are already there instead of locking the collection, and reports how many it left alone. `fields` and `indexes` work the other way round — they're the point of a schema import, so an entry missing either one is rejected as incomplete and the whole import is refused before anything is written.
 - These rules apply to regular tenant-user API calls only. A superadmin browsing this collection from the [Data tab](/admin-ui/collection-data) bypasses them entirely (see [admin bypass](/concepts/roles-and-permissions#admin-bypass-on-tenant-data)) — don't use the admin UI to "test" what a rule allows; call the API as a tenant user instead.
 - API clients authenticate with `Authorization: Bearer <accessToken>`, obtained from `POST /api/auth/login` (see [API Reference](/admin-ui/collection-api)).

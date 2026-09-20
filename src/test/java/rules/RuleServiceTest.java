@@ -79,4 +79,62 @@ class RuleServiceTest {
         assertThat(ruleService.listFilter("owner", "owner", user), is(Filters.eq("owner", "user-1")));
         assertThat(ruleService.listFilter("owner", "owner", AuthContext.guest()), is(not(Filters.empty())));
     }
+
+    @Test
+    void membershipRulesAreAcceptedValues() {
+        ruleService.validateRule("group", "owner");
+        ruleService.validateRule("peers", "owner");
+    }
+
+    @Test
+    void theRejectionMessageListsTheMembershipRules() {
+        RuleParseException thrown = assertThrows(
+                RuleParseException.class,
+                () -> ruleService.validateRule("teams", "owner"));
+
+        assertThat(thrown.getMessage().contains("group"), is(true));
+        assertThat(thrown.getMessage().contains("peers"), is(true));
+    }
+
+    @Test
+    void aGroupRuleWithoutConfigurationIsRejected() {
+        CollectionRules rules = new CollectionRules("group", null, null, null, null, "owner");
+
+        assertThrows(RuleParseException.class, () -> ruleService.validateRules(rules));
+    }
+
+    @Test
+    void aGroupRuleWithoutTheRecordFieldIsRejected() {
+        CollectionRules rules = new CollectionRules(
+                "group", null, null, null, null, "owner", "memberships", "user", "crew", null);
+
+        assertThrows(RuleParseException.class, () -> ruleService.validateRules(rules));
+    }
+
+    @Test
+    void peersDoesNotNeedTheRecordField() {
+        CollectionRules rules = new CollectionRules(
+                "peers", null, null, null, null, "owner", "memberships", "user", "crew", null);
+
+        ruleService.validateRules(rules);
+    }
+
+    /**
+     * Without a tenant context the membership cannot be looked up. Both entry points have to say
+     * "no" then - a null list filter is refused by the caller, and canAccess denies outright.
+     * Never an empty filter, which would return the whole collection.
+     */
+    @Test
+    void membershipRulesDenyWhenTheLookupCannotRun() {
+        AuthContext user = AuthContext.of("user-1", Role.USER, "tenant-1");
+
+        assertThat(ruleService.listFilter("group", "owner", user), is(nullValue()));
+        assertThat(ruleService.listFilter("peers", "owner", user), is(nullValue()));
+        assertThat(
+                ruleService.canAccess("group", "owner", user, new org.bson.Document("id", "record-1"), null),
+                is(false));
+        assertThat(
+                ruleService.canAccess("peers", "owner", user, new org.bson.Document("id", "user-1"), null),
+                is(false));
+    }
 }

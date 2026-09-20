@@ -79,7 +79,7 @@ public class MetaController {
         // rule - an unknown or duplicated index field, a reserved field name, a duplicate index
         // name. All of those describe the request, so they must not leave as a 500.
         try {
-            tenantCollections.validateDefinition(definition);
+            tenantCollections.validateDefinition(ctx, definition);
         } catch (RuleParseException | IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
@@ -172,7 +172,7 @@ public class MetaController {
         );
 
         try {
-            tenantCollections.validateDefinition(updated);
+            tenantCollections.validateDefinition(ctx, updated);
         } catch (RuleParseException | IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }

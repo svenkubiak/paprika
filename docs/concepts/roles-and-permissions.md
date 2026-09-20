@@ -33,14 +33,104 @@ For everything a **tenant user** (not a superadmin) can do against `/api/collect
 | `*` | `PUBLIC` | Anyone can perform this operation, no authentication required. |
 | `auth` | `EXPRESSION` → `auth.id != null` | Any authenticated tenant user (valid JWT) can perform this operation. |
 | `owner` | `EXPRESSION` → `record.<ownerField> = auth.id`, on `users`: `record.id = auth.id` | Only the tenant user referenced by the record's owner field can perform this operation - on the `users` collection, only the caller's own account (see below). |
+| `group` | `MEMBERSHIP` | Only members of the group the record belongs to (see [Group membership](#group-membership-group-and-peers)). Not available on `users`. |
+| `peers` | `MEMBERSHIP` | Only users who share at least one group with the caller, plus the caller's own record. **Only** available on `users`. |
 
-These four correspond directly to the **presets** shown in the admin UI: *No access*, *Public*, *Signed in*, *Own records*. These are the only values the API accepts — anything else is rejected on save with `RuleParseException`. Paprika deliberately keeps the rule engine to these four presets instead of exposing a full custom expression syntax like PocketBase's.
+These six correspond directly to the **presets** shown in the admin UI: *No access*, *Public*, *Signed in*, *Own records*, *Group members*, *Group peers*. These are the only values the API accepts — anything else is rejected on save with `RuleParseException`. Paprika deliberately keeps the rule engine to these presets instead of exposing a full custom expression syntax like PocketBase's.
 
 **On the `users` collection, `owner` resolves differently:** to `record.id = auth.id`. The preset is the same, only its meaning adapts to the collection. A user record cannot hold a relation to itself, so the owner-field comparison would run against a field that does not exist and never match — which would lock every user out of their *own* account, the one case the preset is most obviously wanted for. The own record of a user is their identity, not a relation to it. Consequences: no `RELATION → users` field is needed on `users`, any stored owner field is ignored there and never written into a user record, and `owner` on the create rule can never be satisfied (there is no record yet whose id could equal the caller's — sign-up is `POST /api/auth/register`). Everything else is unchanged, including that `role` and the credential fields stay unwritable through the data plane.
 
 **Owner rules** on every other collection need an **owner field**: a `RELATION → users` field on the collection (see [Collections](/concepts/collections)) that stores which tenant user owns each record. On create, Paprika automatically fills this field with the authenticated user's id, so client apps don't need to send it themselves. If a collection has no such relation field yet, the admin UI falls back to a plain field named `owner`.
 
 List rules do double duty: besides gating whether the list endpoint is callable at all, they also filter *which* records come back — an `owner` list rule only returns the calling user's own records, never the whole collection.
+
+## Group membership: `group` and `peers`
+
+`owner` answers "this one user". A lot of applications need "this group of users": a team, an
+organisation, a household, a shared project — data that belongs to a **group** inside one tenant,
+not to a person. Without a preset for it the only option left is `auth`, and that is not access
+control: every user of the application could read, change and delete the data of **every** group.
+
+The two presets `group` and `peers` close that gap. They decide access through a **membership
+record in a second collection** — the same idea as PocketBase's back-relations, a Supabase RLS
+subquery or a `get()` in Firebase security rules.
+
+### The setup
+
+Three collections, all inside one tenant:
+
+| Collection | Holds | Fields that matter |
+|---|---|---|
+| `teams` | the groups | (anything) |
+| `team_members` | one record per membership | `user` → `users`, `team` → `teams` |
+| `documents` | the data to protect | `team` → `teams` |
+
+On `documents` the rules are set to `group` with this configuration (Rules tab, or the collection's
+`rules` object):
+
+```json
+{
+  "listRule": "group", "viewRule": "group", "createRule": "group",
+  "updateRule": "group", "deleteRule": "group",
+  "groupCollection": "team_members",
+  "groupMemberField": "user",
+  "groupField": "team",
+  "groupRecordField": "team"
+}
+```
+
+On `users` the rules are set to `peers` with the same `groupCollection`, `groupMemberField` and
+`groupField` — `groupRecordField` is not used there, because a user record *is* the thing being
+matched.
+
+Like the owner field, this is **configuration of the collection**, not part of the rule string: the
+rule values stay a fixed allowlist. A `group` or `peers` rule without a complete configuration is
+rejected with `400` when the collection is saved, together with the reason — it is never silently
+treated as locked. The check covers that the membership collection exists, that the three field
+names exist (there, respectively here), and that they are `RELATION` or `STRING` fields.
+
+### What each operation does
+
+Let **my groups** be the values of `groupField` in every `groupCollection` record whose
+`groupMemberField` is the caller's id.
+
+| Operation | `group` | `peers` |
+|---|---|---|
+| List | filtered to records whose `groupRecordField` is one of my groups | filtered to the members of my groups, plus my own record |
+| View / Delete | the record's group must be one of my groups | the record's id must be a member of my groups, or my own |
+| Update | the record's **current** group must be mine, and if the body changes the group, the **new** one has to be mine too | like View |
+| Create | the group **in the body** must be one of mine; a body without it is refused | always refused — there is no record yet whose identity could be checked; sign-up is `POST /api/auth/register` |
+
+The rules that follow from this are worth stating outright:
+
+- **No membership means no records, never all records.** A caller who is in no group gets an empty
+  list, not the collection.
+- **No authentication means nothing**, for both presets, in every operation.
+- **The group field is never filled in for the client.** Unlike the owner field, the client says
+  which group a new record belongs to and the rule checks it. Nothing is assigned automatically.
+- **A revoked membership takes effect on the next request.** The lookup is made per request and
+  memoized only within it; there is no expiring cache to wait out.
+- **The rules of the membership collection are independent.** Paprika reads it internally for this
+  decision without applying its rules — which says nothing about who may call
+  `/api/collections/team_members`. Lock it, or scope it with `group` as well.
+- **Realtime delivery makes the same decision.** A subscribed client never receives an event for a
+  record the view rule would refuse it.
+- **The admin bypass is unchanged.** An admin UI session and a
+  [rule-bypassing API key](#rule-bypassing-keys) see everything, as before.
+
+### Index the membership collection
+
+Every request against a `group` or `peers` collection resolves the caller's memberships with a
+query on `groupCollection`. Without indexes that is a collection scan per request. Add, on the
+membership collection's Schema tab:
+
+- an index on the **member field** (`user` above) — used on every request,
+- an index on the **group field** (`team` above) — used by `peers` to find the other members.
+
+### Out of scope
+
+No nested groups, no roles within a group, no groups across tenant boundaries, and no free-form
+rule expressions: the two presets are two more values on the allowlist, nothing more.
 
 ## Worked example
 
@@ -90,7 +180,7 @@ exactly the rules that service needs, keep them server-side, and rotate them.
 
 ### Rule-bypassing keys
 
-One case the four rule presets cannot express is **"this one caller, and nobody else"**. A trusted
+One case the rule presets cannot express is **"this one caller, and nobody else"**. A trusted
 backend service needs to work on a tenant's data *across* user boundaries (an export job touches
 records of every user), while the collections stay `No access` for clients. `Own records` says the
 opposite, and `Signed in` would open the data to every end user - so neither fits, and Paprika

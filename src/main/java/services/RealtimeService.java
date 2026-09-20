@@ -171,7 +171,7 @@ public class RealtimeService {
 
         Thread.ofVirtual().name("realtime-broadcast-" + collection).start(() -> {
             for (RealtimeClient client : clients.values()) {
-                if (!shouldDeliver(client, tenantId, collection, recordId, rules, record)) {
+                if (!shouldDeliver(client, tenantId, collection, recordId, rules, record, ctx)) {
                     continue;
                 }
 
@@ -191,6 +191,12 @@ public class RealtimeService {
         });
     }
 
+    /**
+     * The delivery check is the same rule decision the API makes, with the same inputs - tenant
+     * context included, so a membership rule resolves here exactly as it does on
+     * {@code GET /api/collections/...}. A client must never receive through the stream what a
+     * request would have refused it.
+     */
     static boolean shouldDeliver(
             RealtimeClient client,
             String eventTenantId,
@@ -198,6 +204,7 @@ public class RealtimeService {
             String recordId,
             CollectionRules rules,
             Document record,
+            TenantContext ctx,
             RuleService ruleService) {
 
         if (!client.isAuthenticated()) {
@@ -213,11 +220,12 @@ public class RealtimeService {
         AuthContext auth = AuthContext.of(client.userId(), client.role(), client.tenantId());
         return ruleService.canAccess(
                 rules.viewRule(),
-                rules.ownerFieldOrDefault(),
+                rules,
                 auth,
                 record,
                 null,
-                collection);
+                collection,
+                ctx);
     }
 
     private boolean shouldDeliver(
@@ -226,9 +234,10 @@ public class RealtimeService {
             String collection,
             String recordId,
             CollectionRules rules,
-            Document record) {
+            Document record,
+            TenantContext ctx) {
 
-        return shouldDeliver(client, eventTenantId, collection, recordId, rules, record, ruleService);
+        return shouldDeliver(client, eventTenantId, collection, recordId, rules, record, ctx, ruleService);
     }
 
     static boolean matchesSubscription(List<String> subscriptions, String collection, String recordId) {

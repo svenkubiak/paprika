@@ -164,6 +164,44 @@ class SchemaExportImportIntegrationTest {
     }
 
     /**
+     * The membership configuration of the group/peers presets is as much part of a rule as the
+     * rule value itself - a round trip that loses it would restore a collection whose rules deny
+     * everything, or worse, whose meaning quietly changed.
+     */
+    @Test
+    void theMembershipConfigurationSurvivesARoundTrip() throws Exception {
+        String memberships = "schema_memberships_" + DbUtils.id();
+        String collection = "schema_group_" + DbUtils.id();
+        CollectionRules rules = new CollectionRules(
+                "group", "group", "group", "group", "group",
+                "owner", memberships, "user", "crew", "crew");
+
+        TenantTestUtils.seedCollection(memberships, CollectionRules.locked());
+        TenantTestUtils.seedCollection(collection, rules);
+
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+        TestResponse export = AdminTestUtils.getWithAdminCookies(EXPORT_URI, cookies);
+        assertThat(export.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(exportedRules(export, collection), equalTo(rules));
+
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        replaceRules(collections, ctx, collection, CollectionRules.locked());
+
+        TestResponse importResponse = AdminTestUtils.postWithAdminCookies(
+                IMPORT_URI, cookies, export.getContent(), "application/json");
+        assertThat(importResponse.getStatusCode(), equalTo(StatusCodes.OK));
+
+        CollectionRules restored = collections.findDefinition(ctx, collection).rules();
+        assertThat(restored, equalTo(rules));
+        assertThat(restored.groupCollection(), equalTo(memberships));
+        assertThat(restored.groupMemberField(), equalTo("user"));
+        assertThat(restored.groupField(), equalTo("crew"));
+        assertThat(restored.groupRecordField(), equalTo("crew"));
+    }
+
+    /**
      * The export is the one producer of these files, so whatever it writes has to pass the import's
      * own validation - otherwise a tenant could end up with a backup the instance refuses to read.
      */

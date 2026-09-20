@@ -19,6 +19,8 @@ import static org.hamcrest.Matchers.*;
 
 class RealtimeServiceTest {
 
+    private static final TenantContext TENANT = TenantContext.guest("tenant-1", "test-db");
+
     private final RuleService ruleService = new RuleService();
 
     @Test
@@ -77,7 +79,7 @@ class RealtimeServiceTest {
         RealtimeClient client = subscribedClient("user-a", "trips");
 
         assertThat(
-                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, ruleService),
+                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, TENANT, ruleService),
                 is(true));
     }
 
@@ -88,7 +90,7 @@ class RealtimeServiceTest {
         RealtimeClient client = subscribedClient("user-b", "trips");
 
         assertThat(
-                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, ruleService),
+                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, TENANT, ruleService),
                 is(false));
     }
 
@@ -99,7 +101,7 @@ class RealtimeServiceTest {
         RealtimeClient client = subscribedClient("user-b", "trips");
 
         assertThat(
-                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, ruleService),
+                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, TENANT, ruleService),
                 is(true));
     }
 
@@ -110,7 +112,7 @@ class RealtimeServiceTest {
         RealtimeClient client = subscribedClient("user-a", "trips");
 
         assertThat(
-                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, ruleService),
+                RealtimeService.shouldDeliver(client, "tenant-1", "trips", "rec-1", rules, record, TENANT, ruleService),
                 is(false));
     }
 

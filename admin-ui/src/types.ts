@@ -65,6 +65,13 @@ export interface CollectionRules {
   updateRule: string | null
   deleteRule: string | null
   ownerField?: string | null
+  // Configuration of the group/peers rules: where the memberships live, which field of that
+  // collection points at the user and which at the group, and which field of this collection
+  // carries the group (group only - peers matches on the record id).
+  groupCollection?: string | null
+  groupMemberField?: string | null
+  groupField?: string | null
+  groupRecordField?: string | null
 }
 
 export type HookEvent =
@@ -219,9 +226,9 @@ export interface PaginatedRecords {
   total: number
 }
 
-export type RulePreset = 'locked' | 'public' | 'auth' | 'owner'
+export type RulePreset = 'locked' | 'public' | 'auth' | 'owner' | 'group' | 'peers'
 
-export type RuleLevel = '' | '*' | 'auth' | 'owner'
+export type RuleLevel = '' | '*' | 'auth' | 'owner' | 'group' | 'peers'
 
 export interface ApiErrorBody {
   error?: string

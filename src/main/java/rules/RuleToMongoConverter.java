@@ -10,7 +10,13 @@ import java.util.List;
 import java.util.Objects;
 
 public final class RuleToMongoConverter {
-    private static final Bson IMPOSSIBLE = Filters.eq("id", "__paprika_denied__");
+    /**
+     * The filter that matches no record. Public because the membership presets in
+     * {@link RuleService} build their list filter outside the expression engine and have to be
+     * able to say "nothing" with exactly the same query - never with {@link Filters#empty()},
+     * which would return the entire collection.
+     */
+    public static final Bson IMPOSSIBLE = Filters.eq("id", "__paprika_denied__");
 
     private RuleToMongoConverter() {
     }

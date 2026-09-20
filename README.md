@@ -50,7 +50,7 @@ Paprika handles the full auth lifecycle: Argon2 password hashing, JWT access and
 
 ### Control access per operation
 
-Each collection has independent rules for listing, viewing, creating, updating, and deleting records. An operation can be **public**, restricted to any **authenticated** user, scoped to the **owner** of a record, or fully **locked** — or expressed as a custom rule with access to `record.*`, `auth.*`, and `body.*` fields. List rules are compiled directly into the database query.
+Each collection has independent rules for listing, viewing, creating, updating, and deleting records. An operation can be **public**, restricted to any **authenticated** user, scoped to the **owner** of a record, or fully **locked** — or expressed as a custom rule with access to `record.*`, `auth.*`, and `body.*` fields. Data that belongs to a team rather than to one person is covered by the **group** and **peers** rules, which decide access through a membership record in a second collection. List rules are compiled directly into the database query.
 
 ### Store files with records
 

@@ -27,6 +27,10 @@ Any field can be marked **required** (must be present and non-empty on create) a
 
 A `RELATION` field stores the id (or ids, if `maxSelect > 1`) of records in another collection. Relations to the built-in `users` collection are how ownership works — see [Roles & Permissions](/concepts/roles-and-permissions#the-rule-engine-how-tenant-user-data-access-actually-works). Enabling **cascade delete** on a relation means deleting the referenced record also deletes the records that point to it.
 
+Ownership is not the only shape access control takes: when data belongs to a **group** of users
+rather than to one person, the record points at a group and a second collection records who is in
+it. That is what the `group` and `peers` rules do — see [Roles & Permissions → Group membership](/concepts/roles-and-permissions#group-membership-group-and-peers).
+
 Relations are validated when the record that holds them is written: create/update fails with a validation error if a referenced id doesn't exist in the target collection at that moment. There's no ongoing enforcement after that, though — if the target record is later deleted **without** cascade delete enabled, the relation field is left pointing at an id that no longer exists (a dangling reference), and nothing revalidates or cleans it up automatically.
 
 ## Files

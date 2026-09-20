@@ -42,18 +42,25 @@ export function parseForwardHeaders(value: string): string[] {
     .filter((name) => name.length > 0)
 }
 
-export function ruleLevel(rule: string | null | undefined): '' | '*' | 'auth' | 'owner' {
+export function ruleLevel(rule: string | null | undefined): RuleLevel {
   if (!rule?.trim()) return ''
   const normalized = rule.trim().toLowerCase()
   if (normalized === '*') return '*'
   if (normalized === 'auth') return 'auth'
   if (normalized === 'owner') return 'owner'
+  if (normalized === 'group') return 'group'
+  if (normalized === 'peers') return 'peers'
   return ''
 }
 
-export function ruleValueFromLevel(level: '' | '*' | 'auth' | 'owner'): string | null {
+export function ruleValueFromLevel(level: RuleLevel): string | null {
   if (level === '') return null
   return level
+}
+
+/** The two presets that decide access through a membership in a second collection. */
+export function isMembershipLevel(level: string | null | undefined): boolean {
+  return level === 'group' || level === 'peers'
 }
 
 export function ruleLevelForSelect(rule: string | null | undefined): RuleLevel | typeof SELECT_EMPTY {
@@ -193,5 +200,21 @@ export const RULE_PRESETS = {
     createRule: 'auth',
     updateRule: 'owner',
     deleteRule: 'owner'
+  },
+  group: {
+    listRule: 'group',
+    viewRule: 'group',
+    createRule: 'group',
+    updateRule: 'group',
+    deleteRule: 'group'
+  },
+  // Create is never granted by "peers" - there is no record yet whose identity could be checked,
+  // and sign-up goes through POST /api/auth/register.
+  peers: {
+    listRule: 'peers',
+    viewRule: 'peers',
+    createRule: null,
+    updateRule: 'peers',
+    deleteRule: 'peers'
   }
 } as const
