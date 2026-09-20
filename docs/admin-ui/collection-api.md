@@ -15,6 +15,12 @@ If the collection has `FILE` fields, dedicated download/delete endpoints are lis
 
 Every response includes the three [system fields](/concepts/collections#system-fields) (`id`, `createdAt`, `updatedAt`) alongside the schema fields — the reference notes this so it's clear they're not something you define yourself.
 
+## Create and update answer with the record
+
+`POST /api/collections/{collection}` responds with `201 Created` **and the created record** in the body, `PATCH /api/collections/{collection}/{id}` with `200 OK` **and the updated record**. In both cases the body has exactly the shape `GET /api/collections/{collection}/{id}` returns for the same record: the same fields, the same file references (including their `url`), and — on the `users` collection — never `passwordHash` or `passwordSalt`.
+
+That means the server-generated `id` is available right after a create, so a client can immediately reference the new record (for example from a second record pointing at it) without a follow-up list or read call. `DELETE` still answers without a body.
+
 ## Authentication
 
 A separate card documents `/api/auth/register`, `/api/auth/login`, and `/api/auth/refresh` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).

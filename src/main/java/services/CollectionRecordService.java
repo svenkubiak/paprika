@@ -117,12 +117,10 @@ public class CollectionRecordService {
         }
         fileFieldService.commitUploads(ctx, uploadChanges);
 
-        Document saved = tenantCollections.dataCollection(ctx, collection)
-                .find(eq("id", recordId))
-                .projection(recordProjection(collection))
-                .first();
+        Document saved = readRecord(ctx, definition, collection, recordId);
 
-        FileFieldUtils.enrichRecord(saved, definition, collection, recordId);
+        // Hooks run asynchronously on this document, so the response gets its own copy.
+        Document responseRecord = saved == null ? null : new Document(saved);
 
         hookService.fireAfter(
                 ctx,
@@ -134,7 +132,7 @@ public class CollectionRecordService {
                 recordId
         );
 
-        return RecordResult.created();
+        return RecordResult.created(responseRecord);
     }
 
     public RecordResult list(
@@ -190,18 +188,32 @@ public class CollectionRecordService {
     public RecordResult read(TenantContext ctx, String collection, String id) {
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
 
-        Document document = tenantCollections.dataCollection(ctx, collection)
-                .find(eq("id", id))
-                .projection(recordProjection(collection))
-                .first();
+        Document document = readRecord(ctx, definition, collection, id);
 
         if (document == null) {
             return RecordResult.notFound();
         }
 
-        FileFieldUtils.enrichRecord(document, definition, collection, id);
-
         return RecordResult.ok(document);
+    }
+
+    /**
+     * Single place that turns a stored record into the client-facing form: the read projection
+     * (which also excludes the users credential fields) plus the file-reference enrichment. Write
+     * responses go through here too, so a created or updated record is byte-for-byte what a
+     * subsequent read would return.
+     */
+    private Document readRecord(TenantContext ctx, CollectionDefinition definition, String collection, String id) {
+        Document document = tenantCollections.dataCollection(ctx, collection)
+                .find(eq("id", id))
+                .projection(recordProjection(collection))
+                .first();
+
+        if (document != null) {
+            FileFieldUtils.enrichRecord(document, definition, collection, id);
+        }
+
+        return document;
     }
 
     public RecordResult update(TenantContext ctx, String collection, String id, Request request) {
@@ -276,7 +288,7 @@ public class CollectionRecordService {
 
             if (updateOperation.isEmpty()) {
                 fileFieldService.rollbackUploads(ctx, uploadChanges);
-                return RecordResult.ok();
+                return RecordResult.ok(readRecord(ctx, definition, collection, id));
             }
 
             Document updated = tenantCollections.dataCollection(ctx, collection).findOneAndUpdate(
@@ -298,6 +310,9 @@ public class CollectionRecordService {
             fileFieldService.commitUploads(ctx, uploadChanges);
             FileFieldUtils.enrichRecord(updated, definition, collection, id);
 
+            // Hooks run asynchronously on this document, so the response gets its own copy.
+            Document responseRecord = new Document(updated);
+
             hookService.fireAfter(
                     ctx,
                     definition,
@@ -308,7 +323,7 @@ public class CollectionRecordService {
                     id
             );
 
-            return RecordResult.ok();
+            return RecordResult.ok(responseRecord);
         } catch (IllegalArgumentException e) {
             rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
             return RecordResult.badRequest(e.getMessage());
@@ -439,6 +454,10 @@ public class CollectionRecordService {
 
         public static RecordResult created() {
             return new RecordResult(Status.CREATED, null, null);
+        }
+
+        public static RecordResult created(Object body) {
+            return new RecordResult(Status.CREATED, body, null);
         }
 
         public static RecordResult ok() {

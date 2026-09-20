@@ -302,7 +302,11 @@ export function buildCollectionApiDocs(collection: string, fields: FieldDefiniti
     })
   }
   createExamples.push(
-    successBlock('Response', '201 Created (empty body)', '(no response body)'),
+    successBlock(
+      'Response',
+      '201 Created — the created record, in the same shape GET /{id} returns',
+      record
+    ),
     commonErrors.noSchemaFields,
     validationErrorBlock(fields),
     commonErrors.invalidJson,
@@ -328,7 +332,11 @@ export function buildCollectionApiDocs(collection: string, fields: FieldDefiniti
     })
   }
   updateExamples.push(
-    successBlock('Response', '200 OK (empty body)', '(no response body)'),
+    successBlock(
+      'Response',
+      '200 OK — the updated record, in the same shape GET /{id} returns',
+      record
+    ),
     ...mutatingErrors(fields)
   )
 

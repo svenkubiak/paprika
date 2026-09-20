@@ -18,7 +18,9 @@ public final class CollectionRecordResponseHelper {
             RequestLogService requestLogService) {
 
         Response response = switch (result.status()) {
-            case CREATED -> Response.created();
+            case CREATED -> result.body() != null
+                    ? Response.created().bodyJson(result.body())
+                    : Response.created();
             case OK -> result.body() != null ? Response.ok().bodyJson(result.body()) : Response.ok();
             case NOT_FOUND -> Response.notFound();
             case CONFLICT -> Response.status(StatusCodes.CONFLICT).end();
