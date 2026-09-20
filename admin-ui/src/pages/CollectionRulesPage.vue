@@ -132,10 +132,15 @@ const allLevels = computed(() => [
 const usesMembershipRules = computed(() => allLevels.value.some(isMembershipLevel))
 const usesGroupRules = computed(() => allLevels.value.some((level) => level === 'group'))
 
+// The own collection stays in the list: a membership collection that scopes itself is how an
+// application shows the member list of a group - my memberships name my groups, and every row of
+// those groups is visible. The resolver queries the memberships once and applies the result, so
+// this is not a circular reference.
 const collectionOptions = computed(() =>
-  (bootstrap.value?.collections ?? [])
-    .filter((name) => name !== collection.value)
-    .map((name) => ({ label: name, value: name }))
+  (bootstrap.value?.collections ?? []).map((name) => ({
+    label: name === collection.value ? `${name} (this collection — the memberships themselves)` : name,
+    value: name
+  }))
 )
 
 /** A membership is matched by comparing ids, so only RELATION and STRING fields can carry one. */
@@ -154,12 +159,17 @@ const recordFieldOptions = computed(() => [
 ])
 
 // The field selectors can only be filled once the membership collection's schema is known, and
-// that is a separate request - the rules page only ever loads its own collection.
+// that is a separate request - the rules page only ever loads its own collection. Unless the
+// memberships are this collection, in which case the schema is already on screen.
 watch(
   () => form.value.groupCollection,
   async (name) => {
     if (!name) {
       membershipFields.value = []
+      return
+    }
+    if (name === collection.value && definition.value) {
+      membershipFields.value = definition.value.fields ?? []
       return
     }
     try {
@@ -352,7 +362,7 @@ async function saveRules() {
               <template #label>
                 <FieldLabelHelp
                   label="Membership collection"
-                  hint="Collection holding one record per membership, e.g. team_members."
+                  hint="Collection holding one record per membership, e.g. team_members. Pick this collection itself to let the members of a group see their group's membership records - the member list."
                 />
               </template>
               <USelect

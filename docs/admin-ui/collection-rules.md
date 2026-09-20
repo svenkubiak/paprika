@@ -45,7 +45,7 @@ They say where the memberships live; the concept behind them is
 
 | Selector | Stored as | Meaning |
 |---|---|---|
-| **Membership collection** | `groupCollection` | The collection with one record per membership, e.g. `team_members`. |
+| **Membership collection** | `groupCollection` | The collection with one record per membership, e.g. `team_members`. This collection itself can be picked — it is listed as *this collection — the memberships themselves* — which is how the members of a group get to see their group's membership records, i.e. the member list. |
 | **Member field** | `groupMemberField` | The field in there pointing at the user — a `RELATION → users` or a `STRING` holding the id. |
 | **Group field** | `groupField` | The field in there pointing at the group. |
 | **Group field on this collection** | `groupRecordField` | The field of *this* collection carrying the group. Only shown for **Group members**; **Group peers** matches on the record id. |
@@ -62,6 +62,14 @@ The **Create rule** has to be a different preset there — **Signed in** or **Ow
 and nobody is a member of a group that does not exist yet), so saving that combination is refused
 with `400`. Update and delete stay open to every member of the group; use **Own records** if only
 the creator should change it.
+
+### When this collection *holds the memberships*
+
+On the membership collection itself — `team_members` in the example — **Membership collection** can
+be set to this very collection. **Group field on this collection** is then its own group field
+(`team`), and every member of a team sees all membership records of that team: the member list.
+The lookup is resolved once, before the list is scoped, so this is not a circular reference. Keep
+the write rules narrower (locked or **Own records**) unless every member may change memberships.
 
 The field dropdowns are filled from the schema of the collection you pick, so pick the membership
 collection first. Saving with an incomplete configuration, an unknown collection or an unknown

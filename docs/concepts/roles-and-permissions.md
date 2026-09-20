@@ -65,13 +65,18 @@ Three collections, all inside one tenant:
 | `team_members` | one record per membership | `user` → `users`, `team` → `teams` |
 | `documents` | the data to protect | `team` → `teams` |
 
-Three shapes follow from this, one per collection:
+Four shapes follow from this, one per collection:
 
 | Collection | Rule | How the group hangs off the record |
 |---|---|---|
 | `documents` — the data of a group | `group` | a field: `"groupRecordField": "team"` |
 | `users` — the members themselves | `peers` | the record's identity; `groupRecordField` is unused |
 | `teams` — the group collection itself | `group` | the record *is* the group: `"groupRecordField": "id"` |
+| `team_members` — the memberships themselves | `group` | `"groupCollection": "team_members"` (itself), `"groupRecordField": "team"` |
+
+The last one is how an application **shows the member list of a group**: who is in a team is
+exactly what the membership records say, so the collection scopes itself — the caller's own
+membership records name their groups, and every membership record of those groups is visible.
 
 On `documents` the rules are set to `group` with this configuration (Rules tab, or the collection's
 `rules` object):
@@ -125,6 +130,28 @@ rule values stay a fixed allowlist. A `group` or `peers` rule without a complete
 rejected with `400` when the collection is saved, together with the reason — it is never silently
 treated as locked. The check covers that the membership collection exists, that the three field
 names exist (there, respectively here), and that they are `RELATION` or `STRING` fields.
+
+### The membership collection itself
+
+`team_members` can use `group` with `groupCollection` pointing at **itself** and `groupRecordField`
+set to its own group field (`team`). The caller's memberships determine their groups, and all
+membership records of those groups come back — the member list of every team the caller is in,
+including the rows of the other members:
+
+```json
+{
+  "listRule": "group", "viewRule": "group",
+  "groupCollection": "team_members",
+  "groupMemberField": "user",
+  "groupField": "team",
+  "groupRecordField": "team"
+}
+```
+
+This is not a circular reference: Paprika resolves the memberships **once**, past the rules (see
+above), and the result only scopes the query that follows. Writes are a separate decision — who
+may add or remove a membership is usually narrower than who may read the list, so `createRule`,
+`updateRule` and `deleteRule` are typically locked or `owner` here.
 
 ### What each operation does
 

@@ -116,6 +116,35 @@ class MetaMembershipRulesValidationIntegrationTest {
         assertThat(stored.groupRecordField(), equalTo("id"));
     }
 
+    /**
+     * A membership collection may point at itself: the caller's own membership records name the
+     * groups, and every membership record of those groups becomes visible - the member list of a
+     * group. Nothing about that is circular, so nothing refuses it.
+     * <p>
+     * The rules are saved the way the Rules tab saves them, with a PATCH on the existing
+     * collection - a collection cannot name itself in the request that creates it, because the
+     * membership target is looked up before anything is stored.
+     */
+    @Test
+    void theCollectionItselfIsAcceptedAsTheMembershipCollection() {
+        String collection = "val_selfmem_" + DbUtils.id();
+        assertThat(create(collection, CollectionRules.locked()).getStatusCode(), equalTo(StatusCodes.CREATED));
+
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        String id = collections.findDefinition(ctx, collection).id();
+
+        TestResponse response = update(collection, id, new CollectionRules(
+                "group", "group", null, null, null,
+                "owner", collection, "crew", "crew", "crew"));
+        assertThat(response.getContent(), response.getStatusCode(), equalTo(StatusCodes.OK));
+
+        CollectionRules stored = collections.findDefinition(ctx, collection).rules();
+        assertThat(stored.groupCollection(), equalTo(collection));
+        assertThat(stored.groupMemberField(), equalTo("crew"));
+        assertThat(stored.groupRecordField(), equalTo("crew"));
+    }
+
     /** A create rule on the record's own id could never be satisfied, so it is not stored. */
     @Test
     void aGroupCreateRuleOnTheRecordIdIsRejected() {
@@ -196,6 +225,22 @@ class MetaMembershipRulesValidationIntegrationTest {
 
         return AdminTestUtils.postWithAdminCookies(
                 "/api/meta/collections/" + collection,
+                AdminTestUtils.loginAsAdminWithDefaultTenant(),
+                body,
+                "application/json");
+    }
+
+    private static TestResponse update(String collection, String id, CollectionRules rules) {
+        String body = """
+                {"name":"%s",
+                 "fields":[{"name":"title","type":"STRING","required":true},
+                           {"name":"crew","type":"STRING","required":true}],
+                 "indexes":[],
+                 "rules":%s}
+                """.formatted(collection, json(rules));
+
+        return AdminTestUtils.patchWithAdminCookies(
+                "/api/meta/collections/" + collection + "/" + id,
                 AdminTestUtils.loginAsAdminWithDefaultTenant(),
                 body,
                 "application/json");
