@@ -6,6 +6,7 @@ import { useHookEditorSheet, emptyHookForm } from '@/composables/useHookEditorSh
 import { useAppToast } from '@/composables/useAppToast'
 import { modalUi } from '@/lib/overlay-ui'
 import { hookEventLabel } from '@/lib/hook-events'
+import { parseForwardHeaders } from '@/lib/utils'
 import type { HookDefinition, HookTestResult } from '@/types'
 
 const route = useRoute()
@@ -64,7 +65,8 @@ function hookToForm(hook: HookDefinition) {
     enabled: hook.enabled ?? true,
     priority: hook.priority ?? 100,
     includeSchema: hook.includeSchema ?? false,
-    failOpen: hook.failOpen ?? false
+    failOpen: hook.failOpen ?? false,
+    forwardHeaders: (hook.forwardHeaders || []).join(', ')
   }
 }
 
@@ -97,7 +99,8 @@ async function saveHook() {
   try {
     const payload = {
       ...editorForm.value,
-      collection: collection.value
+      collection: collection.value,
+      forwardHeaders: parseForwardHeaders(editorForm.value.forwardHeaders)
     }
 
     if (editorId.value) {

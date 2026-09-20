@@ -19,6 +19,8 @@ export interface GlobalHookEditorForm {
   failOpen: boolean
   applyToAllCollections: boolean
   targetCollections: string[]
+  /** Comma-separated header names, sent to the backend as a list. */
+  forwardHeaders: string
 }
 
 const props = defineProps<{
@@ -171,6 +173,19 @@ watch(
                 <UInput v-model.number="form.timeoutMs" type="number" min="100" class="w-full" />
               </UFormField>
             </div>
+
+            <UFormField
+              label="Forward request headers"
+              class="w-full"
+              help="Comma-separated, e.g. x-app-key-id, x-signature. These incoming request headers are sent to the configured hook URL on top of the default Content-Type, User-Agent, Accept, Accept-Language and X-Request-Id. Only list what the target actually needs to decide — Authorization, Cookie, Set-Cookie and Proxy-Authorization are never forwarded and are rejected here."
+            >
+              <UInput
+                v-model="form.forwardHeaders"
+                icon="i-lucide-list"
+                placeholder="x-app-key-id, x-signature"
+                class="w-full font-mono"
+              />
+            </UFormField>
 
             <div class="space-y-3 rounded-lg border border-default bg-muted/20 p-3">
               <USwitch v-model="form.applyToAllCollections" label="Apply to all collections" />

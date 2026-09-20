@@ -28,7 +28,8 @@ export function emptyHookForm(): HookEditorForm {
     enabled: true,
     priority: 100,
     includeSchema: false,
-    failOpen: false
+    failOpen: false,
+    forwardHeaders: ''
   }
 }
 

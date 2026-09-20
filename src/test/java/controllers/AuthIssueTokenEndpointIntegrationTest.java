@@ -294,6 +294,7 @@ class AuthIssueTokenEndpointIntegrationTest {
                 null,
                 false,
                 null,
+                null,
                 null);
     }
 

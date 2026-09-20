@@ -159,7 +159,7 @@ predates the endpoint above and keeps working unchanged. The difference matters:
 |---|---|---|
 | Endpoint | authenticated | public (`/api/auth/login`) |
 | Authorization | tenant setting `tokenIssuers`, checked by Paprika | entirely up to the hook target |
-| Caller identity | the caller's bearer token | none — hooks receive no credentials, and the [header allowlist](/admin-ui/collection-hooks) deliberately strips custom headers such as a one-time ticket |
+| Caller identity | the caller's bearer token | none — hooks never receive `Authorization`/`Cookie`, and the [header allowlist](/admin-ui/collection-hooks) strips every other header unless the hook explicitly lists it in `forwardHeaders` (a one-time ticket header can be opted into that way, a credential against Paprika cannot) |
 | Password | not needed | a dummy value must be sent, since `password` is validated before the hook runs |
 
 For a new integration, prefer the endpoint. The hook path remains for installations that already

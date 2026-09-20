@@ -31,10 +31,21 @@ public record HookDefinition(
         Boolean includeSchema,
         Boolean failOpen,
         Boolean applyToAllCollections,
-        List<String> targetCollections
+        List<String> targetCollections,
+
+        /*
+         * Additional incoming request headers this hook wants to see in the envelope, on top of
+         * the fixed non-sensitive allowlist. Opt-in per hook because every entry is sent to an
+         * externally configured URL; blocked headers are rejected on save.
+         */
+        List<String> forwardHeaders
 ) {
     public boolean appliesToAllCollections() {
         return Boolean.TRUE.equals(applyToAllCollections);
+    }
+
+    public List<String> forwardHeadersOrEmpty() {
+        return forwardHeaders != null ? forwardHeaders : List.of();
     }
 
     public List<String> targetCollectionsOrEmpty() {

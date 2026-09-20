@@ -12,10 +12,12 @@ const sampleRecord = {
   owner: 'user-abc'
 }
 
+// Only headers that are actually forwarded: the fixed allowlist, plus whatever the hook opts
+// into via forwardHeaders (x-app-key-id here as an example).
 const sampleHeaders = {
-  Authorization: ['Bearer eyJ…'],
   'Content-Type': ['application/json'],
-  'User-Agent': ['MyApp/1.0']
+  'User-Agent': ['MyApp/1.0'],
+  'X-App-Key-Id': ['app-key-42']
 }
 
 function isAuthEvent(event: HookEvent): boolean {

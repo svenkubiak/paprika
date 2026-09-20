@@ -380,6 +380,7 @@ class ApiKeyBypassIntegrationTest {
                 null,
                 false,
                 null,
+                null,
                 null);
     }
 

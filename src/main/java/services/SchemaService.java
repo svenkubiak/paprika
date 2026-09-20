@@ -8,6 +8,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.CollectionDefinition;
 import models.CollectionRules;
+import hooks.HookRequestUtils;
 import models.HookDefinition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -191,7 +192,8 @@ public class SchemaService {
                     hook.includeSchema(),
                     hook.failOpen(),
                     hook.applyToAllCollections(),
-                    hook.targetCollections()
+                    hook.targetCollections(),
+                    HookRequestUtils.normalizeForwardHeaders(hook.forwardHeaders())
             ));
         }
 

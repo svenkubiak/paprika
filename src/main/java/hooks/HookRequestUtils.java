@@ -17,12 +17,24 @@ public final class HookRequestUtils {
     // wholesale: Cookie, Authorization and friends would hand the receiver live credentials.
     // Allowlist rather than denylist, so a custom auth header cannot slip through unnoticed.
     // Hooks that need a secret at their endpoint configure a static outgoing header instead.
+    // A hook may opt in to additional headers via HookDefinition.forwardHeaders (needed by
+    // beforeRequest hooks that act as an external authorizer), but never to a blocked one.
     private static final Set<String> FORWARDED_HEADERS = Set.of(
             "content-type",
             "user-agent",
             "accept",
             "accept-language",
             "x-request-id");
+
+    // Headers that are credentials against Paprika itself. A hook target receiving one of them
+    // could replay it and impersonate the caller, so they stay unforwardable even when a tenant
+    // admin explicitly configures them. Enforced twice: on save (400) and here on dispatch, so a
+    // row written directly to the database cannot leak them either.
+    private static final Set<String> BLOCKED_HEADERS = Set.of(
+            "authorization",
+            "cookie",
+            "set-cookie",
+            "proxy-authorization");
 
     // A hook target is an arbitrary external URL, so a credential a client sent us must not be
     // relayed to it. The auth hooks already build their payload without the plaintext password;
@@ -77,16 +89,65 @@ public final class HookRequestUtils {
         return null;
     }
 
+    /**
+     * @return {@code true} if the header must never reach a hook target, whatever the hook says.
+     */
+    public static boolean isBlockedHeader(String name) {
+        return name != null && BLOCKED_HEADERS.contains(name.trim().toLowerCase(Locale.ROOT));
+    }
+
+    public static Set<String> blockedHeaders() {
+        return BLOCKED_HEADERS;
+    }
+
+    /**
+     * Trims and lowercases configured header names so that a comparison against the incoming
+     * request stays case-insensitive, as HTTP header names are.
+     *
+     * @return {@code null} when nothing was configured, so "not set" stays distinguishable
+     */
+    public static List<String> normalizeForwardHeaders(List<String> forwardHeaders) {
+        if (forwardHeaders == null) {
+            return null;
+        }
+
+        return forwardHeaders.stream()
+                .filter(Objects::nonNull)
+                .map(name -> name.trim().toLowerCase(Locale.ROOT))
+                .filter(name -> !name.isEmpty())
+                .distinct()
+                .toList();
+    }
+
     public static Map<String, List<String>> extractRequestHeaders(Request request) {
+        return extractRequestHeaders(request, List.of());
+    }
+
+    public static Map<String, List<String>> extractRequestHeaders(
+            Request request, List<String> additionalHeaders) {
+
         Map<String, List<String>> headers = new LinkedHashMap<>();
         HeaderMap headerMap = request.getHeaders();
         if (headerMap == null) {
             return headers;
         }
 
+        Set<String> allowed = new HashSet<>(FORWARDED_HEADERS);
+        if (additionalHeaders != null) {
+            for (String name : additionalHeaders) {
+                if (name == null) {
+                    continue;
+                }
+                String normalized = name.trim().toLowerCase(Locale.ROOT);
+                if (!normalized.isEmpty() && !BLOCKED_HEADERS.contains(normalized)) {
+                    allowed.add(normalized);
+                }
+            }
+        }
+
         for (HeaderValues headerValues : headerMap) {
             String name = headerValues.getHeaderName().toString();
-            if (!FORWARDED_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
+            if (!allowed.contains(name.toLowerCase(Locale.ROOT))) {
                 continue;
             }
 

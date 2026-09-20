@@ -12,6 +12,7 @@ import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import hooks.HookRequestUtils;
 import models.HookDefinition;
 import models.HookEvent;
 import services.HookService;
@@ -53,7 +54,8 @@ public class MetaGlobalHooksController {
                 hookDefinition.includeSchema(),
                 hookDefinition.failOpen(),
                 hookDefinition.applyToAllCollections(),
-                hookDefinition.targetCollections());
+                hookDefinition.targetCollections(),
+                HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders()));
 
         try {
             hookService.validate(hook, ctx);
@@ -97,7 +99,10 @@ public class MetaGlobalHooksController {
                         : current.applyToAllCollections(),
                 hookDefinition.targetCollections() != null
                         ? hookDefinition.targetCollections()
-                        : current.targetCollections());
+                        : current.targetCollections(),
+                hookDefinition.forwardHeaders() != null
+                        ? HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders())
+                        : current.forwardHeaders());
 
         try {
             hookService.validate(updated, ctx);

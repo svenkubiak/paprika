@@ -101,6 +101,7 @@ export interface HookDefinition {
   failOpen?: boolean | null
   applyToAllCollections?: boolean | null
   targetCollections?: string[] | null
+  forwardHeaders?: string[] | null
 }
 
 export interface HookTestResult {

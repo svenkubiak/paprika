@@ -147,6 +147,15 @@ public class HookService {
             throw new IllegalArgumentException(
                     "Hook method must be one of " + ALLOWED_METHODS + ", got: " + hook.method());
         }
+
+        for (String header : hook.forwardHeadersOrEmpty()) {
+            if (HookRequestUtils.isBlockedHeader(header)) {
+                throw new IllegalArgumentException(
+                        "Header '" + header.trim() + "' cannot be forwarded to a hook target: it authenticates "
+                        + "the caller against Paprika itself. Blocked headers are "
+                        + HookRequestUtils.blockedHeaders() + ".");
+            }
+        }
     }
 
     public HookTestResult testHook(TenantContext ctx, String collection, HookDefinition hook) {
@@ -444,7 +453,7 @@ public class HookService {
                     record,
                     recordId,
                     hook.includeSchema(),
-                    HookRequestUtils.extractRequestHeaders(request));
+                    HookRequestUtils.extractRequestHeaders(request, hook.forwardHeadersOrEmpty()));
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
             Result result = sendRequest(ctx, hook, envelope, signature);
             if (result.status() == -1) {
@@ -481,7 +490,7 @@ public class HookService {
                     record,
                     recordId,
                     hook.includeSchema(),
-                    HookRequestUtils.extractRequestHeaders(request));
+                    HookRequestUtils.extractRequestHeaders(request, hook.forwardHeadersOrEmpty()));
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
             Result result = sendRequest(ctx, hook, envelope, signature);
             if (result.status() == -1) {
@@ -771,7 +780,8 @@ public class HookService {
                 hook.includeSchema(),
                 hook.failOpen(),
                 hook.applyToAllCollections(),
-                hook.targetCollections());
+                hook.targetCollections(),
+                HookRequestUtils.normalizeForwardHeaders(hook.forwardHeaders()));
     }
 
     private String httpPathForTest(HookEvent event, String collection) {

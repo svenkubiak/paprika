@@ -32,7 +32,8 @@ export function emptyGlobalHookForm(): GlobalHookEditorForm {
     includeSchema: false,
     failOpen: false,
     applyToAllCollections: true,
-    targetCollections: []
+    targetCollections: [],
+    forwardHeaders: ''
   }
 }
 

@@ -8,6 +8,7 @@ import {
 } from '@/composables/useGlobalHookEditorSheet'
 import { useAppToast } from '@/composables/useAppToast'
 import { modalUi } from '@/lib/overlay-ui'
+import { parseForwardHeaders } from '@/lib/utils'
 import type { HookDefinition, HookTestResult } from '@/types'
 
 const toast = useAppToast()
@@ -75,7 +76,8 @@ function hookToForm(hook: HookDefinition) {
     includeSchema: !!hook.includeSchema,
     failOpen: !!hook.failOpen,
     applyToAllCollections: hook.applyToAllCollections === true,
-    targetCollections: [...(hook.targetCollections || [])]
+    targetCollections: [...(hook.targetCollections || [])],
+    forwardHeaders: (hook.forwardHeaders || []).join(', ')
   }
 }
 
@@ -123,7 +125,8 @@ async function saveHook() {
       applyToAllCollections: editorForm.value.applyToAllCollections,
       targetCollections: editorForm.value.applyToAllCollections
         ? []
-        : editorForm.value.targetCollections
+        : editorForm.value.targetCollections,
+      forwardHeaders: parseForwardHeaders(editorForm.value.forwardHeaders)
     }
 
     if (editorId.value) {

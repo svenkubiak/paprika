@@ -293,6 +293,7 @@ class OutboundSecretLeakIntegrationTest {
                 null,
                 false,
                 null,
+                null,
                 null);
     }
 

@@ -34,6 +34,14 @@ export function generateRandomSecret(length = 32): string {
   return Array.from(bytes, (byte) => SECRET_CHARS[byte % SECRET_CHARS.length]).join('')
 }
 
+/** Header names are case-insensitive, so the backend stores and compares them lowercased. */
+export function parseForwardHeaders(value: string): string[] {
+  return value
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter((name) => name.length > 0)
+}
+
 export function ruleLevel(rule: string | null | undefined): '' | '*' | 'auth' | 'owner' {
   if (!rule?.trim()) return ''
   const normalized = rule.trim().toLowerCase()
