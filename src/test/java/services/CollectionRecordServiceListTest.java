@@ -123,6 +123,25 @@ class CollectionRecordServiceListTest {
         }
     }
 
+    /**
+     * A limit above the maximum used to fall back to the default of 25, which hands the client a
+     * plausible looking but far too short page. It is clamped to the maximum instead.
+     */
+    @Test
+    void limitIsClampedToTheMaximumInsteadOfFallingBackToTheDefault() {
+        String collection = seededCollection("notes_limit_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        for (int i = 0; i < 110; i++) {
+            insert(ctx, collection, "title-" + i);
+        }
+
+        assertThat(idsOf(list(ctx, collection, 0, 0, null)), hasSize(25));
+        assertThat(idsOf(list(ctx, collection, 0, -1, null)), hasSize(25));
+        assertThat(idsOf(list(ctx, collection, 0, 100, null)), hasSize(100));
+        assertThat(idsOf(list(ctx, collection, 0, 101, null)), hasSize(100));
+        assertThat(idsOf(list(ctx, collection, 0, 10_000, null)), hasSize(100));
+    }
+
     static String seededCollection(String prefix) {
         String collection = prefix + DbUtils.id();
         TenantTestUtils.seedCollection(

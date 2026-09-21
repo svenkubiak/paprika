@@ -175,7 +175,10 @@ public class CollectionRecordService {
         Bson effectiveFilter = clientFilter == null ? ruleFilter : Filters.and(ruleFilter, clientFilter);
 
         int effectiveOffset = Math.max(offset, 0);
-        int effectiveLimit = limit <= 0 || limit > MAX_LIMIT ? DEFAULT_LIMIT : limit;
+        // "No limit given" and "limit above the maximum" are different requests: the first asks for
+        // the default page, the second asks for as much as possible. Answering the second with the
+        // default silently drops records a client has no way of noticing, so it is clamped instead.
+        int effectiveLimit = limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
 
         List<Document> items = new ArrayList<>();
         tenantCollections.dataCollection(ctx, collection)
