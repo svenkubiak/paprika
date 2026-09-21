@@ -20,6 +20,15 @@ const newPassword = ref('')
 const confirmPassword = ref('')
 const twoFactorEnabled = ref(false)
 const requestLogRetentionDays = ref(7)
+const requestLogClientInfo = ref(false)
+const requestLogClientIp = ref<'off' | 'truncated' | 'full'>('off')
+const savingClientInfo = ref(false)
+
+const clientIpOptions = [
+  { label: 'Do not log (default)', value: 'off' },
+  { label: 'Truncated (IPv4 /24, IPv6 /48)', value: 'truncated' },
+  { label: 'Full address', value: 'full' }
+]
 const defaultTenantId = ref(SELECT_EMPTY)
 
 const tenantItems = computed(() =>
@@ -72,6 +81,8 @@ async function refreshSettings() {
         ? settings.requestLogRetentionDays
         : 7
     defaultTenantId.value = settings.defaultTenantId || SELECT_EMPTY
+    requestLogClientInfo.value = !!settings.requestLogClientInfo
+    requestLogClientIp.value = settings.requestLogClientIp || 'off'
   } catch (error) {
     toast.add({
       title: error instanceof Error ? error.message : 'Failed to load settings',
@@ -184,6 +195,31 @@ async function saveRequestLogRetention() {
   }
 }
 
+async function saveClientInfo() {
+  savingClientInfo.value = true
+  try {
+    const settings = await api.updateSettings({
+      requestLogClientInfo: requestLogClientInfo.value,
+      requestLogClientIp: requestLogClientIp.value
+    })
+    requestLogClientInfo.value = !!settings.requestLogClientInfo
+    requestLogClientIp.value = settings.requestLogClientIp || 'off'
+    toast.add({
+      title: 'Client information settings updated',
+      color: 'success',
+      icon: 'i-lucide-circle-check'
+    })
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to update client information settings',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+  } finally {
+    savingClientInfo.value = false
+  }
+}
+
 async function saveDefaultTenant() {
   savingDefaultTenant.value = true
   try {
@@ -191,6 +227,8 @@ async function saveDefaultTenant() {
       defaultTenantId: defaultTenantId.value === SELECT_EMPTY ? '' : defaultTenantId.value
     })
     defaultTenantId.value = settings.defaultTenantId || SELECT_EMPTY
+    requestLogClientInfo.value = !!settings.requestLogClientInfo
+    requestLogClientIp.value = settings.requestLogClientIp || 'off'
     toast.add({
       title: 'Default tenant updated',
       color: 'success',
@@ -442,6 +480,50 @@ async function savePassword() {
           >
             Save
           </UButton>
+        </form>
+
+        <USeparator />
+
+        <div class="space-y-1">
+          <h3 class="font-medium">Client information</h3>
+          <p class="max-w-2xl text-sm text-muted">
+            User agent and IP address identify the person behind a request, so Paprika does not
+            store them unless you switch them on and can justify why you need them. Keep the
+            retention above as short as the purpose allows, and prefer the truncated IP: it still
+            shows you the network behind abusive traffic. IP addresses are read from
+            <code>X-Forwarded-For</code>/<code>X-Real-IP</code>, so they require a reverse proxy
+            that sets them.
+          </p>
+        </div>
+
+        <form class="flex max-w-2xl flex-col gap-4" @submit.prevent="saveClientInfo">
+          <USwitch
+            v-model="requestLogClientInfo"
+            label="Log user agent"
+            :disabled="!bootstrap?.isSuperAdmin"
+          />
+
+          <UFormField label="Client IP address" class="w-full sm:max-w-md">
+            <USelect
+              v-model="requestLogClientIp"
+              :items="clientIpOptions"
+              value-key="value"
+              label-key="label"
+              class="w-full"
+              :disabled="!bootstrap?.isSuperAdmin"
+            />
+          </UFormField>
+
+          <div>
+            <UButton
+              type="submit"
+              :loading="savingClientInfo"
+              icon="i-lucide-save"
+              :disabled="!bootstrap?.isSuperAdmin"
+            >
+              Save
+            </UButton>
+          </div>
         </form>
       </div>
     </UCard>

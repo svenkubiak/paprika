@@ -552,6 +552,8 @@ export const api = {
   updateSettings(settings: {
     requestLogRetentionDays?: number
     defaultTenantId?: string | null
+    requestLogClientInfo?: boolean
+    requestLogClientIp?: 'off' | 'truncated' | 'full'
   }): Promise<AppSettings> {
     return request('/api/admin/settings', {
       method: 'PATCH',
@@ -640,7 +642,8 @@ export const api = {
     limit: number,
     search: string,
     status: 'all' | 'success' | 'error',
-    hook?: 'any' | 'fired' | 'blocked'
+    hook?: 'any' | 'fired' | 'blocked',
+    type?: 'all' | 'request' | 'hook'
   ): Promise<PaginatedRequestLogs> {
     const params = new URLSearchParams({
       offset: String(offset),
@@ -652,6 +655,9 @@ export const api = {
     }
     if (hook && hook !== 'any') {
       params.set('hook', hook)
+    }
+    if (type && type !== 'all') {
+      params.set('type', type)
     }
     return request(`/api/admin/request-logs?${params.toString()}`)
   }

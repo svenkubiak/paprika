@@ -16,7 +16,9 @@
 
 ## Request logs
 
-- **Retention (days)** — how long API request log entries are kept before automatic cleanup. Set to `0` to keep logs indefinitely. See [Request Logs](/admin-ui/request-logs) for what's actually recorded.
+- **Retention (days)** — how long request log entries are kept before automatic cleanup. Set to `0` to keep logs indefinitely. See [Request Logs](/admin-ui/request-logs) for what's actually recorded.
+- **Log user agent** — off by default. The user agent is personal data, so Paprika only stores it if you decide you need it.
+- **Client IP address** — `off` (default), `truncated`, or `full`. `truncated` keeps the network and drops the host (IPv4 `/24`, IPv6 `/48`), which is enough to recognise abusive traffic without singling out a caller. Addresses are read from `X-Forwarded-For` / `X-Real-IP`, so a reverse proxy has to set them.
 
 ## Backup & Restore
 

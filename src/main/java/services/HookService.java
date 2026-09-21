@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import constants.GlobalHooks;
+import constants.RequestAttributes;
 import constants.SystemCollections;
 import de.svenkubiak.http.Http;
 import de.svenkubiak.http.Result;
@@ -45,16 +46,19 @@ public class HookService {
     private final TenantCollectionService tenantCollections;
     private final RealtimeService realtimeService;
     private final TenantService tenantService;
+    private final RequestLogService requestLogService;
     private final ExecutorService asyncExecutor;
 
     @Inject
     public HookService(
             TenantCollectionService tenantCollections,
             RealtimeService realtimeService,
-            TenantService tenantService) {
+            TenantService tenantService,
+            RequestLogService requestLogService) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
+        this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
         this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -352,8 +356,10 @@ public class HookService {
             String recordId) {
 
         List<HookDefinition> hooks = findEnabledHooks(ctx, definition.name(), event);
+        // Read eagerly: the async call outlives the request, the Request object may not.
+        String requestId = request.getAttributeAsString(RequestAttributes.REQUEST_ID);
         for (HookDefinition hook : hooks) {
-            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId));
+            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId, requestId));
         }
         realtimeService.broadcast(ctx, definition, event, record, recordId);
     }
@@ -400,8 +406,9 @@ public class HookService {
 
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, SystemCollections.USERS);
         List<HookDefinition> hooks = findEnabledHooks(ctx, SystemCollections.USERS, event);
+        String requestId = request.getAttributeAsString(RequestAttributes.REQUEST_ID);
         for (HookDefinition hook : hooks) {
-            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId));
+            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId, requestId));
         }
     }
 
@@ -442,6 +449,9 @@ public class HookService {
             Document record,
             String recordId) {
 
+        long started = System.nanoTime();
+        Integer httpStatus = null;
+
         try {
             HookEnvelope envelope = buildEnvelope(
                     definition,
@@ -459,14 +469,51 @@ public class HookService {
             if (result.status() == -1) {
                 throw new IOException(result.error());
             }
-            return parseBlockingResponse(result, hook);
+            httpStatus = result.status();
+            HookExecutionResult execution = parseBlockingResponse(result, hook);
+            HookTelemetry.record(request, invocation(hook, event, httpStatus, started, outcomeOf(execution, httpStatus)));
+            return execution;
         } catch (Exception e) {
             LOG.warn("Blocking hook {} failed for {}: {}", hook.name(), event, e.getMessage());
             if (hook.failOpenOrDefault()) {
+                HookTelemetry.record(request, invocation(
+                        hook, event, httpStatus, started, HookInvocation.OUTCOME_FAILED_OPEN));
                 return HookExecutionResult.proceedUnchanged();
             }
+            HookTelemetry.record(request, invocation(
+                    hook, event, httpStatus, started, HookInvocation.OUTCOME_FAILED));
             return HookExecutionResult.abort(502, "Hook failed: " + hook.name());
         }
+    }
+
+    private HookInvocation invocation(
+            HookDefinition hook,
+            HookEvent event,
+            Integer httpStatus,
+            long startedNano,
+            String outcome) {
+
+        return new HookInvocation(
+                hook.name(),
+                event != null ? event.name() : null,
+                HookTelemetry.target(hook.url()),
+                httpStatus,
+                (System.nanoTime() - startedNano) / 1_000_000L,
+                outcome);
+    }
+
+    private static String outcomeOf(HookExecutionResult execution, Integer httpStatus) {
+        if (execution.issueTokenForUserId() != null) {
+            return HookInvocation.OUTCOME_ISSUED_TOKEN;
+        }
+        if (!execution.continueOperation()) {
+            return HookInvocation.OUTCOME_BLOCKED;
+        }
+        // The hook answered non-2xx but the operation continues: only failOpen can do that.
+        if (httpStatus != null && (httpStatus < 200 || httpStatus >= 300)) {
+            return HookInvocation.OUTCOME_FAILED_OPEN;
+        }
+        return HookInvocation.OUTCOME_CONTINUED;
     }
 
     private void executeAsync(
@@ -477,7 +524,10 @@ public class HookService {
             Request request,
             JsonNode body,
             Document record,
-            String recordId) {
+            String recordId,
+            String requestId) {
+
+        long started = System.nanoTime();
 
         try {
             HookEnvelope envelope = buildEnvelope(
@@ -496,8 +546,23 @@ public class HookService {
             if (result.status() == -1) {
                 throw new IOException(result.error());
             }
+
+            // Async hooks finish after the response is gone, so they get their own log entry
+            // instead of a field on the request they were triggered by.
+            boolean accepted = result.status() >= 200 && result.status() < 300;
+            requestLogService.recordHookExecution(
+                    ctx,
+                    requestId,
+                    invocation(hook, event, result.status(), started,
+                            accepted ? HookInvocation.OUTCOME_CONTINUED : HookInvocation.OUTCOME_FAILED),
+                    accepted ? null : "Hook returned HTTP " + result.status());
         } catch (Exception e) {
             LOG.warn("Async hook {} failed for {}: {}", hook.name(), event, e.getMessage());
+            requestLogService.recordHookExecution(
+                    ctx,
+                    requestId,
+                    invocation(hook, event, null, started, HookInvocation.OUTCOME_FAILED),
+                    e.getMessage());
         }
     }
 

@@ -18,10 +18,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @Singleton
 public class AdminSettingsService {
     private static final int MAX_RETENTION_DAYS = 3650;
+    private static final Set<String> CLIENT_IP_MODES = Set.of(
+            SettingKeys.CLIENT_IP_OFF, SettingKeys.CLIENT_IP_TRUNCATED, SettingKeys.CLIENT_IP_FULL);
 
     private final SettingsService settingsService;
     private final SystemUserService systemUserService;
@@ -57,13 +60,28 @@ public class AdminSettingsService {
         payload.put(
                 "defaultTenantId",
                 StringUtils.trimToNull(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null)));
+        payload.put(
+                "requestLogClientInfo",
+                settingsService.getBoolean(SettingKeys.REQUEST_LOG_CLIENT_INFO, false));
+        payload.put(
+                "requestLogClientIp",
+                settingsService.get(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_OFF));
 
         return AdminSettingsResult.ok(payload);
     }
 
     public AdminSettingsResult update(Request request, UpdateAdminSettingsDto dto) {
-        if (dto == null || (dto.requestLogRetentionDays() == null && dto.defaultTenantId() == null)) {
+        if (dto == null
+                || (dto.requestLogRetentionDays() == null
+                && dto.defaultTenantId() == null
+                && dto.requestLogClientInfo() == null
+                && dto.requestLogClientIp() == null)) {
             return AdminSettingsResult.badRequest("No settings to update");
+        }
+
+        String clientIpMode = dto.requestLogClientIp() == null ? null : dto.requestLogClientIp().trim();
+        if (clientIpMode != null && !CLIENT_IP_MODES.contains(clientIpMode)) {
+            return AdminSettingsResult.badRequest("Client IP mode must be one of " + CLIENT_IP_MODES);
         }
 
         Integer retentionDays = dto.requestLogRetentionDays();
@@ -86,6 +104,16 @@ public class AdminSettingsService {
 
         if (defaultTenantId != null) {
             settingsService.set(SettingKeys.DEFAULT_TENANT_ID, defaultTenantId);
+        }
+
+        if (dto.requestLogClientInfo() != null) {
+            settingsService.set(
+                    SettingKeys.REQUEST_LOG_CLIENT_INFO,
+                    String.valueOf(dto.requestLogClientInfo()));
+        }
+
+        if (clientIpMode != null) {
+            settingsService.set(SettingKeys.REQUEST_LOG_CLIENT_IP, clientIpMode);
         }
 
         return readSettings(request);

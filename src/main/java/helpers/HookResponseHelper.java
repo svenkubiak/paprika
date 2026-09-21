@@ -2,17 +2,11 @@ package helpers;
 
 import hooks.HookExecutionResult;
 import io.mangoo.routing.Response;
-import io.mangoo.routing.bindings.Request;
-import services.RequestLogService;
 
 import java.util.Map;
 
 public final class HookResponseHelper {
     private HookResponseHelper() {
-    }
-
-    public static Response toErrorResponse(Request request, HookExecutionResult result, RequestLogService requestLogService) {
-        return requestLogService.track(request, toErrorResponse(result));
     }
 
     public static Response toErrorResponse(HookExecutionResult result) {

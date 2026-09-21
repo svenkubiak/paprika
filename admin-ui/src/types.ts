@@ -248,6 +248,8 @@ export interface AppSettings {
   twoFactorEnabled: boolean
   requestLogRetentionDays: number
   defaultTenantId?: string | null
+  requestLogClientInfo?: boolean
+  requestLogClientIp?: 'off' | 'truncated' | 'full'
   [key: string]: string | boolean | number | null | undefined
 }
 
@@ -256,8 +258,19 @@ export interface TwoFactorSetupResult {
   uri: string
 }
 
+export interface RequestLogHookInvocation {
+  name: string
+  event?: string | null
+  target?: string | null
+  status?: number | null
+  durationMs: number
+  outcome: 'continued' | 'blocked' | 'issuedToken' | 'failed' | 'failedOpen'
+}
+
 export interface RequestLogEntry {
   id: string
+  type?: 'request' | 'hook'
+  requestId?: string | null
   method: string
   url: string
   statusCode: number
@@ -271,6 +284,12 @@ export interface RequestLogEntry {
   rulesBypassed?: boolean
   hookFired?: boolean
   hookBlocked?: boolean
+  hookBlockedBy?: string | null
+  hookCount?: number | null
+  hookTotalMs?: number | null
+  hooks?: RequestLogHookInvocation[] | null
+  userAgent?: string | null
+  clientIp?: string | null
 }
 
 export interface PaginatedRequestLogs {

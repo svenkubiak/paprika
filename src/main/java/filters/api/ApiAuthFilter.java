@@ -21,7 +21,6 @@ import rules.RuleMode;
 import rules.RuleOperation;
 import rules.RuleService;
 import services.AuthService;
-import services.RequestLogService;
 import services.TenantCollectionService;
 import utils.ApiKeys;
 import utils.MultipartSupport;
@@ -47,36 +46,28 @@ public class ApiAuthFilter implements PerRequestFilter {
     private final TenantCollectionService tenantCollections;
     private final AuthService authService;
     private final RuleService ruleService;
-    private final RequestLogService requestLogService;
 
     @Inject
     public ApiAuthFilter(
             TenantCollectionService tenantCollections,
             AuthService authService,
-            RuleService ruleService,
-            RequestLogService requestLogService) {
+            RuleService ruleService) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
         this.ruleService = Objects.requireNonNull(ruleService, "ruleService must not be null");
-        this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
-    }
-
-    private Response log(Request request, Response response) {
-        return requestLogService.track(request, response);
     }
 
     @Override
     public Response execute(Request request, Response response) {
-        request.addAttribute("paprika.request.start", System.nanoTime());
         TenantContext tenantContext = TenantContextHolder.require(request);
 
         if (authService.hasBearerToken(request)) {
             AuthContext bearer = authService.resolveBearer(request);
             if (!bearer.isAuthenticated()) {
-                return log(request, Response.unauthorized()
+                return Response.unauthorized()
                         .header("WWW-Authenticate", "Bearer")
                         .bodyJson(UNAUTHORIZED_BODY)
-                        .end());
+                        .end();
             }
             request.addAttribute(TenantContextFilter.AUTH_ATTRIBUTE, bearer);
             return continueWithAuth(
@@ -98,12 +89,12 @@ public class ApiAuthFilter implements PerRequestFilter {
 
         String collection = request.getPathParameter("collection");
         if (collection == null || collection.isBlank()) {
-            return log(request, Response.notFound().bodyJson(NOT_FOUND_BODY).end());
+            return Response.notFound().bodyJson(NOT_FOUND_BODY).end();
         }
 
         CollectionDefinition definition = tenantCollections.findDefinition(tenantContext, collection);
         if (definition == null) {
-            return log(request, Response.notFound().bodyJson(NOT_FOUND_BODY).end());
+            return Response.notFound().bodyJson(NOT_FOUND_BODY).end();
         }
 
         RuleOperation operation = resolveOperation(request);
@@ -121,12 +112,12 @@ public class ApiAuthFilter implements PerRequestFilter {
 
         if (mode == RuleMode.LOCKED) {
             if (!auth.isAuthenticated()) {
-                return log(request, Response.unauthorized()
+                return Response.unauthorized()
                         .header("WWW-Authenticate", "Bearer")
                         .bodyJson(UNAUTHORIZED_BODY)
-                        .end());
+                        .end();
             }
-            return log(request, Response.forbidden().bodyJson(FORBIDDEN_BODY).end());
+            return Response.forbidden().bodyJson(FORBIDDEN_BODY).end();
         }
 
         return switch (operation) {
@@ -178,16 +169,16 @@ public class ApiAuthFilter implements PerRequestFilter {
         boolean needsIdentity = rule != null
                 && ("auth".equalsIgnoreCase(rule.trim()) || RuleService.isMembershipRule(rule));
         if (needsIdentity && !auth.isAuthenticated()) {
-            return log(request, Response.unauthorized()
+            return Response.unauthorized()
                     .header("WWW-Authenticate", "Bearer")
                     .bodyJson(UNAUTHORIZED_BODY)
-                    .end());
+                    .end();
         }
 
         Bson filter = ruleService.listFilter(rule, rules, auth, collection, tenantContext);
         if (filter == null) {
             // A rule that cannot be translated into a query must not result in an unscoped list
-            return log(request, Response.forbidden().bodyJson(FORBIDDEN_BODY).end());
+            return Response.forbidden().bodyJson(FORBIDDEN_BODY).end();
         }
 
         AuthorizationDecision.listGranted(filter).storeIn(request);
@@ -205,12 +196,12 @@ public class ApiAuthFilter implements PerRequestFilter {
         Map<String, Object> body = parseBodyMap(request);
         if (!ruleService.canAccess(rule, rules, auth, null, body, collection, tenantContext)) {
             if (!auth.isAuthenticated()) {
-                return log(request, Response.unauthorized()
+                return Response.unauthorized()
                         .header("WWW-Authenticate", "Bearer")
                         .bodyJson(UNAUTHORIZED_BODY)
-                        .end());
+                        .end();
             }
-            return log(request, Response.forbidden().bodyJson(FORBIDDEN_BODY).end());
+            return Response.forbidden().bodyJson(FORBIDDEN_BODY).end();
         }
 
         AuthorizationDecision.granted(RuleOperation.CREATE).storeIn(request);
@@ -233,12 +224,12 @@ public class ApiAuthFilter implements PerRequestFilter {
                 .first();
 
         if (record == null) {
-            return log(request, Response.notFound().end());
+            return Response.notFound().end();
         }
 
         Map<String, Object> body = operation == RuleOperation.UPDATE ? parseBodyMap(request) : null;
         if (!ruleService.canAccess(rule, rules, auth, record, body, collection, tenantContext)) {
-            return log(request, Response.notFound().end());
+            return Response.notFound().end();
         }
 
         AuthorizationDecision.granted(operation).storeIn(request);

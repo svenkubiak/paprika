@@ -4,8 +4,11 @@ import auth.TenantContext;
 import auth.TenantContextHolder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import constants.RequestAttributes;
 import constants.SettingKeys;
 import constants.SystemCollections;
+import hooks.HookInvocation;
+import hooks.HookTelemetry;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
@@ -14,9 +17,12 @@ import jakarta.inject.Singleton;
 import models.TenantDefinition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import io.undertow.util.Headers;
+import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import utils.ApiKeys;
+import utils.ClientIps;
 import utils.DbUtils;
 
 import java.time.Duration;
@@ -24,8 +30,10 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -37,6 +45,9 @@ public class RequestLogService {
     private static final Logger LOG = LogManager.getLogger(RequestLogService.class);
     private static final Pattern SAFE_SEARCH = Pattern.compile("[.*+?^${}()|\\[\\]\\\\]");
     private static final Duration PURGE_MIN_INTERVAL = Duration.ofMinutes(15);
+    private static final String TYPE_REQUEST = "request";
+    private static final String TYPE_HOOK = "hook";
+    private static final Set<String> EXCLUDED_PATHS = Set.of("/health", "/api/admin/request-logs");
     private final TenantDatabaseResolver resolver;
     private final SettingsService settingsService;
     private final TenantService tenantService;
@@ -66,31 +77,38 @@ public class RequestLogService {
     }
 
     public void record(Request request, int statusCode, String errorMessage) {
-        TenantContext ctx = TenantContextHolder.get(request);
-        if (ctx == null || !ctx.hasTenantContext()) {
+        String path = request.getPath();
+        if (isExcluded(path)) {
+            return;
+        }
+
+        TenantContext ctx = resolveLogTenant(request);
+        if (ctx == null) {
             return;
         }
 
         String collection = request.getPathParameter("collection");
-        if (collection == null || collection.isBlank()) {
-            return;
-        }
-
         if (SystemCollections.REQUEST_LOGS.equals(collection)) {
             return;
         }
 
-        Long startNano = (Long) request.getAttribute("paprika.request.start");
+        Long startNano = (Long) request.getAttribute(RequestAttributes.REQUEST_START);
         Long execTimeMs = startNano != null ? (System.nanoTime() - startNano) / 1_000_000L : null;
 
         Document entry = new Document()
                 .append("id", DbUtils.id())
+                .append("type", TYPE_REQUEST)
+                .append("requestId", request.getAttributeAsString(RequestAttributes.REQUEST_ID))
                 .append("method", request.getMethod().toString())
-                .append("url", buildUrl(request, collection))
+                // Path only: query strings carry filter values, and those are user data.
+                .append("url", path)
                 .append("statusCode", statusCode)
                 .append("errorMessage", statusCode >= 400 ? errorMessage : null)
                 .append("timestamp", Instant.now().toString())
                 .append("execTimeMs", execTimeMs);
+
+        appendClientInfo(entry, request);
+        appendHookTelemetry(entry, request);
 
         if (ctx.hasAuthenticatedUser()) {
             entry.append("userId", ctx.userId());
@@ -109,15 +127,126 @@ public class RequestLogService {
             }
         }
 
-        Boolean hookFired = (Boolean) request.getAttribute("paprika.hook.fired");
-        Boolean hookBlocked = (Boolean) request.getAttribute("paprika.hook.blocked");
+        resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS).insertOne(entry);
+        maybePurgeExpired(ctx);
+    }
+
+    /**
+     * Writes the log entry of one asynchronous (after-)hook. Those run once the response is
+     * already out, so they cannot be a field of the request that triggered them; {@code requestId}
+     * is what ties both entries together.
+     */
+    public void recordHookExecution(
+            TenantContext ctx,
+            String requestId,
+            HookInvocation invocation,
+            String errorMessage) {
+
+        if (ctx == null || !ctx.hasTenantContext() || invocation == null) {
+            return;
+        }
+
+        try {
+            Document entry = new Document()
+                    .append("id", DbUtils.id())
+                    .append("type", TYPE_HOOK)
+                    .append("requestId", requestId)
+                    .append("method", "HOOK")
+                    .append("url", hookUrl(invocation))
+                    .append("statusCode", invocation.status() != null ? invocation.status() : 0)
+                    .append("errorMessage", errorMessage)
+                    .append("timestamp", Instant.now().toString())
+                    .append("execTimeMs", invocation.duration())
+                    .append("hookFired", true)
+                    .append("hookBlocked", false)
+                    .append("hookCount", 1)
+                    .append("hookTotalMs", invocation.duration())
+                    .append("hooks", List.of(toDocument(invocation)));
+
+            resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS).insertOne(entry);
+        } catch (Exception e) {
+            LOG.warn("Failed to record hook log: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Client IP and user agent identify a person, so they are off unless the operator switches
+     * them on and thereby takes the decision (and its justification) consciously.
+     */
+    private void appendClientInfo(Document entry, Request request) {
+        if (settingsService.getBoolean(SettingKeys.REQUEST_LOG_CLIENT_INFO, false)) {
+            entry.append("userAgent", StringUtils.trimToNull(request.getHeader(Headers.USER_AGENT_STRING)));
+        }
+
+        String mode = settingsService.get(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_OFF);
+        String clientIp = ClientIps.resolve(request, mode);
+        if (clientIp != null) {
+            entry.append("clientIp", clientIp);
+        }
+    }
+
+    private void appendHookTelemetry(Document entry, Request request) {
+        List<HookInvocation> invocations = HookTelemetry.invocations(request);
+        Boolean hookFired = (Boolean) request.getAttribute(RequestAttributes.HOOK_FIRED);
+        Boolean hookBlocked = (Boolean) request.getAttribute(RequestAttributes.HOOK_BLOCKED);
+
         if (Boolean.TRUE.equals(hookFired)) {
             entry.append("hookFired", true);
             entry.append("hookBlocked", Boolean.TRUE.equals(hookBlocked));
         }
 
-        resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS).insertOne(entry);
-        maybePurgeExpired(ctx);
+        if (invocations.isEmpty()) {
+            return;
+        }
+
+        long total = invocations.stream().mapToLong(HookInvocation::duration).sum();
+        entry.append("hookCount", invocations.size());
+        entry.append("hookTotalMs", total);
+        entry.append("hooks", invocations.stream().map(RequestLogService::toDocument).toList());
+
+        invocations.stream()
+                .filter(invocation -> HookInvocation.OUTCOME_BLOCKED.equals(invocation.outcome()))
+                .findFirst()
+                .ifPresent(invocation -> entry.append("hookBlockedBy", invocation.name()));
+    }
+
+    private static Document toDocument(HookInvocation invocation) {
+        return new Document()
+                .append("name", invocation.name())
+                .append("event", invocation.event())
+                .append("target", invocation.target())
+                .append("status", invocation.status())
+                .append("durationMs", invocation.duration())
+                .append("outcome", invocation.outcome());
+    }
+
+    private static String hookUrl(HookInvocation invocation) {
+        String target = invocation.target() != null ? invocation.target() : "unknown";
+        return invocation.event() + " \u2192 " + invocation.name() + " (" + target + ")";
+    }
+
+    /**
+     * Health probes would drown out real traffic in a size-limited log, and reading the log must
+     * not create new entries.
+     */
+    private static boolean isExcluded(String path) {
+        return path == null || EXCLUDED_PATHS.contains(path);
+    }
+
+    /**
+     * Requests outside any tenant scope (admin login, setup, the UI shell) still belong in the
+     * log; they are kept with the default tenant, which is the one the admin plane works on.
+     */
+    private TenantContext resolveLogTenant(Request request) {
+        TenantContext ctx = TenantContextHolder.get(request);
+        if (ctx != null && ctx.hasTenantContext()) {
+            return ctx;
+        }
+
+        return tenantService.resolveDefaultTenant()
+                .filter(TenantDefinition::isActive)
+                .map(tenant -> TenantContext.guest(tenant.id(), tenant.databaseName()))
+                .orElse(null);
     }
 
     public void purgeAllExpired() {
@@ -172,7 +301,8 @@ public class RequestLogService {
             int limit,
             String search,
             String statusFilter,
-            String hookFilter) {
+            String hookFilter,
+            String typeFilter) {
 
         if (offset < 0) {
             offset = 0;
@@ -181,7 +311,7 @@ public class RequestLogService {
             limit = 50;
         }
 
-        Bson filter = buildFilter(search, statusFilter, hookFilter);
+        Bson filter = buildFilter(search, statusFilter, hookFilter, typeFilter);
         var collection = resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS);
 
         List<Document> items = new ArrayList<>();
@@ -196,8 +326,12 @@ public class RequestLogService {
         return Map.of("items", items, "total", total);
     }
 
-    private Bson buildFilter(String search, String statusFilter, String hookFilter) {
+    private Bson buildFilter(String search, String statusFilter, String hookFilter, String typeFilter) {
         List<Bson> clauses = new ArrayList<>();
+
+        if (TYPE_REQUEST.equalsIgnoreCase(typeFilter) || TYPE_HOOK.equalsIgnoreCase(typeFilter)) {
+            clauses.add(eq("type", typeFilter.toLowerCase(Locale.ROOT)));
+        }
 
         if (search != null && !search.isBlank()) {
             String escaped = SAFE_SEARCH.matcher(search.trim()).replaceAll("\\\\$0");
@@ -228,15 +362,6 @@ public class RequestLogService {
             return clauses.getFirst();
         }
         return and(clauses);
-    }
-
-    private String buildUrl(Request request, String collection) {
-        String id = request.getPathParameter("id");
-        StringBuilder url = new StringBuilder("/api/collections/").append(collection);
-        if (id != null && !id.isBlank()) {
-            url.append('/').append(id);
-        }
-        return url.toString();
     }
 
     private String extractErrorMessage(Response response) {

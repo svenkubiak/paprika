@@ -1,10 +1,8 @@
 package helpers;
 
 import io.mangoo.routing.Response;
-import io.mangoo.routing.bindings.Request;
 import io.undertow.util.StatusCodes;
 import services.CollectionRecordService;
-import services.RequestLogService;
 
 import java.util.Map;
 
@@ -12,12 +10,8 @@ public final class CollectionRecordResponseHelper {
     private CollectionRecordResponseHelper() {
     }
 
-    public static Response toResponse(
-            Request request,
-            CollectionRecordService.RecordResult result,
-            RequestLogService requestLogService) {
-
-        Response response = switch (result.status()) {
+    public static Response toResponse(CollectionRecordService.RecordResult result) {
+        return switch (result.status()) {
             case CREATED -> result.body() != null
                     ? Response.created().bodyJson(result.body())
                     : Response.created();
@@ -30,7 +24,5 @@ public final class CollectionRecordResponseHelper {
             case FORBIDDEN -> Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
             case ERROR -> Response.internalServerError().end();
         };
-
-        return requestLogService.track(request, response);
     }
 }

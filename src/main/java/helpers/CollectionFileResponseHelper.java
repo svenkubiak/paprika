@@ -5,7 +5,6 @@ import io.mangoo.routing.bindings.Request;
 import io.undertow.util.StatusCodes;
 import org.apache.commons.lang3.StringUtils;
 import services.CollectionFileService;
-import services.RequestLogService;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -31,10 +30,9 @@ public final class CollectionFileResponseHelper {
 
     public static Response toDownloadResponse(
             Request request,
-            CollectionFileService.FileDownloadResult result,
-            RequestLogService requestLogService) {
+            CollectionFileService.FileDownloadResult result) {
 
-        Response response = switch (result.status()) {
+        return switch (result.status()) {
             case FOUND -> {
                 boolean requestedAttachment = "1".equals(request.getQueryParameter("download"))
                         || "true".equalsIgnoreCase(StringUtils.defaultString(request.getQueryParameter("download")));
@@ -53,21 +51,13 @@ public final class CollectionFileResponseHelper {
             case NOT_FOUND -> Response.notFound().end();
             case ERROR -> Response.internalServerError().end();
         };
-
-        return requestLogService.track(request, response);
     }
 
-    public static Response toDeleteResponse(
-            Request request,
-            CollectionFileService.FileDeleteResult result,
-            RequestLogService requestLogService) {
-
-        Response response = switch (result.status()) {
+    public static Response toDeleteResponse(CollectionFileService.FileDeleteResult result) {
+        return switch (result.status()) {
             case SUCCESS -> Response.ok().bodyJson(Map.of("success", true));
             case NOT_FOUND -> Response.notFound().end();
             case CONFLICT -> Response.status(StatusCodes.CONFLICT).end();
         };
-
-        return requestLogService.track(request, response);
     }
 }

@@ -2,6 +2,7 @@ package filters.api;
 
 import auth.TenantContext;
 import auth.TenantContextHolder;
+import constants.RequestAttributes;
 import helpers.HookResponseHelper;
 import hooks.HookExecutionResult;
 import hooks.HookRequestUtils;
@@ -15,7 +16,6 @@ import models.HookEvent;
 import org.bson.Document;
 import rules.RuleOperation;
 import services.HookService;
-import services.RequestLogService;
 import services.TenantCollectionService;
 import utils.MultipartSupport;
 
@@ -26,16 +26,13 @@ import static com.mongodb.client.model.Filters.eq;
 public class ApiHookFilter implements PerRequestFilter {
     private final TenantCollectionService tenantCollections;
     private final HookService hookService;
-    private final RequestLogService requestLogService;
 
     @Inject
     public ApiHookFilter(
             TenantCollectionService tenantCollections,
-            HookService hookService,
-            RequestLogService requestLogService) {
+            HookService hookService) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.hookService = Objects.requireNonNull(hookService, "hookService must not be null");
-        this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
     }
 
     @Override
@@ -97,7 +94,7 @@ public class ApiHookFilter implements PerRequestFilter {
 
         Document record = loadRecord(ctx, definition.name(), request.getPathParameter("id"));
         if (record == null) {
-            return requestLogService.track(request, Response.notFound().end());
+            return Response.notFound().end();
         }
 
         request.addAttribute(HookRequestUtils.RECORD_SNAPSHOT_ATTRIBUTE, record);
@@ -127,7 +124,7 @@ public class ApiHookFilter implements PerRequestFilter {
 
         Document record = loadRecord(ctx, definition.name(), request.getPathParameter("id"));
         if (record == null) {
-            return requestLogService.track(request, Response.notFound().end());
+            return Response.notFound().end();
         }
 
         request.addAttribute(HookRequestUtils.RECORD_SNAPSHOT_ATTRIBUTE, record);
@@ -153,7 +150,7 @@ public class ApiHookFilter implements PerRequestFilter {
 
         Document record = loadRecord(ctx, definition.name(), request.getPathParameter("id"));
         if (record == null) {
-            return requestLogService.track(request, Response.notFound().end());
+            return Response.notFound().end();
         }
 
         request.addAttribute(HookRequestUtils.RECORD_SNAPSHOT_ATTRIBUTE, record);
@@ -191,11 +188,11 @@ public class ApiHookFilter implements PerRequestFilter {
     }
 
     private Response applyBlockingResult(HookExecutionResult result, Response response, Request request) {
-        request.addAttribute("paprika.hook.fired", result.hooksRan());
-        request.addAttribute("paprika.hook.blocked", !result.continueOperation() && result.hooksRan());
+        request.addAttribute(RequestAttributes.HOOK_FIRED, result.hooksRan());
+        request.addAttribute(RequestAttributes.HOOK_BLOCKED, !result.continueOperation() && result.hooksRan());
 
         if (!result.continueOperation()) {
-            return HookResponseHelper.toErrorResponse(request, result, requestLogService);
+            return HookResponseHelper.toErrorResponse(result);
         }
 
         if (result.body() != null) {

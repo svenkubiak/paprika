@@ -121,6 +121,10 @@ For a given request, hooks run in this order, each able to see the (possibly alr
 
 The first hook in the chain that aborts stops everything after it. If several hooks return a modified body, each next hook (and ultimately the real create/update) sees the cumulative result, not just the original request.
 
+## Seeing what a hook cost
+
+Every blocking hook call is recorded in the [Request Logs](/admin-ui/request-logs) with its duration, HTTP status, and outcome, and the entry separates hook time from Paprika's own time. Asynchronous after-hooks get their own log entry, linked to the triggering request by its request id. Only metadata is kept — never the envelope or the hook's response body.
+
 ## Testing a hook
 
 The **Test** action on each row sends a sample payload to the configured URL immediately (no real record is created/changed) and shows the HTTP status, latency, computed signature, and response body — useful for verifying your endpoint before relying on it in production.

@@ -15,6 +15,7 @@ const loading = ref(false)
 const search = ref('')
 const statusFilter = ref<'all' | 'success' | 'error'>('all')
 const hookFilter = ref<'any' | 'fired' | 'blocked'>('any')
+const typeFilter = ref<'all' | 'request' | 'hook'>('all')
 const page = ref(1)
 const pageSize = ref(50)
 const detailOpen = ref(false)
@@ -34,6 +35,7 @@ const columns = [
   { key: 'url', header: 'URL' },
   { key: 'statusCode', header: 'Status' },
   { key: 'execTimeMs', header: 'Time' },
+  { key: 'hookTotalMs', header: 'Hook time' },
   { key: 'userId', header: 'User' },
   { key: 'hookFired', header: 'Hook' },
   { key: 'errorMessage', header: 'Error' }
@@ -52,7 +54,7 @@ const summary = computed(() => {
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
-watch([page, pageSize, statusFilter, hookFilter, hasActiveTenant], () => {
+watch([page, pageSize, statusFilter, hookFilter, typeFilter, hasActiveTenant], () => {
   if (hasActiveTenant.value) {
     refreshLogs()
   }
@@ -91,7 +93,8 @@ async function refreshLogs() {
       pageSize.value,
       search.value,
       statusFilter.value,
-      hookFilter.value
+      hookFilter.value,
+      typeFilter.value
     )
     logs.value = data.items as RequestLogEntry[]
     total.value = data.total
@@ -113,6 +116,11 @@ function setStatusFilter(value: 'all' | 'success' | 'error') {
 
 function setHookFilter(value: 'any' | 'fired' | 'blocked') {
   hookFilter.value = value
+  page.value = 1
+}
+
+function setTypeFilter(value: 'all' | 'request' | 'hook') {
+  typeFilter.value = value
   page.value = 1
 }
 
@@ -225,6 +233,34 @@ function statusColor(code: number) {
                 Hook blocked
               </UButton>
             </div>
+
+            <div class="flex items-center gap-1 rounded-lg border border-default p-1">
+              <UButton
+                size="sm"
+                :color="typeFilter === 'all' ? 'primary' : 'neutral'"
+                :variant="typeFilter === 'all' ? 'soft' : 'ghost'"
+                @click="setTypeFilter('all')"
+              >
+                All entries
+              </UButton>
+              <UButton
+                size="sm"
+                :color="typeFilter === 'request' ? 'primary' : 'neutral'"
+                :variant="typeFilter === 'request' ? 'soft' : 'ghost'"
+                @click="setTypeFilter('request')"
+              >
+                Requests
+              </UButton>
+              <UButton
+                size="sm"
+                :color="typeFilter === 'hook' ? 'primary' : 'neutral'"
+                :variant="typeFilter === 'hook' ? 'soft' : 'ghost'"
+                @click="setTypeFilter('hook')"
+                title="Entries written by asynchronous after-hooks, which run once the response is out"
+              >
+                Async hooks
+              </UButton>
+            </div>
           </div>
             <p class="shrink-0 text-sm text-muted">{{ summary }}</p>
           </div>
@@ -278,6 +314,9 @@ function statusColor(code: number) {
                 </td>
                 <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-muted">
                   {{ entry.execTimeMs != null ? `${entry.execTimeMs}ms` : '—' }}
+                </td>
+                <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-muted">
+                  {{ entry.hookTotalMs != null ? `${entry.hookTotalMs}ms` : '—' }}
                 </td>
                 <td class="px-3 py-2.5">
                   <div v-if="entry.userId" class="flex flex-wrap items-center gap-1.5">
