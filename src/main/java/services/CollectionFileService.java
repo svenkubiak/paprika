@@ -55,7 +55,7 @@ public class CollectionFileService {
             if (bytes == null) {
                 return FileDownloadResult.notFound();
             }
-            return FileDownloadResult.found(bytes, reference.mimeType(), reference.name());
+            return FileDownloadResult.found(bytes, reference.mimeType(), reference.name(), reference.id());
         } catch (IOException e) {
             return FileDownloadResult.error();
         }
@@ -129,23 +129,27 @@ public class CollectionFileService {
             Document record) {
     }
 
-    public record FileDownloadResult(Status status, byte[] bytes, String mimeType, String fileName) {
+    /**
+     * @param fileId the id of the delivered file, which identifies its content: storing a file
+     *               always mints a new id, so the id is a valid strong validator for caching
+     */
+    public record FileDownloadResult(Status status, byte[] bytes, String mimeType, String fileName, String fileId) {
         public enum Status {
             FOUND,
             NOT_FOUND,
             ERROR
         }
 
-        public static FileDownloadResult found(byte[] bytes, String mimeType, String fileName) {
-            return new FileDownloadResult(Status.FOUND, bytes, mimeType, fileName);
+        public static FileDownloadResult found(byte[] bytes, String mimeType, String fileName, String fileId) {
+            return new FileDownloadResult(Status.FOUND, bytes, mimeType, fileName, fileId);
         }
 
         public static FileDownloadResult notFound() {
-            return new FileDownloadResult(Status.NOT_FOUND, null, null, null);
+            return new FileDownloadResult(Status.NOT_FOUND, null, null, null, null);
         }
 
         public static FileDownloadResult error() {
-            return new FileDownloadResult(Status.ERROR, null, null, null);
+            return new FileDownloadResult(Status.ERROR, null, null, null, null);
         }
     }
 

@@ -25,6 +25,16 @@ public final class CollectionFileResponseHelper {
     // (or a future mistake in the allowlist above) still can't execute active content.
     private static final String DOWNLOAD_CONTENT_SECURITY_POLICY = "default-src 'none'; sandbox";
 
+    // private: access to a file is decided by the collection rules, so a shared cache in front of
+    // Paprika must never hand a stored copy to a different caller. This is not negotiable.
+    //
+    // The max-age is deliberately short even though a stored file is immutable: the download URL
+    // of a single-file field carries no file id, so the same URL delivers a different file once
+    // the field is replaced. Five minutes bounds how long a client can keep showing the previous
+    // file while still removing the repeated transfers this header exists for; after that the
+    // ETag turns the next request into a cheap 304.
+    private static final String CACHE_CONTROL = "private, max-age=300, immutable";
+
     private CollectionFileResponseHelper() {
     }
 
@@ -34,6 +44,14 @@ public final class CollectionFileResponseHelper {
 
         return switch (result.status()) {
             case FOUND -> {
+                String etag = etagOf(result);
+                if (etag.equals(request.getHeader("If-None-Match"))) {
+                    yield Response.notModified()
+                            .header("ETag", etag)
+                            .header("Cache-Control", CACHE_CONTROL)
+                            .end();
+                }
+
                 boolean requestedAttachment = "1".equals(request.getQueryParameter("download"))
                         || "true".equalsIgnoreCase(StringUtils.defaultString(request.getQueryParameter("download")));
                 boolean attachment = requestedAttachment || !INLINE_SAFE_MIME_TYPES.contains(result.mimeType());
@@ -46,11 +64,22 @@ public final class CollectionFileResponseHelper {
                         .header("Content-Disposition", disposition)
                         .header("X-Content-Type-Options", "nosniff")
                         .header("Content-Security-Policy", DOWNLOAD_CONTENT_SECURITY_POLICY)
+                        .header("ETag", etag)
+                        .header("Cache-Control", CACHE_CONTROL)
                         .bodyBinary(result.bytes());
             }
             case NOT_FOUND -> Response.notFound().end();
             case ERROR -> Response.internalServerError().end();
         };
+    }
+
+    /**
+     * A strong validator built from the id of the stored file. Storing a file always mints a new
+     * id, so the id identifies the bytes: a replaced file cannot reuse the validator of the file
+     * it replaced.
+     */
+    private static String etagOf(CollectionFileService.FileDownloadResult result) {
+        return "\"" + result.fileId() + "\"";
     }
 
     public static Response toDeleteResponse(CollectionFileService.FileDeleteResult result) {

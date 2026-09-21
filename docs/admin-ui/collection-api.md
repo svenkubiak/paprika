@@ -50,6 +50,19 @@ field you sort by.
 
 That means the server-generated `id` is available right after a create, so a client can immediately reference the new record (for example from a second record pointing at it) without a follow-up list or read call. `DELETE` still answers without a body.
 
+## File downloads are cacheable
+
+A download (`GET /api/collections/{collection}/{id}/files/{field}[/{fileId}]`) answers with a strong
+`ETag` built from the id of the stored file. Storing a file always mints a new id, so a replaced
+file never reuses the validator of the file it replaced. A request repeating that value in
+`If-None-Match` is answered with `304 Not Modified` and no body.
+
+The accompanying `Cache-Control: private, max-age=300, immutable` is deliberately `private`:
+access to a file is decided by the collection's [rules](/admin-ui/collection-rules), so a shared
+cache in front of Paprika must never serve a stored copy to a different caller. The five minutes
+are short on purpose — the download URL of a single-file field carries no file id, so the same URL
+delivers different bytes once the field is replaced.
+
 ## Authentication
 
 A separate card documents `/api/auth/register`, `/api/auth/login`, and `/api/auth/refresh` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).
