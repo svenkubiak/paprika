@@ -41,6 +41,13 @@ public class CollectionRecordService {
     private static final int MAX_LIMIT = 100;
     private static final int DUPLICATE_KEY_CODE = 11000;
 
+    // Without a sort MongoDB gives no order guarantee at all: a write between two page requests can
+    // make the same record show up twice or vanish from the result, and both look like a complete
+    // page to the client. _id is always indexed, is insertion-ordered, and is excluded from the
+    // projection anyway, so ordering by it changes the response shape not at all - only its
+    // stability across page boundaries.
+    private static final Bson DEFAULT_SORT = Sorts.ascending("_id");
+
     private static Bson recordProjection(String collection) {
         return UserRecordUtils.isUsers(collection)
                 ? UserRecordUtils.recordProjection()
@@ -174,6 +181,7 @@ public class CollectionRecordService {
         tenantCollections.dataCollection(ctx, collection)
                 .find(effectiveFilter)
                 .projection(recordProjection(collection))
+                .sort(DEFAULT_SORT)
                 .skip(effectiveOffset)
                 .limit(effectiveLimit)
                 .into(items);
