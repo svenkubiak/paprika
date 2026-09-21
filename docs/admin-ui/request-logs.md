@@ -43,6 +43,18 @@ The `Hook time` column in the table shows the same sum, which makes "our API got
 - **Type filter** separates requests from async hook entries.
 - Results are paginated (25/50/100 per page).
 
+## Live mode
+
+The **Live** switch above the table is off by default. Turned on, the page asks every three seconds for entries newer than its top row and adds them on top; the newest entry is always the first one, as in the paged view. All active filters keep applying, so a live tail of errors only is just the error filter plus the switch.
+
+What it does *not* do:
+
+- It does not page. Live mode returns to page one and disables the pager, because a delta added on top of page five would misrepresent what you are looking at. Turn it off to browse history.
+- It does not move the table while a detail sidebar is open, and it stops asking while the browser tab is hidden. Reopening the tab fetches immediately.
+- It stops itself on error — an expired admin session or an unreachable server turns the switch off instead of retrying every three seconds.
+
+The polling requests themselves are excluded from the log, so watching the log does not produce log entries. Each poll is one indexed read bounded to what is newer than the top row, not a full page read, and it skips the total count — so an open live tail is cheap even on a large log. The reads go through the same authenticated, tenant-scoped endpoint as the table itself: live mode can never show more than the normal list would.
+
 ## Personal data
 
 The log is designed to be usable without collecting personal data, because as the operator you are the controller for everything it stores:

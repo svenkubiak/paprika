@@ -219,6 +219,45 @@ class RequestLogTelemetryIntegrationTest {
         }
     }
 
+    /**
+     * What the admin UI's live mode asks for: only what was logged at or after a cursor. Anything
+     * older must stay out, or a live tail would repeat history on every tick.
+     */
+    @Test
+    void theListEndpointReturnsOnlyEntriesAtOrAfterTheSinceCursor() {
+        TestRequest.post("/api/auth/login")
+                .withStringBody(TenantTestUtils.loginBody("nobody-" + DbUtils.id(), "wrong-password"))
+                .withContentType("application/json")
+                .execute();
+        Document older = awaitEntry(eq("url", "/api/auth/login"));
+        String cursor = older.getString("timestamp");
+
+        var cookies = utils.AdminTestUtils.loginAsAdminWithDefaultTenant();
+        TestResponse list = utils.AdminTestUtils.getWithAdminCookies(
+                "/api/admin/request-logs?limit=20&since=" + cursor, cookies);
+
+        assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));
+        try {
+            JsonNode body = JsonUtils.getMapper().readTree(list.getContent());
+            // No total: counting the whole log on every live tick is what makes polling expensive.
+            assertThat(body.has("total"), equalTo(false));
+            assertThat(body.get("limit").asInt(), equalTo(20));
+            body.get("items").forEach(item ->
+                    assertThat(item.get("timestamp").asText(), greaterThanOrEqualTo(cursor)));
+            // The bound is inclusive, so the entry the cursor points at is part of the answer.
+            assertThat(body.get("items").findValuesAsText("id"), hasItem(older.getString("id")));
+        } catch (Exception e) {
+            throw new AssertionError("Unreadable request log response: " + list.getContent(), e);
+        }
+    }
+
+    /** Live mode is a read of the same log, so it needs the same admin session - not less. */
+    @Test
+    void theSinceReadRequiresAnAdminSession() {
+        TestResponse list = TestRequest.get("/api/admin/request-logs?limit=20&since=1970-01-01T00:00:00Z").execute();
+        assertThat(list.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
+    }
+
     /** Entries are written while the response is rendered, so a short poll avoids flakiness. */
     private static Document awaitEntry(org.bson.conversions.Bson filter) {
         for (int attempt = 0; attempt < 100; attempt++) {

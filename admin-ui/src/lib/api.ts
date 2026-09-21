@@ -9,6 +9,7 @@ import type {
   HookTestResult,
   PaginatedRecords,
   PaginatedRequestLogs,
+  RequestLogDelta,
   SchemaImportResult,
   SuperadminInvite,
   SuperadminSummary,
@@ -688,20 +689,50 @@ export const api = {
     hook?: 'any' | 'fired' | 'blocked',
     type?: 'all' | 'request' | 'hook'
   ): Promise<PaginatedRequestLogs> {
-    const params = new URLSearchParams({
-      offset: String(offset),
-      limit: String(limit),
-      status
-    })
-    if (search.trim()) {
-      params.set('search', search.trim())
-    }
-    if (hook && hook !== 'any') {
-      params.set('hook', hook)
-    }
-    if (type && type !== 'all') {
-      params.set('type', type)
-    }
+    return request(
+      `/api/admin/request-logs?${requestLogParams(offset, limit, search, status, hook, type).toString()}`
+    )
+  },
+
+  /**
+   * One live-mode tick: the same filtered read, bounded to what was logged at or after `since`.
+   * The bound is inclusive on the server, so the caller has to drop entries it already shows.
+   */
+  listRequestLogsSince(
+    since: string,
+    limit: number,
+    search: string,
+    status: 'all' | 'success' | 'error',
+    hook?: 'any' | 'fired' | 'blocked',
+    type?: 'all' | 'request' | 'hook'
+  ): Promise<RequestLogDelta> {
+    const params = requestLogParams(0, limit, search, status, hook, type)
+    params.set('since', since)
     return request(`/api/admin/request-logs?${params.toString()}`)
   }
+}
+
+function requestLogParams(
+  offset: number,
+  limit: number,
+  search: string,
+  status: 'all' | 'success' | 'error',
+  hook?: 'any' | 'fired' | 'blocked',
+  type?: 'all' | 'request' | 'hook'
+): URLSearchParams {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+    status
+  })
+  if (search.trim()) {
+    params.set('search', search.trim())
+  }
+  if (hook && hook !== 'any') {
+    params.set('hook', hook)
+  }
+  if (type && type !== 'all') {
+    params.set('type', type)
+  }
+  return params
 }

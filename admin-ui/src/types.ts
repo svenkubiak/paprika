@@ -297,3 +297,13 @@ export interface PaginatedRequestLogs {
   items: RequestLogEntry[]
   total: number
 }
+
+/**
+ * The answer to a live-mode poll. It carries no total - counting the whole log every few seconds
+ * is what would make polling expensive - and `limit` is what the server applied, so the client can
+ * tell a complete delta from a truncated one.
+ */
+export interface RequestLogDelta {
+  items: RequestLogEntry[]
+  limit: number
+}

@@ -307,9 +307,7 @@ public class RequestLogService {
         if (offset < 0) {
             offset = 0;
         }
-        if (limit <= 0 || limit > 100) {
-            limit = 50;
-        }
+        limit = normalizeLimit(limit);
 
         Bson filter = buildFilter(search, statusFilter, hookFilter, typeFilter);
         var collection = resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS);
@@ -324,6 +322,45 @@ public class RequestLogService {
         long total = collection.countDocuments(filter);
 
         return Map.of("items", items, "total", total);
+    }
+
+    /**
+     * The read behind the admin UI's live mode: it asks every few seconds for what has been
+     * written since the newest entry it already shows, which the {@code timestamp_desc} index
+     * answers as a short range scan. The total is deliberately not counted here - a
+     * {@code countDocuments} over the whole log every few seconds is what would make a polling
+     * client expensive, and the caller can derive the new total from the entries it receives.
+     * <p>
+     * The bound is inclusive so that a second entry carrying the exact same timestamp as the
+     * newest known one is not lost; the caller discards what it already knows by id.
+     */
+    public Map<String, Object> listSince(
+            TenantContext ctx,
+            String since,
+            int limit,
+            String search,
+            String statusFilter,
+            String hookFilter,
+            String typeFilter) {
+
+        limit = normalizeLimit(limit);
+
+        List<Bson> clauses = new ArrayList<>();
+        clauses.add(buildFilter(search, statusFilter, hookFilter, typeFilter));
+        clauses.add(gte("timestamp", since));
+
+        List<Document> items = new ArrayList<>();
+        resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS)
+                .find(and(clauses))
+                .sort(descending("timestamp"))
+                .limit(limit)
+                .into(items);
+
+        return Map.of("items", items, "limit", limit);
+    }
+
+    private static int normalizeLimit(int limit) {
+        return (limit <= 0 || limit > 100) ? 50 : limit;
     }
 
     private Bson buildFilter(String search, String statusFilter, String hookFilter, String typeFilter) {

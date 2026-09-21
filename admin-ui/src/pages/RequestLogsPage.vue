@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { api } from '@/lib/api'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { api, ApiError } from '@/lib/api'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
 import RequestLogDetailSheet from '@/components/RequestLogDetailSheet.vue'
@@ -20,6 +20,16 @@ const page = ref(1)
 const pageSize = ref(50)
 const detailOpen = ref(false)
 const selectedEntry = ref<RequestLogEntry | null>(null)
+const live = ref(false)
+const newEntries = ref(0)
+
+/**
+ * Slow enough that a tab left open costs nothing worth mentioning, fast enough that "live" is not
+ * a lie. Each tick is one indexed range read for what is newer than the top row, not a new page.
+ */
+const LIVE_INTERVAL_MS = 3000
+
+let liveTimer: ReturnType<typeof setInterval> | undefined
 
 const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 
@@ -56,7 +66,36 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 watch([page, pageSize, statusFilter, hookFilter, typeFilter, hasActiveTenant], () => {
   if (hasActiveTenant.value) {
+    newEntries.value = 0
     refreshLogs()
+  }
+})
+
+/**
+ * Live mode only ever appends to the newest page - a delta on top of page five would be a lie
+ * about what the user is looking at - so switching it on returns to page one.
+ */
+watch(live, (enabled) => {
+  newEntries.value = 0
+
+  if (!enabled) {
+    stopLiveTimer()
+    return
+  }
+
+  if (page.value !== 1) {
+    page.value = 1
+  } else {
+    refreshLogs()
+  }
+
+  startLiveTimer()
+})
+
+/** A tenant switch invalidates every entry on screen, so the delta cursor goes with it. */
+watch(hasActiveTenant, (active) => {
+  if (!active) {
+    live.value = false
   }
 })
 
@@ -73,11 +112,105 @@ watch(search, () => {
 })
 
 onMounted(async () => {
+  document.addEventListener('visibilitychange', onVisibilityChange)
   await load(true)
   if (hasActiveTenant.value) {
     await refreshLogs()
   }
 })
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  stopLiveTimer()
+  clearTimeout(searchTimer)
+})
+
+/**
+ * A hidden tab has nobody watching it, so it stops asking. Coming back asks immediately instead
+ * of waiting out the interval, otherwise the first thing the user sees is stale.
+ */
+function onVisibilityChange() {
+  if (!live.value) {
+    return
+  }
+
+  if (document.visibilityState === 'hidden') {
+    stopLiveTimer()
+  } else {
+    startLiveTimer()
+    pollNewEntries()
+  }
+}
+
+function startLiveTimer() {
+  stopLiveTimer()
+  liveTimer = setInterval(pollNewEntries, LIVE_INTERVAL_MS)
+}
+
+function stopLiveTimer() {
+  clearInterval(liveTimer)
+  liveTimer = undefined
+}
+
+/**
+ * One tick. It is skipped rather than queued whenever the answer could not be shown honestly:
+ * during another read, while a detail sheet is open (the table under it must not move), and on
+ * any page but the first.
+ */
+async function pollNewEntries() {
+  if (!live.value || !hasActiveTenant.value || loading.value || detailOpen.value || page.value !== 1) {
+    return
+  }
+
+  const newest = logs.value[0]?.timestamp
+  if (!newest) {
+    await refreshLogs()
+    return
+  }
+
+  try {
+    const delta = await api.listRequestLogsSince(
+      newest,
+      pageSize.value,
+      search.value,
+      statusFilter.value,
+      hookFilter.value,
+      typeFilter.value
+    )
+
+    // The server bound is inclusive, so the entry the cursor points at comes back with it.
+    const known = new Set(logs.value.map((entry) => entry.id))
+    const fresh = (delta.items as RequestLogEntry[]).filter((entry) => !known.has(entry.id))
+    if (fresh.length === 0) {
+      return
+    }
+
+    // A full delta means more arrived than one page holds: what is between the last entry of the
+    // delta and the first entry on screen is unknown, and prepending would invent continuity.
+    if (delta.items.length >= delta.limit) {
+      await refreshLogs()
+      newEntries.value += fresh.length
+      return
+    }
+
+    logs.value = [...fresh, ...logs.value].slice(0, pageSize.value)
+    total.value += fresh.length
+    newEntries.value += fresh.length
+  } catch (error) {
+    // A dead session or a server that is gone would otherwise be asked again every few seconds,
+    // and the session guard would fire on every one of them.
+    live.value = false
+
+    if (!(error instanceof ApiError && error.sessionExpired)) {
+      toast.add({
+        title: error instanceof Error ? error.message : 'Live mode stopped',
+        description: 'Live mode was turned off.',
+        color: 'error',
+        icon: 'i-lucide-circle-x'
+      })
+    }
+  }
+}
 
 async function refreshLogs() {
   if (!hasActiveTenant.value) {
@@ -107,6 +240,10 @@ async function refreshLogs() {
   } finally {
     loading.value = false
   }
+}
+
+function clearNewEntries() {
+  newEntries.value = 0
 }
 
 function setStatusFilter(value: 'all' | 'success' | 'error') {
@@ -261,6 +398,26 @@ function statusColor(code: number) {
                 Async hooks
               </UButton>
             </div>
+
+            <div class="flex items-center gap-2">
+              <USwitch
+                v-model="live"
+                label="Live"
+                :disabled="!hasActiveTenant"
+                title="Poll for new entries every few seconds and add them on top"
+              />
+              <UBadge
+                v-if="live && newEntries > 0"
+                color="primary"
+                variant="subtle"
+                size="md"
+                class="cursor-pointer"
+                title="Entries added since live mode was enabled - click to reset"
+                @click="clearNewEntries"
+              >
+                +{{ newEntries }} new
+              </UBadge>
+            </div>
           </div>
             <p class="shrink-0 text-sm text-muted">{{ summary }}</p>
           </div>
@@ -392,7 +549,8 @@ function statusColor(code: number) {
               variant="soft"
               color="neutral"
               icon="i-lucide-chevron-left"
-              :disabled="page <= 1 || loading"
+              :disabled="page <= 1 || loading || live"
+              :title="live ? 'Turn off live mode to page through the log' : undefined"
               @click="page--"
             />
             <span class="text-sm text-muted">Page {{ page }} / {{ pageCount }}</span>
@@ -400,7 +558,8 @@ function statusColor(code: number) {
               variant="soft"
               color="neutral"
               icon="i-lucide-chevron-right"
-              :disabled="page >= pageCount || loading"
+              :disabled="page >= pageCount || loading || live"
+              :title="live ? 'Turn off live mode to page through the log' : undefined"
               @click="page++"
             />
           </div>
