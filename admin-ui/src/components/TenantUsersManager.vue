@@ -22,6 +22,13 @@ const saving = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 const deletingUser = ref<TenantUser | null>(null)
+const bulkDeleteOpen = ref(false)
+const search = ref('')
+const sortField = ref<keyof TenantUser | 'id'>('updatedAt')
+const sortDirection = ref<'asc' | 'desc'>('desc')
+const page = ref(1)
+const pageSize = ref(25)
+const selectedIds = ref<Set<string>>(new Set())
 
 const form = ref<UserEditorForm>({ username: '', password: '', email: '' })
 
@@ -29,6 +36,7 @@ const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 const activeTenant = computed(() => bootstrap.value?.activeTenant ?? null)
 
 const columns = [
+  { id: 'select', header: '' },
   { id: 'userId', accessorKey: 'id', header: 'ID' },
   { accessorKey: 'username', header: 'Username' },
   { accessorKey: 'email', header: 'Email' },
@@ -36,6 +44,73 @@ const columns = [
   { accessorKey: 'updatedAt', header: 'Updated' },
   { id: 'actions', header: 'Actions' }
 ]
+
+const pageSizeOptions = [
+  { label: '10', value: 10 },
+  { label: '25', value: 25 },
+  { label: '50', value: 50 },
+  { label: '100', value: 100 }
+]
+
+const sortOptions = [
+  { label: 'Updated', value: 'updatedAt' },
+  { label: 'Created', value: 'createdAt' },
+  { label: 'ID', value: 'id' },
+  { label: 'Username', value: 'username' },
+  { label: 'Email', value: 'email' }
+]
+
+// The users endpoint hands out the full list in one response, so searching, sorting and paging all
+// happen here instead of going back to the server for every keystroke or page change.
+const filteredUsers = computed(() => {
+  const query = search.value.trim().toLowerCase()
+  const items = query
+    ? users.value.filter((user) =>
+        [user.id, user.username, user.email, user.createdAt, user.updatedAt]
+          .map((value) => String(value ?? '').toLowerCase())
+          .some((value) => value.includes(query))
+      )
+    : [...users.value]
+
+  items.sort((a, b) => {
+    const left = a[sortField.value as keyof TenantUser]
+    const right = b[sortField.value as keyof TenantUser]
+    const compare = String(left ?? '').localeCompare(String(right ?? ''), undefined, {
+      numeric: true
+    })
+    return sortDirection.value === 'asc' ? compare : -compare
+  })
+
+  return items
+})
+
+const pageCount = computed(() => Math.max(1, Math.ceil(filteredUsers.value.length / pageSize.value)))
+
+const pagedUsers = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredUsers.value.slice(start, start + pageSize.value)
+})
+
+const summary = computed(() => {
+  if (loading.value) return 'Loading users…'
+  const count = filteredUsers.value.length
+  if (count === 0) return '0 users'
+  const from = (page.value - 1) * pageSize.value + 1
+  const to = Math.min(page.value * pageSize.value, count)
+  return `${from}–${to} of ${count} users`
+})
+
+// A shrinking result set (search, page size, deletions) can leave the current page beyond the end,
+// which would render an empty table with rows still to be shown.
+watch([pageCount, pageSize], () => {
+  if (page.value > pageCount.value) {
+    page.value = pageCount.value
+  }
+})
+
+watch(search, () => {
+  page.value = 1
+})
 
 watch(hasActiveTenant, async (value) => {
   if (value) {
@@ -62,6 +137,7 @@ async function refresh() {
   loading.value = true
   try {
     users.value = await api.listTenantUsers(tenant.id)
+    selectedIds.value = new Set()
   } catch (error) {
     toast.add({
       title: error instanceof Error ? error.message : 'Failed to load users',
@@ -71,6 +147,22 @@ async function refresh() {
   } finally {
     loading.value = false
   }
+}
+
+function toggleAll(checked: boolean) {
+  const next = new Set(selectedIds.value)
+  for (const user of pagedUsers.value) {
+    if (checked) next.add(user.id)
+    else next.delete(user.id)
+  }
+  selectedIds.value = next
+}
+
+function toggleOne(id: string, checked: boolean) {
+  const next = new Set(selectedIds.value)
+  if (checked) next.add(id)
+  else next.delete(id)
+  selectedIds.value = next
 }
 
 function resetForm() {
@@ -181,6 +273,31 @@ async function deleteUserAction() {
   }
 }
 
+async function bulkDelete() {
+  const tenant = activeTenant.value
+  if (!tenant) return
+
+  const ids = Array.from(selectedIds.value)
+  deleting.value = true
+  try {
+    await Promise.all(ids.map((id) => api.deleteTenantUser(tenant.id, id)))
+    bulkDeleteOpen.value = false
+    toast.add({
+      title: ids.length === 1 ? 'User deleted' : `${ids.length} users deleted`,
+      color: 'success',
+      icon: 'i-lucide-circle-check'
+    })
+    await refresh()
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to delete users',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -194,12 +311,65 @@ async function deleteUserAction() {
       description="Choose a tenant in the sidebar to manage its users."
     />
 
-    <div v-if="hasActiveTenant" class="flex justify-end">
+    <div v-if="hasActiveTenant" class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-muted">{{ summary }}</p>
       <UButton icon="i-lucide-user-plus" @click="openCreate">New user</UButton>
     </div>
 
-    <UCard v-if="hasActiveTenant" :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="users" :columns="columns" :loading="loading" @select="openEdit">
+    <UCard v-if="hasActiveTenant">
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <UInput
+          v-model="search"
+          icon="i-lucide-search"
+          placeholder="Search users…"
+          class="w-full min-w-0 sm:w-auto sm:min-w-56 sm:flex-1"
+        />
+
+        <USelect
+          v-model="sortField"
+          :items="sortOptions"
+          icon="i-lucide-arrow-up-down"
+          placeholder="Sort by"
+          class="w-full min-w-0 sm:w-auto sm:min-w-40"
+        />
+
+        <USelect
+          v-model="sortDirection"
+          :items="[
+            { label: 'Ascending', value: 'asc' },
+            { label: 'Descending', value: 'desc' }
+          ]"
+          icon="i-lucide-list-ordered"
+          class="w-full min-w-0 sm:w-auto sm:min-w-36"
+        />
+
+        <UButton
+          v-if="selectedIds.size > 0"
+          color="error"
+          variant="soft"
+          icon="i-lucide-trash-2"
+          @click="bulkDeleteOpen = true"
+        >
+          Delete selected ({{ selectedIds.size }})
+        </UButton>
+      </div>
+
+      <UTable :data="pagedUsers" :columns="columns" :loading="loading" @select="openEdit">
+        <template #select-header>
+          <UCheckbox
+            :model-value="
+              pagedUsers.length > 0 && pagedUsers.every((user) => selectedIds.has(user.id))
+            "
+            @update:model-value="toggleAll(!!$event)"
+          />
+        </template>
+        <template #select-cell="{ row }">
+          <UCheckbox
+            :model-value="selectedIds.has(row.original.id)"
+            @update:model-value="toggleOne(row.original.id, !!$event)"
+            @click.stop
+          />
+        </template>
         <template #userId-cell="{ row }">
           <code class="text-sm">{{ row.original.id }}</code>
         </template>
@@ -235,10 +405,40 @@ async function deleteUserAction() {
         </template>
         <template #empty>
           <div class="py-10 text-center text-muted">
-            No users yet. Create one manually, or enable self-registration under User settings.
+            {{
+              search.trim()
+                ? 'No users match your search.'
+                : 'No users yet. Create one manually, or enable self-registration under User settings.'
+            }}
           </div>
         </template>
       </UTable>
+
+      <div
+        class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4"
+      >
+        <div class="flex items-center gap-2 text-sm text-muted">
+          <span>Rows per page</span>
+          <USelect v-model="pageSize" :items="pageSizeOptions" class="w-24" />
+        </div>
+        <div class="flex items-center gap-2">
+          <UButton
+            icon="i-lucide-chevron-left"
+            variant="ghost"
+            color="neutral"
+            :disabled="page <= 1"
+            @click="page--"
+          />
+          <span class="min-w-16 text-center text-sm">{{ page }} / {{ pageCount }}</span>
+          <UButton
+            icon="i-lucide-chevron-right"
+            variant="ghost"
+            color="neutral"
+            :disabled="page >= pageCount"
+            @click="page++"
+          />
+        </div>
+      </div>
     </UCard>
 
     <UserEditorSheet
@@ -275,6 +475,35 @@ async function deleteUserAction() {
                 @click="deleteUserAction"
               >
                 Delete user
+              </UButton>
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="bulkDeleteOpen" portal="body" :ui="modalUi">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-triangle-alert" class="size-5 text-error" />
+              <h3 class="font-semibold">Delete users</h3>
+            </div>
+          </template>
+
+          <p class="text-sm text-muted">
+            Delete {{ selectedIds.size }} selected user{{ selectedIds.size === 1 ? '' : 's' }}? This
+            cannot be undone.
+          </p>
+
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="bulkDeleteOpen = false">
+                Cancel
+              </UButton>
+              <UButton color="error" :loading="deleting" icon="i-lucide-trash-2" @click="bulkDelete">
+                Delete
               </UButton>
             </div>
           </template>
