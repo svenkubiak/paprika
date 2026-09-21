@@ -101,6 +101,14 @@ For before-hooks, Paprika reads your endpoint's JSON response to decide what hap
 
 - **No body, or a 2xx response with no `continue`/`data` fields** → the operation proceeds unchanged.
 - **`{ "continue": false, "error": { "status": 422, "message": "title too short" } }`** → the operation is aborted; the API client receives the given status (defaulting to 400) and the `error` object as the response body.
+- **`{ "continue": false, "error": "trial_expired" }`** → the operation is aborted with the default status and the client receives `{ "error": "trial_expired" }`.
+- **`{ "continue": false }`** → the operation is aborted with the default status and Paprika's own error message.
+
+### Status and body of a rejection
+
+`error.status` lets your hook pick the status of its rejection — it knows the reason, Paprika does not — but only within **400–599**. A value outside that range or one that isn't a whole number (`200`, `302`, `0`, `700`, `"abc"`) is a misconfiguration: it is **ignored**, the default status applies, and Paprika writes a warning naming the hook, the requested value, and the status actually sent. This is deliberate — a typo must never turn a rejection into an apparent success or a redirect for the client.
+
+The response body sent to the client **never contains hook-protocol fields**. `continue` (and anything else in the hook envelope) stays between your endpoint and Paprika: the client sees either your `error` object verbatim, `{ "error": "<your string>" }`, or Paprika's default message.
 - **`{ "data": { "body": { ...replacement fields... } } }`** on a 2xx response → the operation proceeds, but with this body instead of the client's original submission (used to inject/normalize fields before create/update).
 - A **non-2xx** response with no recognizable `continue`/`error` shape, a timeout, or a network error → treated as hook failure: the operation is aborted with `502` unless **Fail open** is enabled, in which case it proceeds unchanged.
 

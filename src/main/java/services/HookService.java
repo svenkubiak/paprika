@@ -602,6 +602,13 @@ public class HookService {
         if (responseBody != null && !responseBody.isBlank()) {
             JsonNode root = JsonUtils.getMapper().readTree(responseBody);
             boolean continueOperation = !root.has("continue") || root.get("continue").asBoolean(true);
+
+            /*
+             * Order matters: an explicit continue:false is a rejection, even when it arrives with a
+             * non-2xx status. Checking the HTTP status first would turn such a response into a hook
+             * failure, which failOpen would then wave through - the exact opposite of what the hook
+             * asked for. Do not reorder these two branches.
+             */
             if (!continueOperation) {
                 if (hook.event() == HookEvent.beforeLogin) {
                     JsonNode issueTokenFor = root.get("issueTokenFor");
@@ -614,14 +621,21 @@ public class HookService {
                 }
 
                 int status = Math.max(response.status(), 400);
-                String errorBody = responseBody;
 
-                if (root.has("error")) {
-                    JsonNode error = root.get("error");
-                    if (error.has("status")) {
-                        status = error.get("status").asInt(status);
-                    }
+                /*
+                 * Never echo the hook envelope back: "continue" and friends are Paprika's internal
+                 * protocol with the hook, not part of the API contract the client knows. A null body
+                 * makes HookResponseHelper fall back to the default error message.
+                 */
+                String errorBody = null;
+
+                JsonNode error = root.get("error");
+                if (error != null && error.isObject()) {
+                    status = resolveErrorStatus(error.get("status"), status, hook);
                     errorBody = JsonUtils.getMapper().writeValueAsString(error);
+                } else if (error != null && error.isValueNode() && !error.isNull()) {
+                    errorBody = JsonUtils.getMapper().writeValueAsString(
+                            JsonUtils.getMapper().createObjectNode().put("error", error.asText()));
                 }
 
                 return HookExecutionResult.abortWithBody(status, errorBody);
@@ -650,6 +664,30 @@ public class HookService {
         }
 
         return HookExecutionResult.proceedUnchanged();
+    }
+
+    /**
+     * A hook may pick the status of its own rejection - it knows the reason, Paprika does not - but
+     * only within 400-599. Anything else (a 2xx that would make the client believe the write
+     * succeeded, a redirect nobody asked for, or no integer at all) is a misconfiguration and is
+     * logged and ignored rather than silently delivered.
+     */
+    private static int resolveErrorStatus(JsonNode statusNode, int fallback, HookDefinition hook) {
+        if (statusNode == null || statusNode.isNull()) {
+            return fallback;
+        }
+
+        if (statusNode.isIntegralNumber() && statusNode.canConvertToInt()) {
+            int requested = statusNode.asInt();
+            if (requested >= 400 && requested <= 599) {
+                return requested;
+            }
+        }
+
+        LOG.warn("Hook {} requested invalid error status {}, allowed is 400-599; responding with {} instead",
+                hook.name(), statusNode.toString(), fallback);
+
+        return fallback;
     }
 
     private HookEnvelope buildEnvelope(
