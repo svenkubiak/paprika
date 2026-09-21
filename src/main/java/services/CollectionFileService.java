@@ -44,7 +44,7 @@ public class CollectionFileService {
             return FileDownloadResult.notFound();
         }
 
-        FileFieldContext resolved = context.get();
+        FileFieldContext resolved = context.orElseThrow();
         FileReference reference = fileFieldService.findReference(resolved.record(), resolved.fileField(), fileId);
         if (reference == null) {
             return FileDownloadResult.notFound();
@@ -73,7 +73,7 @@ public class CollectionFileService {
             return FileDeleteResult.notFound();
         }
 
-        FileFieldContext resolved = context.get();
+        FileFieldContext resolved = context.orElseThrow();
         FileFieldService.FileRemoval removal =
                 fileFieldService.prepareFileRemoval(resolved.fileField(), resolved.record(), fileId);
         if (removal.isEmpty()) {

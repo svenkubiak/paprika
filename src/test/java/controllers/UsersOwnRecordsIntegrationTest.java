@@ -216,11 +216,14 @@ class UsersOwnRecordsIntegrationTest {
             TenantDefinition tenant = TenantTestUtils.defaultTenant();
 
             AdminTestUtils.AdminCookies adminCookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
-            TestResponse asAdmin = AdminTestUtils.getWithAdminCookies(
-                    "/api/collections/users?offset=0&limit=25", adminCookies);
-            assertThat(asAdmin.getStatusCode(), equalTo(StatusCodes.OK));
-            assertThat(asAdmin.getContent(), containsString("own-bypass-me"));
-            assertThat(asAdmin.getContent(), containsString("own-bypass-other"));
+            // The users collection is shared by the whole suite, so a plain first page would only
+            // contain the oldest 25 accounts. Both records are therefore looked up by name.
+            for (String username : List.of("own-bypass-me", "own-bypass-other")) {
+                TestResponse asAdmin = AdminTestUtils.getWithAdminCookies(
+                        "/api/collections/users?offset=0&limit=25&filter=username:eq:" + username, adminCookies);
+                assertThat(asAdmin.getStatusCode(), equalTo(StatusCodes.OK));
+                assertThat(asAdmin.getContent(), containsString(username));
+            }
 
             TestResponse keyResponse = AdminTestUtils.postWithAdminCookies(
                     "/api/meta/tenants/" + tenant.id() + "/api-keys",
@@ -230,10 +233,12 @@ class UsersOwnRecordsIntegrationTest {
             assertThat(keyResponse.getStatusCode(), equalTo(StatusCodes.CREATED));
             String key = extractJsonString(keyResponse.getContent(), "key");
 
-            TestResponse asKey = get("/api/collections/users?offset=0&limit=25", key);
-            assertThat(asKey.getStatusCode(), equalTo(StatusCodes.OK));
-            assertThat(asKey.getContent(), containsString("own-bypass-me"));
-            assertThat(asKey.getContent(), containsString("own-bypass-other"));
+            for (String username : List.of("own-bypass-me", "own-bypass-other")) {
+                TestResponse asKey = get(
+                        "/api/collections/users?offset=0&limit=25&filter=username:eq:" + username, key);
+                assertThat(asKey.getStatusCode(), equalTo(StatusCodes.OK));
+                assertThat(asKey.getContent(), containsString(username));
+            }
         });
     }
 

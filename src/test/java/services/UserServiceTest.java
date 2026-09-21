@@ -32,7 +32,7 @@ class UserServiceTest {
 
         Optional<AuthContext> auth = userService.authenticate("alice", "secret-password-123");
         assertThat(auth.isPresent(), is(true));
-        assertThat(auth.get().id(), is(created.get("id")));
+        assertThat(auth.orElseThrow().id(), is(created.get("id")));
     }
 
     @Test

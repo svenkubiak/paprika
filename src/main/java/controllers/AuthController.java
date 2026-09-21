@@ -152,7 +152,7 @@ public class AuthController {
         Response response = authResponseService.toLoginResponse(result);
 
         if (result.status() == TenantLoginResult.Status.SUCCESS && result.auth().isPresent()) {
-            AuthContext auth = result.auth().get();
+            AuthContext auth = result.auth().orElseThrow();
             fireAfterForUser(auth, HookEvent.afterLogin, request, loginDto.username());
         }
 
@@ -308,7 +308,7 @@ public class AuthController {
             return Response.notFound().bodyJson(Map.of("error", "User not found"));
         }
 
-        return issueTokenForUser(auth.get(), request);
+        return issueTokenForUser(auth.orElseThrow(), request);
     }
 
     /**

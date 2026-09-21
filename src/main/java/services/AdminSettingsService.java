@@ -136,7 +136,7 @@ public class AdminSettingsService {
             return AdminSettingsResult.badRequest("Current password and new password are required");
         }
 
-        String adminId = auth.get().id();
+        String adminId = auth.orElseThrow().id();
         if (!systemUserService.matchesPassword(adminId, dto.currentPassword())) {
             return AdminSettingsResult.unauthorized("Invalid current password");
         }
@@ -160,12 +160,12 @@ public class AdminSettingsService {
             return AdminSettingsResult.unauthorized("Unauthorized");
         }
 
-        Optional<Map<String, Object>> user = systemUserService.findPublicUser(auth.get().id());
+        Optional<Map<String, Object>> user = systemUserService.findPublicUser(auth.orElseThrow().id());
         if (user.isEmpty()) {
             return AdminSettingsResult.notFound("User not found");
         }
 
-        String username = String.valueOf(user.get().get("username"));
+        String username = String.valueOf(user.orElseThrow().get("username"));
         if (systemUserService.verifyPassword(username, dto.password()).isEmpty()) {
             return AdminSettingsResult.unauthorized("Invalid password");
         }
@@ -190,12 +190,12 @@ public class AdminSettingsService {
             return AdminSettingsResult.badRequest("No pending 2FA setup");
         }
 
-        if (!twoFactorService.verifyCode(pendingSecret.get(), dto.code())) {
+        if (!twoFactorService.verifyCode(pendingSecret.orElseThrow(), dto.code())) {
             return AdminSettingsResult.badRequest("Invalid verification code");
         }
 
-        systemUserService.setTotpSecret(auth.get().id(), pendingSecret.get());
-        String fallbackCode = systemUserService.generateTotpFallbackCode(auth.get().id());
+        systemUserService.setTotpSecret(auth.orElseThrow().id(), pendingSecret.orElseThrow());
+        String fallbackCode = systemUserService.generateTotpFallbackCode(auth.orElseThrow().id());
         PendingTwoFactorSession.clear(request);
 
         return AdminSettingsResult.ok(Map.of(
@@ -210,13 +210,13 @@ public class AdminSettingsService {
             return AdminSettingsResult.unauthorized("Unauthorized");
         }
 
-        String adminId = auth.get().id();
+        String adminId = auth.orElseThrow().id();
         Optional<Map<String, Object>> user = systemUserService.findPublicUser(adminId);
         if (user.isEmpty()) {
             return AdminSettingsResult.notFound("User not found");
         }
 
-        String username = String.valueOf(user.get().get("username"));
+        String username = String.valueOf(user.orElseThrow().get("username"));
         if (systemUserService.verifyPassword(username, dto.password()).isEmpty()) {
             return AdminSettingsResult.unauthorized("Invalid password");
         }
@@ -228,7 +228,7 @@ public class AdminSettingsService {
             return AdminSettingsResult.badRequest("Verification code is required");
         }
 
-        if (codeProvided && secret.isPresent() && !twoFactorService.verifyCode(secret.get(), dto.code())) {
+        if (codeProvided && secret.isPresent() && !twoFactorService.verifyCode(secret.orElseThrow(), dto.code())) {
             return AdminSettingsResult.badRequest("Invalid verification code");
         }
 

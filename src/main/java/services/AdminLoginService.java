@@ -58,11 +58,11 @@ public class AdminLoginService {
             return AdminLoginResult.noPendingLogin();
         }
 
-        if (!verifyTwoFactorCode(userId.get(), dto.code())) {
+        if (!verifyTwoFactorCode(userId.orElseThrow(), dto.code())) {
             return AdminLoginResult.invalidCode();
         }
 
-        authentication.login(userId.get());
+        authentication.login(userId.orElseThrow());
         PendingTwoFactorSession.clear(request);
         AdminTenantSession.resetTenantSelection(request);
 
@@ -75,19 +75,19 @@ public class AdminLoginService {
             return AdminLoginResult.noPendingLogin();
         }
 
-        if (!verifyTwoFactorCode(userId.get(), dto.code())) {
+        if (!verifyTwoFactorCode(userId.orElseThrow(), dto.code())) {
             return AdminLoginResult.invalidCode();
         }
 
         PendingTwoFactorSession.clear(request);
         AdminTenantSession.resetTenantSelection(request);
 
-        if (systemUserService.findPublicUser(userId.get()).isEmpty()) {
+        if (systemUserService.findPublicUser(userId.orElseThrow()).isEmpty()) {
             return AdminLoginResult.invalidCredentials();
         }
 
         return AdminLoginResult.success(
-                authService.createTokenPair(AuthContext.of(userId.get(), Role.SUPERADMIN, null)));
+                authService.createTokenPair(AuthContext.of(userId.orElseThrow(), Role.SUPERADMIN, null)));
     }
 
     private AdminLoginResult completeOrDeferLogin(

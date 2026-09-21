@@ -46,7 +46,7 @@ public class TenantContextFilter implements PerRequestFilter {
             return Response.forbidden().bodyJson(FORBIDDEN_BODY).end();
         }
 
-        request.addAttribute(TenantContext.REQUEST_ATTRIBUTE, context.get());
+        request.addAttribute(TenantContext.REQUEST_ATTRIBUTE, context.orElseThrow());
         return response;
     }
 
@@ -57,7 +57,7 @@ public class TenantContextFilter implements PerRequestFilter {
 
         Optional<AuthContext> admin = authService.resolveAdmin(request);
         if (admin.isPresent()) {
-            return resolveAdminContext(request, admin.get());
+            return resolveAdminContext(request, admin.orElseThrow());
         }
 
         return resolveGuestContext();
@@ -98,8 +98,8 @@ public class TenantContextFilter implements PerRequestFilter {
             return Optional.empty();
         }
 
-        request.addAttribute(AUTH_ATTRIBUTE, verified.get());
-        return Optional.of(TenantContext.of(verified.get(), tenant.databaseName()));
+        request.addAttribute(AUTH_ATTRIBUTE, verified.orElseThrow());
+        return Optional.of(TenantContext.of(verified.orElseThrow(), tenant.databaseName()));
     }
 
     private Optional<TenantContext> resolveSuperadminContext(AuthContext auth) {
@@ -132,7 +132,7 @@ public class TenantContextFilter implements PerRequestFilter {
 
         Optional<String> sessionTenantId = AdminTenantSession.getActiveTenantId(request);
         if (sessionTenantId.isPresent()) {
-            TenantDefinition tenant = tenantService.findById(sessionTenantId.get()).orElse(null);
+            TenantDefinition tenant = tenantService.findById(sessionTenantId.orElseThrow()).orElse(null);
             if (tenant != null && tenant.isActive()) {
                 return Optional.of(new TenantContext(
                         auth.id(),

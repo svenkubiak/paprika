@@ -122,7 +122,7 @@ public class TenantService {
         String configuredId = settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null);
         if (configuredId != null && !configuredId.isBlank()) {
             Optional<TenantDefinition> configured = findById(configuredId.trim());
-            if (configured.isPresent() && configured.get().isActive()) {
+            if (configured.isPresent() && configured.orElseThrow().isActive()) {
                 return configured;
             }
         }

@@ -50,8 +50,10 @@ class UsersDataPlaneIntegrationTest {
                     .execute();
             assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
 
-            // Listing must never leak credential fields, and the escalated role must be forced to "user".
-            TestResponse list = TestRequest.get("/api/collections/users")
+            // Listing must never leak credential fields, and the escalated role must be forced to
+            // "user". The users collection is shared by the whole suite, so the record is looked up
+            // by name instead of relying on it landing on the first page.
+            TestResponse list = TestRequest.get("/api/collections/users?offset=0&limit=25&filter=username:eq:dp-created")
                     .withHeader("Authorization", "Bearer " + accessToken)
                     .execute();
             assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));

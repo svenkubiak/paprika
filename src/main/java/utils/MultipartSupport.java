@@ -133,7 +133,7 @@ public final class MultipartSupport {
 
         Map<String, List<UploadedFile>> uploads = uploadsFromFormData(formData);
         if (uploads.isEmpty() && mangooForm.isPresent()) {
-            uploads = uploadsFromMangooForm(mangooForm.get(), formData);
+            uploads = uploadsFromMangooForm(mangooForm.orElseThrow(), formData);
         }
 
         rejectDroppedFileParts(formData, uploads);

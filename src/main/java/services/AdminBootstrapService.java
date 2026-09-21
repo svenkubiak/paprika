@@ -143,7 +143,7 @@ public class AdminBootstrapService {
             return false;
         }
 
-        AdminTenantSession.setActiveTenantId(request, defaultTenant.get().id());
+        AdminTenantSession.setActiveTenantId(request, defaultTenant.orElseThrow().id());
         AdminTenantSession.markAutoDefaultApplied(request);
 
         return true;

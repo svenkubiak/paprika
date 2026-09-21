@@ -104,7 +104,7 @@ public class AdminController {
                         .end();
             }
 
-            authentication.login(auth.get().id());
+            authentication.login(auth.orElseThrow().id());
             PendingTwoFactorSession.clear(request);
             AdminTenantSession.resetTenantSelection(request);
 

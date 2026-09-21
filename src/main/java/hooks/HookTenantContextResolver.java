@@ -88,9 +88,9 @@ public class HookTenantContextResolver {
                 return null;
             }
 
-            return tenantService.findById(auth.get().tenantId())
+            return tenantService.findById(auth.orElseThrow().tenantId())
                     .filter(TenantDefinition::isActive)
-                    .map(tenant -> TenantContext.of(auth.get(), tenant.databaseName()))
+                    .map(tenant -> TenantContext.of(auth.orElseThrow(), tenant.databaseName()))
                     .orElse(null);
         } catch (Exception e) {
             return null;
