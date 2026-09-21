@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Paprika Admin</title>
     <link rel="icon" type="image/png" href="/assets/img/favicon.png" />
+    <!--
+      Loaded synchronously and before anything else on purpose: it installs the capture-phase
+      error listener that catches a module script or stylesheet of this build that the server no
+      longer has, which is the one failure the bundle cannot report because it never runs. The
+      file is not hashed, so this reference survives every build.
+    -->
+    <script src="/assets/boot.js"></script>
   </head>
   <body>
     <div id="app"></div>

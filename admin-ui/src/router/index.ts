@@ -1,7 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useBootstrap } from '@/composables/useBootstrap'
-import { onSessionExpired } from '@/lib/api'
-import { isStaleBuildError, reloadForStaleBuild, renderStaleBuildNotice } from '@/lib/stale-build'
+import { isNetworkError, onSessionExpired } from '@/lib/api'
+import {
+  reloadForStaleBuild,
+  renderServerUnreachableNotice,
+  renderStaleBuildNotice
+} from '@/lib/stale-build'
+import type { BootstrapData } from '@/types'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -123,11 +128,16 @@ const router = createRouter({
   ]
 })
 
+/**
+ * Every route component is a lazy import, so a navigation error is - short of a bug in a route
+ * guard - always a chunk this build can no longer get hold of. Matching the browser's wording
+ * to decide that was tried first and kept missing cases: Safari's "Load failed", the MIME type
+ * complaint a proxy's HTML error page produces, a plain network error from a connection that
+ * died with the old process. Each miss left the navigation aborted, and on the first navigation
+ * of a tab that is an empty #app - a white page. So recovery no longer depends on the wording;
+ * the message is only used to pick what the notice says.
+ */
 router.onError((error, to) => {
-  if (!isStaleBuildError(error)) {
-    return
-  }
-
   if (reloadForStaleBuild(to.fullPath)) {
     return
   }
@@ -166,14 +176,47 @@ onSessionExpired(() => {
   })
 })
 
+const NETWORK_RETRY_DELAYS_MS = [400, 1200, 2500]
+
+/**
+ * Until the first navigation has settled there is nothing on screen but the placeholder, so an
+ * aborted navigation is a blank page and the notice has to take over. Afterwards the app is
+ * rendered and must not be wiped - aborting leaves the user on the page they were on.
+ */
+let firstNavigationSettled = false
+router.afterEach(() => {
+  firstNavigationSettled = true
+})
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * A restart takes the server away for a few seconds. Retrying the bootstrap call over that
+ * window is what keeps an open tab from being thrown out of a session that is still valid.
+ */
+async function loadBootstrap(): Promise<BootstrapData | null> {
+  const { load } = useBootstrap()
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await load()
+    } catch (error) {
+      if (!isNetworkError(error) || attempt >= NETWORK_RETRY_DELAYS_MS.length) {
+        throw error
+      }
+
+      await sleep(NETWORK_RETRY_DELAYS_MS[attempt])
+    }
+  }
+}
+
 router.beforeEach(async (to) => {
   if (to.meta.public) {
     return true
   }
 
   try {
-    const { load } = useBootstrap()
-    const data = await load()
+    const data = await loadBootstrap()
     if (!data?.authenticated) {
       // `reason` is left off here: a guard that runs before anything was ever loaded cannot tell
       // an expired session apart from a bookmark opened in a fresh browser.
@@ -189,7 +232,17 @@ router.beforeEach(async (to) => {
     }
 
     return true
-  } catch {
+  } catch (error) {
+    // Only an answer from the application can mean "not signed in". A request that never got
+    // one means the server is gone, and sending the user to a login page they cannot use (the
+    // login call would fail the same way) hides that behind a wrong explanation.
+    if (isNetworkError(error)) {
+      if (!firstNavigationSettled) {
+        renderServerUnreachableNotice()
+      }
+      return false
+    }
+
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 })

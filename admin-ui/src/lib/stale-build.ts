@@ -11,19 +11,37 @@
  * after a restart.
  */
 
-const RELOAD_KEY = 'paprika:chunk-reload'
+/** Shared with public/boot.js - the two recover from the same situation and must not add up. */
+const RELOAD_KEY = 'paprika:reload-attempt'
+const MAX_ATTEMPTS = 2
+const WINDOW_MS = 120_000
+const HEALTH_BUDGET_MS = 30_000
+const HEALTH_INTERVAL_MS = 1_000
 
 /**
- * Browsers all word this differently, so the message is matched instead of the error type.
+ * Browsers all word this differently, so the message is matched instead of the error type. The
+ * list is only used to pick the wording of the notice - recovery itself no longer depends on it,
+ * because the list was never complete: Safari says "Load failed", a proxy that answers a chunk
+ * with an HTML error page produces a MIME type complaint, and a dead keep-alive connection
+ * produces a plain network error. All of them mean the same thing here.
  */
 const STALE_BUILD_MARKERS = [
   'Failed to fetch dynamically imported module',
   'Importing a module script failed',
   'error loading dynamically imported module',
-  'Unable to preload CSS'
+  'Unable to preload CSS',
+  'Unable to load module script',
+  'Expected a JavaScript',
+  'Load failed',
+  'NetworkError'
 ]
 
 let reloading = false
+
+interface ReloadAttempts {
+  count: number
+  at: number
+}
 
 export function isStaleBuildError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
@@ -31,34 +49,108 @@ export function isStaleBuildError(error: unknown): boolean {
   return STALE_BUILD_MARKERS.some((marker) => message.includes(marker))
 }
 
+function readAttempts(): number {
+  try {
+    const raw = sessionStorage.getItem(RELOAD_KEY)
+    if (!raw) {
+      return 0
+    }
+
+    const parsed = JSON.parse(raw) as ReloadAttempts | null
+    if (!parsed || typeof parsed.at !== 'number' || Date.now() - parsed.at > WINDOW_MS) {
+      return 0
+    }
+
+    return typeof parsed.count === 'number' ? parsed.count : 0
+  } catch {
+    return 0
+  }
+}
+
+function writeAttempt(count: number): void {
+  try {
+    sessionStorage.setItem(RELOAD_KEY, JSON.stringify({ count, at: Date.now() } satisfies ReloadAttempts))
+  } catch {
+    /* Storage can be unavailable; one attempt per load is still better than none. */
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Reloading into a server that is still restarting replaces the broken page with the browser's
+ * error page and uses up an attempt for nothing, so every reload waits for the server first.
+ */
+async function waitForServer(): Promise<boolean> {
+  const deadline = Date.now() + HEALTH_BUDGET_MS
+
+  for (;;) {
+    try {
+      const response = await fetch('/health', { cache: 'no-store', credentials: 'same-origin' })
+      if (response.ok) {
+        return true
+      }
+    } catch {
+      /* Server is not answering yet. */
+    }
+
+    if (Date.now() >= deadline) {
+      return false
+    }
+
+    await sleep(HEALTH_INTERVAL_MS)
+  }
+}
+
 /**
  * Reloads the given path so the browser picks up the current index.html and with it the chunk
- * names of the deployed build. Returns false when this tab has already tried that, which is what
- * keeps a chunk that stays unreachable from turning into a reload loop.
+ * names of the deployed build. Returns false when this tab has used up its attempts, which is
+ * what keeps a chunk that stays unreachable from turning into a reload loop.
  *
- * The flag has to survive the reload, hence sessionStorage - it is cleared again by
- * {@link clearStaleBuildReload} as soon as the app mounts, so a second update in the same tab is
- * recovered just as well.
+ * The counter has to survive the reload, hence sessionStorage. It is time boxed rather than
+ * once-per-tab: an attempt that was spent on a server which had not come back up yet must not
+ * disable the recovery for the rest of the session.
  */
 export function reloadForStaleBuild(path: string): boolean {
   if (reloading) {
     return true
   }
 
-  if (sessionStorage.getItem(RELOAD_KEY)) {
+  const attempts = readAttempts()
+  if (attempts >= MAX_ATTEMPTS) {
     return false
   }
 
   reloading = true
-  sessionStorage.setItem(RELOAD_KEY, '1')
-  window.location.assign(path)
+  writeAttempt(attempts + 1)
+
+  void waitForServer().then((up) => {
+    if (up) {
+      window.location.assign(path)
+      return
+    }
+
+    // The server never came back within the budget. Say so instead of leaving the tab on
+    // whatever the failed navigation left behind.
+    reloading = false
+    renderStaleBuildNotice(new Error('The server did not respond.'))
+  })
 
   return true
 }
 
+/** True while a recovery reload is on its way, so nothing else paints over the page. */
+export function isReloadPending(): boolean {
+  return reloading
+}
+
 export function clearStaleBuildReload(): void {
   reloading = false
-  sessionStorage.removeItem(RELOAD_KEY)
+  try {
+    sessionStorage.removeItem(RELOAD_KEY)
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -67,7 +159,46 @@ export function clearStaleBuildReload(): void {
  * entry chunk already brought along.
  */
 export function renderStaleBuildNotice(error: unknown): void {
-  if (reloading) {
+  const message = error instanceof Error ? error.message : String(error)
+
+  if (isStaleBuildError(error)) {
+    renderNotice(
+      'The admin UI could not be loaded',
+      'This tab is running an older version of the admin UI than the server. Reloading picks up the current one.'
+    )
+    return
+  }
+
+  if (message.includes('did not respond')) {
+    renderServerUnreachableNotice()
+    return
+  }
+
+  renderNotice(
+    'The admin UI could not be loaded',
+    'Something went wrong while starting the admin UI. Reloading usually resolves it.'
+  )
+}
+
+/**
+ * Shown when the server itself is not answering. Deliberately not the login page: a request that
+ * never got an answer says nothing about the session, and bouncing a signed-in admin to /login
+ * over a restart is what used to happen here.
+ */
+export function renderServerUnreachableNotice(): void {
+  renderNotice(
+    'The server is not responding',
+    'Paprika could not be reached. It may be restarting - reloading in a moment usually resolves it.'
+  )
+}
+
+let noticeRendered = false
+
+function renderNotice(titleText: string, bodyText: string): void {
+  // A failed navigation is reported by more than one place (onError, the ready promise, the
+  // guard). Whoever explained it first keeps the screen - the later, vaguer message must not
+  // replace it.
+  if (noticeRendered) {
     return
   }
 
@@ -76,7 +207,7 @@ export function renderStaleBuildNotice(error: unknown): void {
     return
   }
 
-  const stale = isStaleBuildError(error)
+  noticeRendered = true
 
   const frame = document.createElement('div')
   frame.setAttribute(
@@ -91,13 +222,11 @@ export function renderStaleBuildNotice(error: unknown): void {
 
   const title = document.createElement('h1')
   title.setAttribute('style', 'margin: 0; font-size: 1.125rem; font-weight: 600;')
-  title.textContent = 'The admin UI could not be loaded'
+  title.textContent = titleText
 
   const text = document.createElement('p')
   text.setAttribute('style', 'margin: 0; font-size: 0.875rem; opacity: 0.75; line-height: 1.5;')
-  text.textContent = stale
-    ? 'This tab is running an older version of the admin UI than the server. Reloading picks up the current one.'
-    : 'Something went wrong while starting the admin UI. Reloading usually resolves it.'
+  text.textContent = bodyText
 
   const button = document.createElement('button')
   button.type = 'button'

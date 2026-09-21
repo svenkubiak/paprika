@@ -22,14 +22,33 @@ export class ApiError extends Error {
   status: number
   /** Set when the request failed because the admin session is gone, not because of its payload. */
   sessionExpired: boolean
+  /**
+   * Set when the request never reached an application answer - the connection failed, timed out,
+   * or a proxy answered for a server that is not there. Telling this apart from a 401 matters:
+   * both used to end up in the same catch, so a restart signed everybody out of a session that
+   * was still perfectly valid.
+   */
+  networkError: boolean
 
-  constructor(message: string, status: number, sessionExpired = false) {
+  constructor(message: string, status: number, sessionExpired = false, networkError = false) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.sessionExpired = sessionExpired
+    this.networkError = networkError
   }
 }
+
+export function isNetworkError(error: unknown): boolean {
+  return error instanceof ApiError && error.networkError
+}
+
+/** Without this a server that accepts the connection but does not answer yet (it is still
+ *  starting) leaves the router guard awaiting forever, i.e. the app hangs on its placeholder. */
+const REQUEST_TIMEOUT_MS = 15_000
+
+/** What a reverse proxy answers while the application behind it is restarting. */
+const UPSTREAM_STATUS = new Set([502, 503, 504])
 
 const LOGIN_PATH = '/login'
 
@@ -125,23 +144,47 @@ function parseErrorMessage(body: string, fallback: string): string {
 }
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(url, {
-    ...options,
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      ...(options.headers || {})
-    }
-  })
+  let response: Response
+
+  try {
+    response = await fetch(url, {
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      ...options,
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/json',
+        ...(options.headers || {})
+      }
+    })
+  } catch (error) {
+    // fetch only rejects when there was no HTTP answer at all - a dead connection, a refused
+    // one, or the timeout above.
+    throw new ApiError('The server could not be reached', 0, false, true)
+  }
 
   guardSession(response, url)
+
+  if (UPSTREAM_STATUS.has(response.status)) {
+    throw new ApiError('The server is currently unavailable', response.status, false, true)
+  }
 
   if (response.status === 204) {
     return null as T
   }
 
   const body = await response.text()
-  const data = body ? JSON.parse(body) : null
+
+  let data: unknown = null
+  try {
+    data = body ? JSON.parse(body) : null
+  } catch {
+    // Not JSON, so this did not come from the application: an error page from whatever sits in
+    // front of it. Reporting the HTML verbatim helps nobody.
+    if (!response.ok) {
+      throw new ApiError('The server returned an unexpected response', response.status, false, true)
+    }
+    throw new ApiError('The server returned an unexpected response', response.status)
+  }
 
   if (!response.ok) {
     throw new ApiError(parseErrorMessage(body, 'Request failed'), response.status)
