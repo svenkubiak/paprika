@@ -24,6 +24,10 @@ Once a field exists, its name can't be changed from this UI — only its other o
 
 Each field row shows whether it's indexed, in which direction (ascending/descending), and whether it's unique. Enable indexing in the field editor to speed up filtering/sorting on that field, or to enforce that no two records share the same value.
 
+::: tip Index what you sort by
+The list endpoint's [`sort` parameter](/admin-ui/collection-api#listing-paging-filtering-and-sorting) works on any sortable field, indexed or not. Without an index MongoDB sorts in memory, and that sort fails once it exceeds 32 MB — so for a collection that grows, index the field your clients sort by.
+:::
+
 ## Deleting a field
 
 Deleting a field removes it from the schema, but **does not** delete the field's data from existing records in MongoDB — it simply stops being validated, shown, or served by the API. If you re-add a field with the same name later, old values may reappear.

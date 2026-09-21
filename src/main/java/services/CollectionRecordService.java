@@ -19,6 +19,7 @@ import models.FieldDefinition;
 import models.HookEvent;
 import org.apache.logging.log4j.LogManager;
 import rules.ListFilterParser;
+import rules.ListSortParser;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -148,7 +149,8 @@ public class CollectionRecordService {
             Request request,
             int offset,
             int limit,
-            String filter) {
+            String filter,
+            String sort) {
         // The auth filter is the only place a list rule gets evaluated. Without its decision, or
         // without the scoping query that decision has to carry, there is no evidence this request
         // was scoped at all - so refuse rather than fall back to listing everything.
@@ -163,9 +165,11 @@ public class CollectionRecordService {
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
 
         Bson clientFilter;
+        Bson clientSort;
         try {
             clientFilter = ListFilterParser.parse(filter, definition);
-        } catch (ListFilterParser.InvalidFilterException e) {
+            clientSort = ListSortParser.parse(sort, definition);
+        } catch (ListFilterParser.InvalidFilterException | ListSortParser.InvalidSortException e) {
             return RecordResult.badRequest(e.getMessage());
         }
 
@@ -184,7 +188,7 @@ public class CollectionRecordService {
         tenantCollections.dataCollection(ctx, collection)
                 .find(effectiveFilter)
                 .projection(recordProjection(collection))
-                .sort(DEFAULT_SORT)
+                .sort(clientSort == null ? DEFAULT_SORT : clientSort)
                 .skip(effectiveOffset)
                 .limit(effectiveLimit)
                 .into(items);

@@ -59,7 +59,7 @@ Until then, file download and delete remain authenticated API operations without
 
 ---
 
-## Collection list filtering
+## Collection list filtering and sorting
 
 ### Current behavior
 
@@ -91,6 +91,29 @@ An index is **not** required. Without one the filter costs a collection scan, bu
 filter already bounds the candidate set — this is an operational tuning question, not a reason
 to reject the request.
 
+The list also accepts an optional `sort` parameter of the same shape, parsed by
+`rules/ListSortParser`:
+
+```
+GET /api/collections/{collection}?sort=<field>:asc|desc
+```
+
+- Exactly one field and one direction; no multi-field sort and no `-field` shorthand, for the
+  same reason the filter only knows `eq`.
+- Allowed fields are the schema fields plus the indexable system fields; `JSON` and `FILE` are
+  not sortable. An unknown field, an unknown direction, or a malformed value is a `400` — an
+  invalid sort is never answered with an arbitrarily ordered page.
+- Without `sort`, the list is ordered by `_id`, which is always indexed and insertion-ordered.
+  That default is what makes paging stable: an unordered cursor can repeat or drop a record
+  once a write lands between two page requests.
+- Sorting on a field without an index makes MongoDB sort in memory and fails above 32 MB. Like
+  the filter, that is an operational tuning question rather than a reason to reject the request.
+
+`limit` is **clamped** to the maximum of 100 rather than falling back to the default of 25: a
+request for more than the maximum asks for as much as possible, and answering it with a much
+shorter page loses records without the client being able to notice. `limit <= 0` still means
+"not specified" and yields the default.
+
 ### Deliberately not implemented
 
 The following are intentionally out of scope for now and would be the natural follow-ups:
@@ -99,7 +122,7 @@ The following are intentionally out of scope for now and would be the natural fo
   the field guards run per record, so a bulk mutation has to clarify how those apply before it
   can exist.
 - **More operators and composition** — anything beyond `eq`, plus `and`/`or`, bracketing,
-  ordering comparisons, full-text search, sorting, and relation traversal.
+  ordering comparisons, full-text search, multi-field sorting, and relation traversal.
 - **Admin UI search** — the data view could grow a search box on top of this parameter
   (`admin-ui/src/lib/api.ts` currently builds only `?offset=&limit=`).
 

@@ -48,7 +48,7 @@ class CollectionRecordServiceListTest {
         // A request that never passed through ApiAuthFilter carries no authorization decision.
         // Listing unfiltered here would return every record, so the service has to refuse instead.
         CollectionRecordService.RecordResult result = Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, new Request(), 0, 25, null);
+                .list(ctx, collection, new Request(), 0, 25, null, null);
 
         assertThat(result.status(), is(CollectionRecordService.RecordResult.Status.FORBIDDEN));
         assertThat(result.body(), is((Object) null));
@@ -76,7 +76,7 @@ class CollectionRecordServiceListTest {
         AuthorizationDecision.granted(RuleOperation.VIEW).storeIn(request);
 
         CollectionRecordService.RecordResult result = Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, request, 0, 25, null);
+                .list(ctx, collection, request, 0, 25, null, null);
 
         assertThat(result.status(), is(CollectionRecordService.RecordResult.Status.FORBIDDEN));
     }
@@ -142,6 +142,81 @@ class CollectionRecordServiceListTest {
         assertThat(idsOf(list(ctx, collection, 0, 10_000, null)), hasSize(100));
     }
 
+    @Test
+    void sortsAscendingAndDescendingOnASchemaField() {
+        String collection = seededCollection("notes_sort_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        insert(ctx, collection, "banana");
+        insert(ctx, collection, "apple");
+        insert(ctx, collection, "cherry");
+
+        assertThat(titlesOf(list(ctx, collection, 0, 25, null, "title:asc")),
+                is(List.of("apple", "banana", "cherry")));
+        assertThat(titlesOf(list(ctx, collection, 0, 25, null, "title:desc")),
+                is(List.of("cherry", "banana", "apple")));
+    }
+
+    @Test
+    void sortsOnASystemTimestamp() {
+        String collection = seededCollection("notes_sortsystem_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        insertWithCreatedAt(ctx, collection, "second", "2024-01-02T00:00:00Z");
+        insertWithCreatedAt(ctx, collection, "first", "2024-01-01T00:00:00Z");
+        insertWithCreatedAt(ctx, collection, "third", "2024-01-03T00:00:00Z");
+
+        assertThat(titlesOf(list(ctx, collection, 0, 25, null, "createdAt:asc")),
+                is(List.of("first", "second", "third")));
+        assertThat(titlesOf(list(ctx, collection, 0, 25, null, "createdAt:desc")),
+                is(List.of("third", "second", "first")));
+    }
+
+    @Test
+    void combinesSortWithFilter() {
+        String collection = seededCollection("notes_sortfilter_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        insert(ctx, collection, "keep");
+        insert(ctx, collection, "drop");
+        insert(ctx, collection, "keep");
+
+        assertThat(titlesOf(list(ctx, collection, 0, 25, "title:eq:keep", "title:desc")),
+                is(List.of("keep", "keep")));
+    }
+
+    @Test
+    void emptySortBehavesLikeNoSort() {
+        String collection = seededCollection("notes_sortempty_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        insert(ctx, collection, "b");
+        insert(ctx, collection, "a");
+
+        assertThat(titlesOf(list(ctx, collection, 0, 25, null, "")),
+                is(titlesOf(list(ctx, collection, 0, 25, null))));
+    }
+
+    /**
+     * An invalid sort must never be answered with an arbitrarily ordered page: the client asked for
+     * an order and would have no way of telling it did not get one.
+     */
+    @Test
+    void invalidSortIsRejectedInsteadOfSilentlyIgnored() {
+        String collection = "notes_sortinvalid_" + DbUtils.id();
+        TenantTestUtils.seedCollection(
+                collection,
+                new CollectionRules("*", "*", "*", "*", "*", null),
+                List.of(
+                        new FieldDefinition("title", FieldType.STRING, true, false, null),
+                        new FieldDefinition("payload", FieldType.JSON, false, true, null),
+                        new FieldDefinition("attachment", FieldType.FILE, false, true, null)));
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        insert(ctx, collection, "only");
+
+        for (String sort : List.of("nope:asc", "title:sideways", "payload:asc", "attachment:desc", "title", ":asc")) {
+            assertThat("sort '" + sort + "' must be rejected",
+                    list(ctx, collection, 0, 25, null, sort).status(),
+                    is(CollectionRecordService.RecordResult.Status.BAD_REQUEST));
+        }
+    }
+
     static String seededCollection(String prefix) {
         String collection = prefix + DbUtils.id();
         TenantTestUtils.seedCollection(
@@ -162,12 +237,26 @@ class CollectionRecordServiceListTest {
         return id;
     }
 
+    static void insertWithCreatedAt(TenantContext ctx, String collection, String title, String createdAt) {
+        Application.getInstance(TenantCollectionService.class)
+                .dataCollection(ctx, collection)
+                .insertOne(new Document()
+                        .append("id", DbUtils.id())
+                        .append("title", title)
+                        .append(constants.SystemFields.CREATED_AT, createdAt));
+    }
+
     static CollectionRecordService.RecordResult list(
             TenantContext ctx, String collection, int offset, int limit, String filter) {
+        return list(ctx, collection, offset, limit, filter, null);
+    }
+
+    static CollectionRecordService.RecordResult list(
+            TenantContext ctx, String collection, int offset, int limit, String filter, String sort) {
         Request request = new Request();
         AuthorizationDecision.listGranted(new Document()).storeIn(request);
         return Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, request, offset, limit, filter);
+                .list(ctx, collection, request, offset, limit, filter, sort);
     }
 
     @SuppressWarnings("unchecked")
