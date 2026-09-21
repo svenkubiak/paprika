@@ -1,6 +1,7 @@
 package utils;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 
 import javax.imageio.ImageIO;
 import java.awt.Graphics2D;
@@ -187,7 +188,7 @@ public final class ImageVariants {
         }
 
         static int of(byte[] source, String mimeType) {
-            if (source == null || !StringUtils.equalsIgnoreCase(mimeType, "image/jpeg")) {
+            if (source == null || !Strings.CI.equals(mimeType, "image/jpeg")) {
                 return 1;
             }
             try {
