@@ -259,6 +259,76 @@ class SchemaExportImportIntegrationTest {
         assertThat(reimport.getStatusCode(), equalTo(StatusCodes.OK));
     }
 
+    /**
+     * Field options ride along for the same reason the rules do - nothing states that intent - so
+     * the newest one gets its own round trip. Losing it would silently disable image variants for
+     * every restored tenant.
+     */
+    @Test
+    void imageWidthsSurviveAnExportImportRoundTrip() throws Exception {
+        String collection = "schema_widths_" + DbUtils.id();
+        TenantTestUtils.seedCollection(
+                collection,
+                CollectionRules.locked(),
+                java.util.List.of(
+                        new models.FieldDefinition("title", enums.FieldType.STRING, true, false, null),
+                        new models.FieldDefinition("picture", enums.FieldType.FILE, false, true,
+                                models.FieldOptions.forFile(1024, java.util.List.of(), 1,
+                                        java.util.List.of(320, 800)))));
+
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+        TestResponse export = AdminTestUtils.getWithAdminCookies(EXPORT_URI, cookies);
+        assertThat(export.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(exportedImageWidths(export, collection), equalTo(java.util.List.of(320, 800)));
+
+        // Wipe the option in the database, so an import that does nothing cannot pass this.
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        CollectionDefinition current = collections.findDefinition(ctx, collection);
+        collections.replaceDefinition(ctx, new CollectionDefinition(
+                current.id(),
+                current.name(),
+                java.util.List.of(
+                        new models.FieldDefinition("title", enums.FieldType.STRING, true, false, null),
+                        new models.FieldDefinition("picture", enums.FieldType.FILE, false, true,
+                                models.FieldOptions.forFile(1024, java.util.List.of(), 1))),
+                current.indexes(),
+                current.rules(),
+                current.system()));
+        assertThat(storedImageWidths(collections, ctx, collection), equalTo(java.util.List.of()));
+
+        TestResponse importResponse = AdminTestUtils.postWithAdminCookies(
+                IMPORT_URI, cookies, export.getContent(), "application/json");
+        assertThat(importResponse.getStatusCode(), equalTo(StatusCodes.OK));
+
+        assertThat(storedImageWidths(collections, ctx, collection), equalTo(java.util.List.of(320, 800)));
+    }
+
+    private static java.util.List<Integer> exportedImageWidths(TestResponse export, String collection)
+            throws Exception {
+        SchemaExportDto exported = JsonUtils.getMapper().readValue(export.getContent(), SchemaExportDto.class);
+        return exported.collections().stream()
+                .filter(definition -> collection.equals(definition.name()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("the export is missing " + collection))
+                .fields().stream()
+                .filter(field -> "picture".equals(field.name()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("the export is missing the picture field"))
+                .optionsOrDefault()
+                .imageWidthsOrEmpty();
+    }
+
+    private static java.util.List<Integer> storedImageWidths(
+            TenantCollectionService collections, TenantContext ctx, String collection) {
+        return collections.findDefinition(ctx, collection).fields().stream()
+                .filter(field -> "picture".equals(field.name()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("the definition is missing the picture field"))
+                .optionsOrDefault()
+                .imageWidthsOrEmpty();
+    }
+
     private static CollectionRules exportedRules(TestResponse export, String collection) throws Exception {
         SchemaExportDto exported = JsonUtils.getMapper().readValue(export.getContent(), SchemaExportDto.class);
 

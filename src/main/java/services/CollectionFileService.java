@@ -38,6 +38,21 @@ public class CollectionFileService {
             String recordId,
             String field,
             String fileId) {
+        return download(ctx, collection, recordId, field, fileId, null);
+    }
+
+    /**
+     * @param requestedWidth the image width the caller wants, or {@code null} for the original.
+     *                       A width that no variant matches is not an error: the next larger
+     *                       variant, or the original, is delivered instead.
+     */
+    public FileDownloadResult download(
+            TenantContext ctx,
+            String collection,
+            String recordId,
+            String field,
+            String fileId,
+            Integer requestedWidth) {
 
         Optional<FileFieldContext> context = resolveContext(ctx, collection, recordId, field);
         if (context.isEmpty()) {
@@ -51,11 +66,16 @@ public class CollectionFileService {
         }
 
         try {
-            byte[] bytes = fileFieldService.readFile(ctx, reference);
-            if (bytes == null) {
+            FileFieldService.VariantDelivery delivery = fileFieldService.readFile(ctx, reference, requestedWidth);
+            if (delivery == null) {
                 return FileDownloadResult.notFound();
             }
-            return FileDownloadResult.found(bytes, reference.mimeType(), reference.name(), reference.id());
+            return FileDownloadResult.found(
+                    delivery.bytes(),
+                    reference.mimeType(),
+                    reference.name(),
+                    reference.id(),
+                    delivery.width());
         } catch (IOException e) {
             return FileDownloadResult.error();
         }
@@ -130,26 +150,36 @@ public class CollectionFileService {
     }
 
     /**
-     * @param fileId the id of the delivered file, which identifies its content: storing a file
-     *               always mints a new id, so the id is a valid strong validator for caching
+     * @param fileId       the id of the delivered file, which identifies its content: storing a
+     *                     file always mints a new id, so the id is a valid strong validator
+     * @param deliveredWidth the width of the delivered image variant, or {@code null} when the
+     *                     original was delivered
      */
-    public record FileDownloadResult(Status status, byte[] bytes, String mimeType, String fileName, String fileId) {
+    public record FileDownloadResult(
+            Status status,
+            byte[] bytes,
+            String mimeType,
+            String fileName,
+            String fileId,
+            Integer deliveredWidth) {
+
         public enum Status {
             FOUND,
             NOT_FOUND,
             ERROR
         }
 
-        public static FileDownloadResult found(byte[] bytes, String mimeType, String fileName, String fileId) {
-            return new FileDownloadResult(Status.FOUND, bytes, mimeType, fileName, fileId);
+        public static FileDownloadResult found(
+                byte[] bytes, String mimeType, String fileName, String fileId, Integer deliveredWidth) {
+            return new FileDownloadResult(Status.FOUND, bytes, mimeType, fileName, fileId, deliveredWidth);
         }
 
         public static FileDownloadResult notFound() {
-            return new FileDownloadResult(Status.NOT_FOUND, null, null, null, null);
+            return new FileDownloadResult(Status.NOT_FOUND, null, null, null, null, null);
         }
 
         public static FileDownloadResult error() {
-            return new FileDownloadResult(Status.ERROR, null, null, null, null);
+            return new FileDownloadResult(Status.ERROR, null, null, null, null, null);
         }
     }
 

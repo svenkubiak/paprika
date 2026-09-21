@@ -16,6 +16,25 @@ A few validation rules are enforced when saving a field:
 - A `RELATION` field must specify a target collection.
 - A `FILE` or `SELECT` field must allow at least one selection (`maxSelect ≥ 1`), and a `SELECT` field needs at least one allowed value.
 
+## Image widths on a `FILE` field
+
+A `FILE` field can list **image widths** (comma separated, for example `320, 800, 1600`). Every image uploaded to that field is then stored together with one downscaled copy per width, and clients fetch them with [`?width=`](/admin-ui/collection-api#image-variants-width).
+
+The limits, enforced both in this editor and by the API:
+
+- **At most 4 widths per field.** Four cover list, preview, detail and retina; every further width multiplies the storage each upload costs.
+- **At most 4096 px per width.** Beyond that a "variant" is no longer a smaller copy.
+- Widths are normalized: duplicates are dropped and the list is sorted ascending.
+
+What gets scaled:
+
+- Only **JPEG, PNG and GIF** — the formats the JVM can both read and write without an extra library. WebP in particular can be read but not written, so a WebP upload keeps only its original.
+- Only **downwards**: an image narrower than a configured width gets no variant for that width and falls back to a larger variant, or to the original, on download.
+- The EXIF orientation of a photo is applied to the pixels, so a variant is never tilted against its original.
+- If scaling fails, the upload still succeeds — the original is the payload, a missing variant only costs bandwidth.
+
+Changing the widths affects **new uploads only**. Files that already exist are not rescaled; they keep answering through the fallback.
+
 ::: warning Field names are permanent
 Once a field exists, its name can't be changed from this UI — only its other options. Renaming means deleting the field and adding a new one (see below).
 :::

@@ -22,17 +22,23 @@ public class CollectionFileController {
     }
 
     public Response download(String collection, String id, String field, Request request) {
-        return CollectionFileResponseHelper.toDownloadResponse(
-                request,
-                collectionFileService.download(
-                        TenantContextHolder.require(request),
-                        collection,
-                        id,
-                        field,
-                        null));
+        return respondWithFile(collection, id, field, null, request);
     }
 
     public Response downloadWithId(String collection, String id, String field, String fileId, Request request) {
+        return respondWithFile(collection, id, field, fileId, request);
+    }
+
+    // Not named download*: the framework resolves routes to controller methods by name, so an
+    // overload of a route method would be a candidate for the route itself.
+    private Response respondWithFile(String collection, String id, String field, String fileId, Request request) {
+        Integer width;
+        try {
+            width = ImageWidthParameter.parse(request.getQueryParameter("width"));
+        } catch (ImageWidthParameter.InvalidImageWidthException e) {
+            return Response.badRequest().bodyJson(java.util.Map.of("error", e.getMessage()));
+        }
+
         return CollectionFileResponseHelper.toDownloadResponse(
                 request,
                 collectionFileService.download(
@@ -40,7 +46,8 @@ public class CollectionFileController {
                         collection,
                         id,
                         field,
-                        fileId));
+                        fileId,
+                        width));
     }
 
     public Response deleteField(String collection, String id, String field, Request request) {

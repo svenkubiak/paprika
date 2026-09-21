@@ -9,7 +9,12 @@ import { modalUi } from '@/lib/overlay-ui'
 import { fieldTypeIcon, fieldTypeLabel } from '@/lib/utils'
 import IndexEditorSheet from '@/components/IndexEditorSheet.vue'
 import { isReservedSchemaFieldName, SYSTEM_RECORD_FIELDS } from '@/lib/system-fields'
-import { optionsToSchemaRow, parseSelectValues, schemaRowToField } from '@/lib/schema-options'
+import {
+  optionsToSchemaRow,
+  parseSelectValues,
+  schemaRowToField,
+  validateImageWidths
+} from '@/lib/schema-options'
 import {
   isProtectedUserField,
   isSystemCollection,
@@ -166,8 +171,14 @@ function applyEditorToRows(sourceRows: SchemaRow[]): SchemaRow[] {
   if (draft.type === 'RELATION' && !draft.relationCollection.trim()) {
     throw new Error(`Field "${draft.name}" requires a related collection`)
   }
-  if (draft.type === 'FILE' && draft.fileMaxSelect < 1) {
-    throw new Error(`Field "${draft.name}" requires maxSelect of at least 1`)
+  if (draft.type === 'FILE') {
+    if (draft.fileMaxSelect < 1) {
+      throw new Error(`Field "${draft.name}" requires maxSelect of at least 1`)
+    }
+    const imageWidthsError = validateImageWidths(draft.fileImageWidths)
+    if (imageWidthsError) {
+      throw new Error(`Field "${draft.name}": ${imageWidthsError}`)
+    }
   }
   if (draft.type === 'SELECT') {
     const values = parseSelectValues(draft.selectValues)

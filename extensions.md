@@ -126,6 +126,31 @@ The following are intentionally out of scope for now and would be the natural fo
 - **Admin UI search** — the data view could grow a search box on top of this parameter
   (`admin-ui/src/lib/api.ts` currently builds only `?offset=&limit=`).
 
+## Image variants for file fields
+
+### Current behavior
+
+A `FILE` field can carry an `imageWidths` option (`models/FieldOptions`, at most
+`MAX_IMAGE_WIDTHS` = 4 widths of at most `MAX_IMAGE_WIDTH` = 4096 px). On upload,
+`FileFieldService.storeUpload` writes one downscaled copy per width next to the original; the
+storage key is derived from the file id (`FileStorageService.variantKey`), so no second index is
+needed to find, read or delete them. A download picks a variant with `?width=`, falling back to
+the next larger variant and then to the original, and always names the delivered width in
+`X-Image-Width`.
+
+### Deliberately not implemented
+
+- **No backfill for existing files.** Changing `imageWidths` only affects new uploads. Files
+  stored before the change keep answering through the fallback of the download path. A backfill
+  is a job with its own concerns — progress, restartability, storage budget, and what to do with
+  a tenant that changes the configuration while it runs — and does not belong in the upload path.
+- **No WebP (or AVIF) encoding.** `utils/ImageVariants` uses ImageIO, which can read WebP on
+  recent JDKs but cannot write it. Encoding would mean a new image library, which is out of
+  scope; a WebP upload is therefore stored unchanged and always served as the original. The same
+  holds for every other format ImageIO cannot write.
+- **No cropping, height, format conversion or quality parameter.** The single parameter is the
+  width, and the aspect ratio is preserved. Anything else is a second image API.
+
 ## Trusted token issuance (`POST /api/auth/issue-token`)
 
 A tenant user listed in the tenant's `tokenIssuers` setting can mint a session for any other user

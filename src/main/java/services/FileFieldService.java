@@ -8,9 +8,12 @@ import models.FieldDefinition;
 import models.FieldOptions;
 import models.FileReference;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import utils.DbUtils;
 import utils.FileFieldUtils;
+import utils.ImageVariants;
 import utils.MimeTypes;
 import utils.MultipartSupport;
 
@@ -19,6 +22,7 @@ import java.util.*;
 
 @Singleton
 public class FileFieldService {
+    private static final Logger LOG = LogManager.getLogger(FileFieldService.class);
     private final FileStorageService storage;
 
     @Inject
@@ -60,7 +64,7 @@ public class FileFieldService {
                     if (references.size() >= field.optionsOrDefault().maxSelectOrDefault()) {
                         break;
                     }
-                    FileReference reference = storeUpload(ctx, upload);
+                    FileReference reference = storeUpload(ctx, field, upload);
                     storedIds.add(reference.id());
                     references.add(reference);
                 }
@@ -138,6 +142,53 @@ public class FileFieldService {
         return storage.read(ctx, reference.id());
     }
 
+    /**
+     * Reads the variant of {@code reference} that serves {@code requestedWidth} best: the exact
+     * width when it exists, otherwise the next <em>larger</em> one. A too small image is a visible
+     * quality defect, a too large one only costs bandwidth - so the fallback goes upwards, and
+     * ends at the original.
+     *
+     * @return the bytes and the width they were produced at, or a delivery of the original when no
+     *         variant fits; {@code null} when the file itself is gone
+     */
+    public VariantDelivery readFile(TenantContext ctx, FileReference reference, Integer requestedWidth)
+            throws IOException {
+
+        if (reference == null) {
+            return null;
+        }
+        if (requestedWidth == null) {
+            byte[] bytes = storage.read(ctx, reference.id());
+            return bytes == null ? null : VariantDelivery.original(bytes);
+        }
+
+        for (int available : storage.variantWidths(ctx, reference.id())) {
+            if (available >= requestedWidth) {
+                byte[] bytes = storage.read(ctx, FileStorageService.variantKey(reference.id(), available));
+                if (bytes != null) {
+                    return VariantDelivery.variant(bytes, available);
+                }
+                break;
+            }
+        }
+
+        byte[] bytes = storage.read(ctx, reference.id());
+        return bytes == null ? null : VariantDelivery.original(bytes);
+    }
+
+    /**
+     * @param width the width the delivered bytes were scaled to, or {@code null} for the original
+     */
+    public record VariantDelivery(byte[] bytes, Integer width) {
+        static VariantDelivery original(byte[] bytes) {
+            return new VariantDelivery(bytes, null);
+        }
+
+        static VariantDelivery variant(byte[] bytes, int width) {
+            return new VariantDelivery(bytes, width);
+        }
+    }
+
     public FileReference findReference(Document record, FieldDefinition field, String fileId) {
         List<FileReference> references = FileFieldUtils.referencesFromRecord(record.get(field.name()), field);
         if (field.optionsOrDefault().maxSelectOrDefault() <= 1) {
@@ -165,10 +216,45 @@ public class FileFieldService {
         storage.deleteAll(ctx, fileIds);
     }
 
-    private FileReference storeUpload(TenantContext ctx, MultipartSupport.UploadedFile upload) throws IOException {
+    private FileReference storeUpload(TenantContext ctx, FieldDefinition field, MultipartSupport.UploadedFile upload)
+            throws IOException {
         String fileId = DbUtils.id();
         storage.store(ctx, fileId, upload.bytes());
+        storeImageVariants(ctx, field, fileId, upload);
         return new FileReference(fileId, upload.fileName(), upload.mimeType(), upload.bytes().length);
+    }
+
+    /**
+     * Writes the configured scaled copies next to the original. Only downscales: an original that
+     * is already narrower than a configured width gets no variant for it and falls back to a wider
+     * variant, or to the original, on download.
+     * <p>
+     * A failure here never fails the upload. The original is the payload; a missing variant costs
+     * bandwidth, not data - so it is logged (field and width, never file content) and the upload
+     * continues.
+     */
+    private void storeImageVariants(
+            TenantContext ctx,
+            FieldDefinition field,
+            String fileId,
+            MultipartSupport.UploadedFile upload) {
+
+        List<Integer> widths = field.optionsOrDefault().imageWidthsOrEmpty();
+        if (widths.isEmpty() || !ImageVariants.isSupported(upload.mimeType())) {
+            return;
+        }
+
+        for (int width : widths) {
+            try {
+                byte[] variant = ImageVariants.scaleToWidth(upload.bytes(), upload.mimeType(), width);
+                if (variant != null) {
+                    storage.store(ctx, FileStorageService.variantKey(fileId, width), variant);
+                }
+            } catch (IOException | RuntimeException e) {
+                LOG.warn("Failed to create the {} px variant for field {}: {}",
+                        width, field.name(), e.getMessage());
+            }
+        }
     }
 
     private void deleteStoredFiles(TenantContext ctx, List<FileReference> references) {

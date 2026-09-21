@@ -2,6 +2,46 @@ import type { FieldDefinition, FieldOptions } from '@/types'
 import type { SchemaRow } from '@/components/SchemaEditorSheet.vue'
 import { parseDefaultValue } from '@/lib/field-validation'
 
+/** Mirrors FieldOptions.MAX_IMAGE_WIDTHS on the server. */
+export const MAX_IMAGE_WIDTHS = 4
+
+/** Mirrors FieldOptions.MAX_IMAGE_WIDTH on the server. */
+export const MAX_IMAGE_WIDTH = 4096
+
+/** Parses the comma/space separated widths of a file field into normalized, ascending numbers. */
+export function parseImageWidths(raw: string): number[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[\n,\s]+/)
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => Number(value))
+    )
+  ].sort((a, b) => a - b)
+}
+
+/**
+ * Returns why the configured widths are rejected, or null when they are fine. The message names
+ * both limits, so the editor tells the user what exactly failed - as maxSize and mimeTypes do.
+ */
+export function validateImageWidths(raw: string): string | null {
+  const widths = parseImageWidths(raw)
+  if (widths.length === 0) {
+    return null
+  }
+  if (widths.some((width) => !Number.isInteger(width) || width <= 0)) {
+    return 'Image widths must be whole numbers greater than 0'
+  }
+  if (widths.some((width) => width > MAX_IMAGE_WIDTH)) {
+    return `Image widths must not exceed ${MAX_IMAGE_WIDTH} px`
+  }
+  if (widths.length > MAX_IMAGE_WIDTHS) {
+    return `A file field may define at most ${MAX_IMAGE_WIDTHS} image widths`
+  }
+  return null
+}
+
 export function parseSelectValues(raw: string): string[] {
   return [
     ...new Set(
@@ -22,13 +62,15 @@ export function schemaRowToOptions(row: SchemaRow): FieldOptions | null {
     }
   }
   if (row.type === 'FILE') {
+    const imageWidths = parseImageWidths(row.fileImageWidths)
     return {
       maxSize: row.fileMaxSize,
       mimeTypes: row.fileMimeTypes
         .split(',')
         .map((value) => value.trim())
         .filter(Boolean),
-      maxSelect: row.fileMaxSelect
+      maxSelect: row.fileMaxSelect,
+      ...(imageWidths.length > 0 ? { imageWidths } : {})
     }
   }
   if (row.type === 'SELECT') {
@@ -124,6 +166,7 @@ export function optionsToSchemaRow(
     fileMaxSize: options.maxSize ?? 5 * 1024 * 1024,
     fileMimeTypes: (options.mimeTypes || []).join(', '),
     fileMaxSelect: options.maxSelect ?? 1,
+    fileImageWidths: (options.imageWidths || []).join(', '),
     selectValues: (options.values || []).join('\n'),
     selectMaxSelect: options.maxSelect ?? 1,
     minLength: options.minLength,

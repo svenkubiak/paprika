@@ -26,6 +26,7 @@ export interface SchemaRow {
   fileMaxSize: number
   fileMimeTypes: string
   fileMaxSelect: number
+  fileImageWidths: string
   selectValues: string
   selectMaxSelect: number
   minLength?: number
@@ -128,6 +129,7 @@ function onTypeChange() {
     props.row.fileMaxSize = 5 * 1024 * 1024
     props.row.fileMimeTypes = ''
     props.row.fileMaxSelect = 1
+    props.row.fileImageWidths = ''
   }
   if (props.row.type !== 'SELECT') {
     props.row.selectValues = ''
@@ -227,6 +229,12 @@ function typeIcon(type: FieldDefinition['type']) {
                 <FieldLabelHelp label="Max files" :hint="schemaFieldHints.fileMaxSelect" />
               </template>
               <UInput v-model.number="row.fileMaxSelect" type="number" min="1" class="w-full font-mono" />
+            </UFormField>
+            <UFormField class="w-full">
+              <template #label>
+                <FieldLabelHelp label="Image widths (px)" :hint="schemaFieldHints.fileImageWidths" />
+              </template>
+              <UInput v-model="row.fileImageWidths" class="w-full font-mono" placeholder="320, 800" />
             </UFormField>
           </template>
 

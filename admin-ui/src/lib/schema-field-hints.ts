@@ -7,6 +7,8 @@ export const schemaFieldHints = {
   fileMimeTypes:
     'Comma-separated allow list. Examples: image/jpeg, image/png, or image/* for any image type.',
   fileMaxSelect: 'Maximum number of files stored on one record. Use 1 for a single file field.',
+  fileImageWidths:
+    'Extra image widths kept per upload, comma separated. Example: 320, 800, 1600. At most 4 widths, at most 4096 px each. Only JPEG, PNG and GIF are scaled; images narrower than a width keep the original for it. Clients request one with ?width=320.',
   selectValues: 'Allowed option values. Enter one per line or separate with commas.',
   selectMaxSelect: 'How many options may be selected. Use 1 for a single-select dropdown.',
   relationMaxSelect: 'Maximum number of related record IDs. Use 1 for a single relation.',

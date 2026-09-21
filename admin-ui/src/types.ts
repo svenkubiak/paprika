@@ -25,6 +25,7 @@ export interface FieldOptions {
   collection?: string
   maxSize?: number
   mimeTypes?: string[]
+  imageWidths?: number[]
   maxSelect?: number
   values?: string[]
   cascadeDelete?: boolean

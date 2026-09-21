@@ -63,6 +63,31 @@ cache in front of Paprika must never serve a stored copy to a different caller. 
 are short on purpose — the download URL of a single-file field carries no file id, so the same URL
 delivers different bytes once the field is replaced.
 
+## Image variants: `?width=`
+
+If a `FILE` field is configured with [image widths](/admin-ui/collection-schema#image-widths-on-a-file-field), every uploaded JPEG, PNG or GIF is stored together with a downscaled copy per configured width. A client asks for one with `width`:
+
+```
+GET /api/collections/{collection}/{id}/files/{field}[/{fileId}]?width=320
+```
+
+- The exact width is delivered when it exists.
+- Otherwise the **next larger** variant is delivered, and the original if there is none. The
+  fallback never goes downwards: a too small image is a visible quality defect, a too large one
+  only costs bandwidth.
+- The response always names what it delivered in **`X-Image-Width`** — either the width in pixels
+  or `original`. Without it there would be no way to tell a working configuration from one that
+  never produced a variant.
+- A `width` that is not a positive number answers `400`. A width the field does not have
+  configured is **not** an error — that is what the fallback is for.
+- On a non-image, or on a format that cannot be scaled, the original is delivered with
+  `X-Image-Width: original`.
+- The `ETag` includes the delivered variant, so a cache cannot answer one width with another.
+
+Variants are created when the file is uploaded, never on the fly: the cost falls once on the
+write, and no caller can keep the server busy by asking for arbitrary widths. Changing the
+configuration therefore only affects **new** uploads; existing files keep falling back.
+
 ## Authentication
 
 A separate card documents `/api/auth/register`, `/api/auth/login`, and `/api/auth/refresh` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).

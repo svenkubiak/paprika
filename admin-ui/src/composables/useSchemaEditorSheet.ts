@@ -32,6 +32,7 @@ export function emptyRow(): SchemaRow {
     fileMaxSize: 5 * 1024 * 1024,
     fileMimeTypes: '',
     fileMaxSelect: 1,
+    fileImageWidths: '',
     selectValues: '',
     selectMaxSelect: 1,
     minLength: undefined,

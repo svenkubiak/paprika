@@ -35,6 +35,12 @@ public final class CollectionFileResponseHelper {
     // ETag turns the next request into a cheap 304.
     private static final String CACHE_CONTROL = "private, max-age=300, immutable";
 
+    // Names the width that was actually delivered, so a caller can tell an exact hit from a
+    // fallback - otherwise a configuration that never produced a variant looks exactly like one
+    // that works.
+    private static final String IMAGE_WIDTH_HEADER = "X-Image-Width";
+    private static final String ORIGINAL_WIDTH = "original";
+
     private CollectionFileResponseHelper() {
     }
 
@@ -49,6 +55,7 @@ public final class CollectionFileResponseHelper {
                     yield Response.notModified()
                             .header("ETag", etag)
                             .header("Cache-Control", CACHE_CONTROL)
+                            .header(IMAGE_WIDTH_HEADER, deliveredWidth(result))
                             .end();
                 }
 
@@ -66,6 +73,7 @@ public final class CollectionFileResponseHelper {
                         .header("Content-Security-Policy", DOWNLOAD_CONTENT_SECURITY_POLICY)
                         .header("ETag", etag)
                         .header("Cache-Control", CACHE_CONTROL)
+                        .header(IMAGE_WIDTH_HEADER, deliveredWidth(result))
                         .bodyBinary(result.bytes());
             }
             case NOT_FOUND -> Response.notFound().end();
@@ -74,12 +82,16 @@ public final class CollectionFileResponseHelper {
     }
 
     /**
-     * A strong validator built from the id of the stored file. Storing a file always mints a new
-     * id, so the id identifies the bytes: a replaced file cannot reuse the validator of the file
-     * it replaced.
+     * A strong validator built from the id of the stored file and the delivered variant. Storing a
+     * file always mints a new id, so the id identifies the bytes; the variant has to be part of
+     * the validator as well, or a cache would answer a request for one width with another.
      */
     private static String etagOf(CollectionFileService.FileDownloadResult result) {
-        return "\"" + result.fileId() + "\"";
+        return "\"" + result.fileId() + "-" + deliveredWidth(result) + "\"";
+    }
+
+    private static String deliveredWidth(CollectionFileService.FileDownloadResult result) {
+        return result.deliveredWidth() == null ? ORIGINAL_WIDTH : String.valueOf(result.deliveredWidth());
     }
 
     public static Response toDeleteResponse(CollectionFileService.FileDeleteResult result) {

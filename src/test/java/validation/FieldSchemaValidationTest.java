@@ -7,8 +7,83 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FieldSchemaValidationTest {
+
+    @Test
+    void acceptsUpToFourImageWidths() {
+        FieldDefinition field = new FieldDefinition(
+                "picture",
+                FieldType.FILE,
+                false,
+                true,
+                FieldOptions.forFile(1024, java.util.List.of(), 1, java.util.List.of(320, 640, 1280, 2560)));
+
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(field));
+    }
+
+    /** Every width multiplies the storage each upload costs, so the count is capped. */
+    @Test
+    void rejectsAFifthImageWidth() {
+        FieldDefinition field = new FieldDefinition(
+                "picture",
+                FieldType.FILE,
+                false,
+                true,
+                FieldOptions.forFile(1024, java.util.List.of(), 1, java.util.List.of(160, 320, 640, 1280, 2560)));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> FieldSchemaValidation.validateFieldDefinition(field));
+        assertTrue(error.getMessage().contains(String.valueOf(FieldOptions.MAX_IMAGE_WIDTHS)), error.getMessage());
+    }
+
+    @Test
+    void rejectsAWidthAboveTheMaximum() {
+        FieldDefinition field = new FieldDefinition(
+                "picture",
+                FieldType.FILE,
+                false,
+                true,
+                FieldOptions.forFile(1024, java.util.List.of(), 1,
+                        java.util.List.of(FieldOptions.MAX_IMAGE_WIDTH + 1)));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> FieldSchemaValidation.validateFieldDefinition(field));
+        assertTrue(error.getMessage().contains(String.valueOf(FieldOptions.MAX_IMAGE_WIDTH)), error.getMessage());
+    }
+
+    @Test
+    void rejectsANonPositiveWidth() {
+        FieldDefinition field = new FieldDefinition(
+                "picture",
+                FieldType.FILE,
+                false,
+                true,
+                FieldOptions.forFile(1024, java.util.List.of(), 1, java.util.List.of(0)));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> FieldSchemaValidation.validateFieldDefinition(field));
+    }
+
+    /** The option only means something where files are stored. */
+    @Test
+    void rejectsImageWidthsOnANonFileField() {
+        FieldDefinition field = new FieldDefinition(
+                "title",
+                FieldType.STRING,
+                false,
+                true,
+                new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, java.util.List.of(320)));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> FieldSchemaValidation.validateFieldDefinition(field));
+    }
 
     @Test
     void acceptsStringConstraintsAndDefault() {

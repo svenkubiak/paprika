@@ -43,6 +43,11 @@ public final class FieldSchemaValidation {
             if (options.maxSizeOrDefault() <= 0) {
                 throw new IllegalArgumentException("File field maxSize must be greater than 0");
             }
+            validateImageWidths(options.imageWidths());
+        } else if (options.imageWidths() != null && !options.imageWidths().isEmpty()) {
+            // The option only has meaning for stored files; accepting it elsewhere would suggest it
+            // does something on a field where nothing will ever be scaled.
+            throw new IllegalArgumentException("imageWidths is only available on FILE fields");
         }
 
         if (type == FieldType.SELECT) {
@@ -178,6 +183,30 @@ public final class FieldSchemaValidation {
 
     private static List<String> normalizeValues(List<String> values) {
         return values.stream().map(String::trim).filter(value -> !value.isBlank()).distinct().toList();
+    }
+
+    /**
+     * Every width is one additional stored copy of every uploaded image, so both the count and the
+     * size are capped. Both limits are named in the message, because the admin UI shows it verbatim
+     * and an unexplained rejection is the worst kind.
+     */
+    private static void validateImageWidths(List<Integer> widths) {
+        if (widths == null || widths.isEmpty()) {
+            return;
+        }
+        for (Integer width : widths) {
+            if (width == null || width <= 0) {
+                throw new IllegalArgumentException("Image widths must be greater than 0");
+            }
+            if (width > FieldOptions.MAX_IMAGE_WIDTH) {
+                throw new IllegalArgumentException(
+                        "Image width " + width + " exceeds the maximum of " + FieldOptions.MAX_IMAGE_WIDTH + " px");
+            }
+        }
+        if (widths.stream().distinct().count() > FieldOptions.MAX_IMAGE_WIDTHS) {
+            throw new IllegalArgumentException(
+                    "A file field may define at most " + FieldOptions.MAX_IMAGE_WIDTHS + " image widths");
+        }
     }
 
     private static void validateLengthRange(Integer minLength, Integer maxLength) {
