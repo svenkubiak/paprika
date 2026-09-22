@@ -48,6 +48,13 @@ public class RequestLogService {
     private static final String TYPE_REQUEST = "request";
     private static final String TYPE_HOOK = "hook";
     private static final Set<String> EXCLUDED_PATHS = Set.of("/health", "/api/admin/request-logs");
+
+    /**
+     * The admin plane: the UI shell, its session endpoints and the management API it talks to.
+     * Everything here is Paprika operating itself, never traffic of the API a tenant exposes.
+     */
+    private static final Set<String> ADMIN_UI_PATHS = Set.of("/", "/login", "/setup", "/authenticate", "/logout");
+    private static final Set<String> ADMIN_UI_PREFIXES = Set.of("/admin/", "/api/admin/", "/api/meta/", "/assets/");
     private final TenantDatabaseResolver resolver;
     private final SettingsService settingsService;
     private final TenantService tenantService;
@@ -89,6 +96,15 @@ public class RequestLogService {
 
         String collection = request.getPathParameter("collection");
         if (SystemCollections.REQUEST_LOGS.equals(collection)) {
+            return;
+        }
+
+        // Successful admin plane traffic is Paprika operating itself and would bury the API
+        // traffic the log is actually about. Failures stay, because a rejected admin login is a
+        // security event and not UI noise.
+        if (statusCode < 400
+                && isAdminUi(path)
+                && !settingsService.getBoolean(SettingKeys.REQUEST_LOG_ADMIN_UI, false)) {
             return;
         }
 
@@ -234,6 +250,18 @@ public class RequestLogService {
     }
 
     /**
+     * Whether the path belongs to the admin plane rather than to a tenant's API. Decided by path
+     * and not by credential on purpose: the same answer for an anonymous login attempt as for a
+     * schema change, and no additional lookup per logged request.
+     */
+    private static boolean isAdminUi(String path) {
+        if (ADMIN_UI_PATHS.contains(path)) {
+            return true;
+        }
+        return ADMIN_UI_PREFIXES.stream().anyMatch(path::startsWith);
+    }
+
+    /**
      * Requests outside any tenant scope (admin login, setup, the UI shell) still belong in the
      * log; they are kept with the default tenant, which is the one the admin plane works on.
      */
@@ -376,7 +404,10 @@ public class RequestLogService {
             clauses.add(or(
                     regex("url", pattern, "i"),
                     regex("errorMessage", pattern, "i"),
-                    regex("method", pattern, "i")
+                    regex("method", pattern, "i"),
+                    // A request and the async hooks it spawned are separate entries; searching
+                    // for their shared request id is what puts them back together.
+                    regex("requestId", pattern, "i")
             ));
         }
 
@@ -386,7 +417,11 @@ public class RequestLogService {
             clauses.add(gte("statusCode", 400));
         }
 
-        if ("fired".equalsIgnoreCase(hookFilter)) {
+        if ("continued".equalsIgnoreCase(hookFilter)) {
+            // "A hook ran and let the call through" - the counterpart of "blocked", so the two
+            // filters are disjoint instead of one containing the other.
+            clauses.add(and(eq("hookFired", true), ne("hookBlocked", true)));
+        } else if ("fired".equalsIgnoreCase(hookFilter)) {
             clauses.add(eq("hookFired", true));
         } else if ("blocked".equalsIgnoreCase(hookFilter)) {
             clauses.add(and(eq("hookFired", true), eq("hookBlocked", true)));

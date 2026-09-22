@@ -35,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -249,6 +250,51 @@ class RequestLogTelemetryIntegrationTest {
         } catch (Exception e) {
             throw new AssertionError("Unreadable request log response: " + list.getContent(), e);
         }
+    }
+
+    /**
+     * Operating the admin UI is a constant stream of its own requests. Logging them by default
+     * would bury the traffic of the API the log is actually about.
+     */
+    @Test
+    void successfulAdminUiTrafficIsNotLoggedByDefault() {
+        var cookies = utils.AdminTestUtils.loginAsAdminWithDefaultTenant();
+        TestResponse settings = utils.AdminTestUtils.getWithAdminCookies("/api/admin/settings", cookies);
+
+        assertThat(settings.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(findLatest(and(eq("url", "/api/admin/settings"), eq("statusCode", 200))), nullValue());
+        // The login that produced the session is admin plane traffic too, and it succeeded.
+        assertThat(findLatest(and(eq("url", "/authenticate"), eq("statusCode", 302))), nullValue());
+    }
+
+    /** Auditing who changed what is the reason the filter can be switched off. */
+    @Test
+    void adminUiTrafficIsLoggedWhenTheOperatorAsksForIt() {
+        SettingsService settings = Application.getInstance(SettingsService.class);
+        var cookies = utils.AdminTestUtils.loginAsAdminWithDefaultTenant();
+        settings.set(SettingKeys.REQUEST_LOG_ADMIN_UI, "true");
+
+        try {
+            TestResponse tenants = utils.AdminTestUtils.getWithAdminCookies("/api/meta/tenants", cookies);
+            assertThat(tenants.getStatusCode(), equalTo(StatusCodes.OK));
+
+            Document entry = awaitEntry(and(eq("url", "/api/meta/tenants"), eq("statusCode", 200)));
+            assertThat(entry.getString("method"), equalTo("GET"));
+        } finally {
+            settings.set(SettingKeys.REQUEST_LOG_ADMIN_UI, "false");
+        }
+    }
+
+    /** A rejected superadmin login is a security event, not admin UI noise - it stays logged. */
+    @Test
+    void failedAdminRequestsAreLoggedEvenWhileAdminTrafficIsFiltered() {
+        TestRequest.post("/api/admin/login")
+                .withStringBody("{\"username\":\"admin\",\"password\":\"definitely-not-the-password\"}")
+                .withContentType("application/json")
+                .execute();
+
+        Document entry = awaitEntry(eq("url", "/api/admin/login"));
+        assertThat(entry.getInteger("statusCode"), greaterThanOrEqualTo(400));
     }
 
     /** Live mode is a read of the same log, so it needs the same admin session - not less. */

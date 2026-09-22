@@ -4,7 +4,11 @@
 
 ## What's recorded
 
-Every route is logged, not just the collection API: auth endpoints, the meta/admin API, and the admin UI itself. Each entry has a timestamp, HTTP method, path, status code, execution time, and error message (if any). Requests without a tenant scope (the login flow, for example) are kept with the [default tenant](/admin-ui/settings).
+Every route of your API is logged, not just the collection API: auth endpoints included. Each entry has a timestamp, HTTP method, path, status code, execution time, and error message (if any). Requests without a tenant scope (the login flow, for example) are kept with the [default tenant](/admin-ui/settings).
+
+**Admin UI traffic is not logged by default.** Clicking through the admin UI produces a constant stream of `/admin/…`, `/api/admin/…` and `/api/meta/…` calls that would bury the traffic of the API you actually want to look at, so Paprika drops them. Turn **Log admin UI requests** on under [Settings → Request logs](/admin-ui/settings#request-logs) when you want an audit trail of admin activity instead. Failed admin requests (status ≥ 400) are logged regardless of the setting, because a rejected superadmin login is a security event and not UI noise.
+
+The same applies to scripted use of the management API (a schema export in CI, for example): it runs against `/api/meta/**` and is therefore only logged with the setting switched on.
 
 This is **metadata only** — request and response bodies are never logged, so payloads never end up here. The **path is stored without its query string**, because query values carry filter arguments and those are user data.
 
@@ -13,15 +17,29 @@ Two entry types exist:
 - **`request`** — one per HTTP request.
 - **`hook`** — one per asynchronous after-hook. Those run once the response has already been sent, so they cannot be part of the request entry; they carry the same **Request ID**, which is how you tie them back together.
 
-Use the **All entries / Requests / Async hooks** filter to switch between them.
+Use the **All entries / Requests / Async hooks** filter to switch between them. Async hook rows are tinted and prefixed with `↳`; the link button in their **Hooks** cell searches for their request id and thereby pulls the original request and all of its async hooks together.
+
+## How to read the table
+
+The table header has two levels, because half of the columns describe the incoming call and the other half the outgoing hook calls it caused:
+
+| Group | Columns | Belongs to |
+|---|---|---|
+| **Request** | Timestamp, Method, URL, Status, User | the incoming API call |
+| **Timing** | Paprika, Hooks, Total | the split of the measured time |
+| **Hooks** | Executions | the hook endpoints Paprika called |
+
+The error message itself is **not** a column. The status code carries the outcome in the overview (hover it for a preview of the message), and the full error lives in the detail sidebar, where it is shown as the status code, what that code means, and the message the API returned — `403 Forbidden – the credential was valid but not allowed to do this` says considerably more than a bare `attest_required` squeezed into a table cell.
+
+The sidebar also labels where the error came from: `from request` for an error Paprika produced itself, `from hook "<name>"` for a call a hook rejected, and `from hook` on an async hook entry. That removes the usual ambiguity of whether an error describes the call or one of its hooks.
 
 ## Timing and hooks
 
-A blocking hook is a remote call Paprika waits for, so its latency is part of your API response time. The detail sidebar (click any row) therefore splits the measurement:
+A blocking hook is a remote call Paprika waits for, so its latency is part of your API response time. Both the table and the detail sidebar (click any row) therefore split the measurement into three columns:
 
-- **Total** — the whole request, measured before the first filter runs.
+- **Paprika** — what Paprika itself needed, hook waiting time excluded.
 - **Hooks** — the sum of all blocking hook calls of that request.
-- **Paprika** — the remainder, i.e. what Paprika itself needed.
+- **Total** — Paprika + hooks, i.e. the time the client actually waited. Measured before the first filter runs.
 
 Below that, **Hook executions** lists every blocking hook call with its event, target host, HTTP status, duration, and outcome:
 
@@ -33,13 +51,17 @@ Below that, **Hook executions** lists every blocking hook call with its event, t
 | `failed` | the hook did not answer, or answered unusably, and the operation was aborted |
 | `failedOpen` | same, but the hook has **Fail open** enabled, so the operation continued |
 
-The `Hook time` column in the table shows the same sum, which makes "our API got slow" and "someone's hook got slow" two distinguishable statements.
+Having **Paprika** and **Hooks** next to **Total** makes "our API got slow" and "someone's hook got slow" two distinguishable statements.
+
+One request can call several hooks. The **Executions** column therefore shows how many (`3 hooks`), one coloured dot per call — green for `continued`, amber for `blocked`/`failedOpen`, red for `failed`, blue for `issuedToken` — and whether the request as a whole was `continued` or `blocked`. Clicking the count unfolds the row and lists every single call with its event, target, outcome and duration, without having to open the sidebar.
+
+The wording is the same everywhere: a hook either **continued** the request or **blocked** it. "Fired" only ever said that a hook ran at all, which left open the part that matters.
 
 ## Filtering
 
-- **Search** matches against URL, method, or error message.
+- **Search** matches against URL, method, error message, or request id.
 - **Status filter** narrows to all requests, success only, or errors only.
-- **Hook filter** narrows to requests where a hook fired or blocked.
+- **Hook filter** narrows to requests where a hook **continued** the call or **blocked** it. The two are disjoint: a blocked request does not show up under "continued".
 - **Type filter** separates requests from async hook entries.
 - Results are paginated (25/50/100 per page).
 

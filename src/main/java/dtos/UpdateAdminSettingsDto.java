@@ -4,5 +4,6 @@ public record UpdateAdminSettingsDto(
         Integer requestLogRetentionDays,
         String defaultTenantId,
         Boolean requestLogClientInfo,
-        String requestLogClientIp) {
+        String requestLogClientIp,
+        Boolean requestLogAdminUi) {
 }

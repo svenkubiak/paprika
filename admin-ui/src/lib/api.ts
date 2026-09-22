@@ -609,6 +609,7 @@ export const api = {
     defaultTenantId?: string | null
     requestLogClientInfo?: boolean
     requestLogClientIp?: 'off' | 'truncated' | 'full'
+    requestLogAdminUi?: boolean
   }): Promise<AppSettings> {
     return request('/api/admin/settings', {
       method: 'PATCH',
@@ -697,7 +698,7 @@ export const api = {
     limit: number,
     search: string,
     status: 'all' | 'success' | 'error',
-    hook?: 'any' | 'fired' | 'blocked',
+    hook?: 'any' | 'continued' | 'blocked',
     type?: 'all' | 'request' | 'hook'
   ): Promise<PaginatedRequestLogs> {
     return request(
@@ -714,7 +715,7 @@ export const api = {
     limit: number,
     search: string,
     status: 'all' | 'success' | 'error',
-    hook?: 'any' | 'fired' | 'blocked',
+    hook?: 'any' | 'continued' | 'blocked',
     type?: 'all' | 'request' | 'hook'
   ): Promise<RequestLogDelta> {
     const params = requestLogParams(0, limit, search, status, hook, type)
@@ -728,7 +729,7 @@ function requestLogParams(
   limit: number,
   search: string,
   status: 'all' | 'success' | 'error',
-  hook?: 'any' | 'fired' | 'blocked',
+  hook?: 'any' | 'continued' | 'blocked',
   type?: 'all' | 'request' | 'hook'
 ): URLSearchParams {
   const params = new URLSearchParams({

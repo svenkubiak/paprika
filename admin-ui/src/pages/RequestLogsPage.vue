@@ -14,7 +14,7 @@ const total = ref(0)
 const loading = ref(false)
 const search = ref('')
 const statusFilter = ref<'all' | 'success' | 'error'>('all')
-const hookFilter = ref<'any' | 'fired' | 'blocked'>('any')
+const hookFilter = ref<'any' | 'continued' | 'blocked'>('any')
 const typeFilter = ref<'all' | 'request' | 'hook'>('all')
 const page = ref(1)
 const pageSize = ref(50)
@@ -39,17 +39,31 @@ const pageSizeOptions = [
   { label: '100', value: 100 }
 ]
 
-const columns = [
-  { key: 'timestamp', header: 'Timestamp' },
-  { key: 'method', header: 'Method' },
-  { key: 'url', header: 'URL' },
-  { key: 'statusCode', header: 'Status' },
-  { key: 'execTimeMs', header: 'Time' },
-  { key: 'hookTotalMs', header: 'Hook time' },
-  { key: 'userId', header: 'User' },
-  { key: 'hookFired', header: 'Hook' },
-  { key: 'errorMessage', header: 'Error' }
+/**
+ * The header is two rows deep because half of the columns describe the incoming call and the
+ * other half the outgoing hook calls it triggered - without that grouping "Hooks" and "Error"
+ * read as properties of the request, which is exactly what they are not.
+ */
+const columnGroups = [
+  { key: 'request', label: 'Request', span: 5, title: 'The incoming API call' },
+  { key: 'timing', label: 'Timing', span: 3, title: 'Where the time of this request was spent' },
+  { key: 'hooks', label: 'Hooks', span: 2, title: 'The hook endpoints Paprika called while handling this request' }
 ]
+
+const columns = [
+  { key: 'timestamp', header: 'Timestamp', title: 'When the entry was written' },
+  { key: 'method', header: 'Method', title: 'HTTP method - HOOK marks an entry written by an async hook' },
+  { key: 'url', header: 'URL', title: 'Request path, without the query string' },
+  { key: 'statusCode', header: 'Status', title: 'HTTP status the client received' },
+  { key: 'userId', header: 'User', title: 'Identity the request was authenticated with' },
+  { key: 'appTimeMs', header: 'Paprika', title: 'Time spent in Paprika itself, waiting for hooks excluded' },
+  { key: 'hookTotalMs', header: 'Hooks', title: 'Time spent waiting for hook endpoints' },
+  { key: 'execTimeMs', header: 'Total', title: 'Paprika + hooks: the time the client waited' },
+  { key: 'hooks', header: 'Executions', title: 'Hook calls of this request - expand to see every single one' }
+]
+
+/** Rows whose hook executions are unfolded inline, by log entry id. */
+const expandedIds = ref<string[]>([])
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
@@ -220,6 +234,7 @@ async function refreshLogs() {
   }
 
   loading.value = true
+  expandedIds.value = []
   try {
     const data = await api.listRequestLogs(
       (page.value - 1) * pageSize.value,
@@ -251,7 +266,7 @@ function setStatusFilter(value: 'all' | 'success' | 'error') {
   page.value = 1
 }
 
-function setHookFilter(value: 'any' | 'fired' | 'blocked') {
+function setHookFilter(value: 'any' | 'continued' | 'blocked') {
   hookFilter.value = value
   page.value = 1
 }
@@ -292,6 +307,72 @@ function statusColor(code: number) {
   if (code >= 400) return 'warning'
   return 'success'
 }
+
+function isHookEntry(entry: RequestLogEntry) {
+  return entry.type === 'hook'
+}
+
+function hookInvocations(entry: RequestLogEntry) {
+  return entry.hooks ?? []
+}
+
+function hookCount(entry: RequestLogEntry) {
+  return entry.hookCount ?? hookInvocations(entry).length
+}
+
+/**
+ * What the request cost without its hooks. Hooks are remote calls Paprika only waits for, so the
+ * split is the difference between "Paprika is slow" and "your hook is". An async hook entry has
+ * no Paprika share at all - it is nothing but the hook call.
+ */
+function appTimeMs(entry: RequestLogEntry) {
+  if (entry.execTimeMs == null || isHookEntry(entry)) {
+    return null
+  }
+  return Math.max(0, entry.execTimeMs - (entry.hookTotalMs ?? 0))
+}
+
+function formatMs(value?: number | null) {
+  return value != null ? `${value}ms` : '—'
+}
+
+function toggleExpanded(id: string) {
+  expandedIds.value = expandedIds.value.includes(id)
+    ? expandedIds.value.filter((entryId) => entryId !== id)
+    : [...expandedIds.value, id]
+}
+
+function isExpanded(id: string) {
+  return expandedIds.value.includes(id)
+}
+
+function outcomeColor(outcome: string) {
+  switch (outcome) {
+    case 'blocked': return 'warning'
+    case 'failed': return 'error'
+    case 'failedOpen': return 'warning'
+    case 'issuedToken': return 'primary'
+    default: return 'success'
+  }
+}
+
+/** One dot per hook call, so a row with five hooks looks different from a row with one. */
+function outcomeDotClass(outcome: string) {
+  switch (outcome) {
+    case 'blocked': return 'bg-warning'
+    case 'failed': return 'bg-error'
+    case 'failedOpen': return 'bg-warning'
+    case 'issuedToken': return 'bg-primary'
+    default: return 'bg-success'
+  }
+}
+
+/** Pulls every entry of one request together: the call itself and the async hooks it spawned. */
+function showRelated(requestId: string) {
+  search.value = requestId
+  typeFilter.value = 'all'
+  page.value = 1
+}
 </script>
 
 <template>
@@ -314,7 +395,7 @@ function statusColor(code: number) {
               v-model="search"
               class="w-full sm:max-w-md"
               icon="i-lucide-search"
-              placeholder="Search URL, method, or error…"
+              placeholder="Search URL, method, error, or request ID…"
             />
 
             <div class="flex items-center gap-1 rounded-lg border border-default p-1">
@@ -355,16 +436,18 @@ function statusColor(code: number) {
               </UButton>
               <UButton
                 size="sm"
-                :color="hookFilter === 'fired' ? 'primary' : 'neutral'"
-                :variant="hookFilter === 'fired' ? 'soft' : 'ghost'"
-                @click="setHookFilter('fired')"
+                :color="hookFilter === 'continued' ? 'primary' : 'neutral'"
+                :variant="hookFilter === 'continued' ? 'soft' : 'ghost'"
+                title="A hook ran and let the request through"
+                @click="setHookFilter('continued')"
               >
-                Hook fired
+                Hook continued
               </UButton>
               <UButton
                 size="sm"
                 :color="hookFilter === 'blocked' ? 'warning' : 'neutral'"
                 :variant="hookFilter === 'blocked' ? 'soft' : 'ghost'"
+                title="A hook ran and rejected the request"
                 @click="setHookFilter('blocked')"
               >
                 Hook blocked
@@ -426,15 +509,30 @@ function statusColor(code: number) {
         <div class="overflow-x-auto rounded-lg border border-default">
           <table class="min-w-full divide-y divide-default text-base">
             <thead class="bg-muted/40">
+              <tr class="border-b border-default/60">
+                <th
+                  v-for="group in columnGroups"
+                  :key="group.key"
+                  :colspan="group.span"
+                  :title="group.title"
+                  class="border-l border-default/60 px-3 pt-2 pb-1 text-left text-xs font-semibold uppercase tracking-wide text-dimmed first:border-l-0"
+                >
+                  {{ group.label }}
+                </th>
+              </tr>
               <tr>
                 <th
                   v-for="column in columns"
                   :key="column.key"
-                  class="px-3 py-2.5 text-left text-sm font-semibold text-muted"
+                  :title="column.title"
+                  class="px-3 pb-2.5 pt-1 text-left text-sm font-semibold text-muted"
+                  :class="{
+                    'border-l border-default/60': column.key === 'appTimeMs' || column.key === 'hooks'
+                  }"
                 >
                   {{ column.header }}
                 </th>
-                <th class="px-3 py-2.5"><span class="sr-only">Details</span></th>
+                <th class="px-3 pb-2.5 pt-1"><span class="sr-only">Details</span></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-default bg-default">
@@ -448,32 +546,42 @@ function statusColor(code: number) {
                   No requests logged yet for this tenant.
                 </td>
               </tr>
+              <template v-for="entry in logs" :key="entry.id">
               <tr
-                v-for="entry in logs"
-                :key="entry.id"
                 class="cursor-pointer hover:bg-muted/20"
-                :class="{ 'bg-muted/30': selectedEntry?.id === entry.id && detailOpen }"
+                :class="{
+                  'bg-muted/30': selectedEntry?.id === entry.id && detailOpen,
+                  'bg-primary/5': isHookEntry(entry)
+                }"
                 @click="openDetail(entry)"
               >
                 <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm">
+                  <span
+                    v-if="isHookEntry(entry)"
+                    class="mr-1 text-primary"
+                    title="Async hook of an earlier request"
+                  >↳</span>
                   {{ formatTimestamp(entry.timestamp) }}
                 </td>
                 <td class="whitespace-nowrap px-3 py-2.5">
-                  <UBadge color="neutral" variant="soft" size="md">{{ entry.method }}</UBadge>
+                  <UBadge :color="isHookEntry(entry) ? 'primary' : 'neutral'" variant="soft" size="md">
+                    {{ entry.method }}
+                  </UBadge>
                 </td>
                 <td class="max-w-md truncate px-3 py-2.5 font-mono text-sm" :title="entry.url">
                   {{ entry.url }}
                 </td>
                 <td class="whitespace-nowrap px-3 py-2.5">
-                  <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="md">
+                  <UBadge
+                    :color="statusColor(entry.statusCode)"
+                    variant="soft"
+                    size="md"
+                    :title="entry.errorMessage
+                      ? entry.errorMessage + ' - open the row for the full error'
+                      : undefined"
+                  >
                     {{ entry.statusCode }}
                   </UBadge>
-                </td>
-                <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-muted">
-                  {{ entry.execTimeMs != null ? `${entry.execTimeMs}ms` : '—' }}
-                </td>
-                <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm text-muted">
-                  {{ entry.hookTotalMs != null ? `${entry.hookTotalMs}ms` : '—' }}
                 </td>
                 <td class="px-3 py-2.5">
                   <div v-if="entry.userId" class="flex flex-wrap items-center gap-1.5">
@@ -512,13 +620,57 @@ function statusColor(code: number) {
                   </div>
                   <span v-else class="text-muted">—</span>
                 </td>
-                <td class="whitespace-nowrap px-3 py-2.5">
-                  <UBadge v-if="entry.hookBlocked" color="warning" variant="soft" size="md">blocked</UBadge>
-                  <UBadge v-else-if="entry.hookFired" color="success" variant="soft" size="md">fired</UBadge>
-                  <span v-else class="text-muted">—</span>
+                <td class="whitespace-nowrap border-l border-default/60 px-3 py-2.5 font-mono text-sm text-muted">
+                  {{ formatMs(appTimeMs(entry)) }}
                 </td>
-                <td class="max-w-xs truncate px-3 py-2.5 text-sm" :title="entry.errorMessage || ''">
-                  {{ entry.errorMessage || '—' }}
+                <td
+                  class="whitespace-nowrap px-3 py-2.5 font-mono text-sm"
+                  :class="entry.hookTotalMs ? 'text-warning' : 'text-muted'"
+                >
+                  {{ formatMs(entry.hookTotalMs) }}
+                </td>
+                <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm font-semibold">
+                  {{ formatMs(entry.execTimeMs) }}
+                </td>
+                <td class="whitespace-nowrap border-l border-default/60 px-3 py-2.5">
+                  <div v-if="isHookEntry(entry)" class="flex flex-wrap items-center gap-1.5">
+                    <UBadge color="primary" variant="subtle" size="md" title="Written by an asynchronous after-hook">
+                      async hook
+                    </UBadge>
+                    <UButton
+                      v-if="entry.requestId"
+                      size="xs"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-link"
+                      title="Show every entry of this request"
+                      @click.stop="showRelated(entry.requestId!)"
+                    />
+                  </div>
+                  <div v-else-if="hookCount(entry) > 0" class="flex flex-wrap items-center gap-1.5">
+                    <UButton
+                      size="xs"
+                      :color="entry.hookBlocked ? 'warning' : 'neutral'"
+                      variant="soft"
+                      :icon="isExpanded(entry.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                      :title="isExpanded(entry.id) ? 'Hide hook executions' : 'Show the ' + hookCount(entry) + ' hook execution(s) of this request'"
+                      @click.stop="toggleExpanded(entry.id)"
+                    >
+                      {{ hookCount(entry) }} {{ hookCount(entry) === 1 ? 'hook' : 'hooks' }}
+                    </UButton>
+                    <span v-if="hookInvocations(entry).length" class="flex items-center gap-1">
+                      <span
+                        v-for="(invocation, index) in hookInvocations(entry)"
+                        :key="`${entry.id}-dot-${index}`"
+                        class="size-1.5 rounded-full"
+                        :class="outcomeDotClass(invocation.outcome)"
+                        :title="`${invocation.name}: ${invocation.outcome} (${invocation.durationMs} ms)`"
+                      />
+                    </span>
+                    <UBadge v-if="entry.hookBlocked" color="warning" variant="soft" size="md">blocked</UBadge>
+                    <UBadge v-else color="success" variant="soft" size="md">continued</UBadge>
+                  </div>
+                  <span v-else class="text-muted">—</span>
                 </td>
                 <td class="whitespace-nowrap px-3 py-2.5 text-right">
                   <UButton
@@ -531,6 +683,35 @@ function statusColor(code: number) {
                   />
                 </td>
               </tr>
+
+              <!-- One line per hook call, so "3 hooks" can be taken apart without opening the sheet. -->
+              <tr v-if="isExpanded(entry.id)" class="border-t-0! bg-muted/10">
+                <td :colspan="columns.length + 1" class="px-3 py-2">
+                  <ol class="space-y-1.5">
+                    <li
+                      v-for="(invocation, index) in hookInvocations(entry)"
+                      :key="`${entry.id}-hook-${index}`"
+                      class="flex flex-wrap items-center gap-2 text-sm"
+                    >
+                      <span class="w-5 shrink-0 font-mono text-xs text-dimmed">{{ index + 1 }}.</span>
+                      <span class="font-medium">{{ invocation.name }}</span>
+                      <span class="font-mono text-xs text-muted">
+                        {{ invocation.event }}
+                        <template v-if="invocation.target"> · {{ invocation.target }}</template>
+                        <template v-if="invocation.status"> · HTTP {{ invocation.status }}</template>
+                      </span>
+                      <UBadge :color="outcomeColor(invocation.outcome)" variant="soft" size="md">
+                        {{ invocation.outcome }}
+                      </UBadge>
+                      <span class="ml-auto font-mono text-sm text-muted">{{ invocation.durationMs }}ms</span>
+                    </li>
+                  </ol>
+                  <p v-if="!hookInvocations(entry).length" class="text-sm text-muted">
+                    No per-hook details were recorded for this entry.
+                  </p>
+                </td>
+              </tr>
+              </template>
             </tbody>
           </table>
         </div>

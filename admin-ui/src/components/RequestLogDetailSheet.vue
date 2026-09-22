@@ -41,9 +41,10 @@ function statusColor(code: number) {
 
 const hookLabel = computed(() => {
   if (!entry.value) return '—'
-  if (entry.value.hookBlocked) return 'blocked'
-  if (entry.value.hookFired) return 'fired'
-  return 'not fired'
+  const count = entry.value.hookCount ?? entry.value.hooks?.length ?? 0
+  if (entry.value.hookBlocked) return count > 1 ? `${count} called, blocked` : 'blocked'
+  if (entry.value.hookFired) return count > 1 ? `${count} continued` : 'continued'
+  return 'none'
 })
 
 const hookColor = computed(() => {
@@ -83,6 +84,50 @@ function outcomeColor(outcome: string) {
     default: return 'success'
   }
 }
+
+/**
+ * An error can come from Paprika's own handling or from a hook that rejected the call, and those
+ * are two different things to debug - so the heading says which one it was.
+ */
+const errorSource = computed(() => {
+  if (isHookEntry.value) return 'hook'
+  if (entry.value?.hookBlocked) {
+    return entry.value.hookBlockedBy ? `hook "${entry.value.hookBlockedBy}"` : 'hook'
+  }
+  return 'request'
+})
+
+/**
+ * The logged message is often a bare code (`invalid_token`, `Forbidden`), which says what was
+ * refused but not what that means. The status code is the part that does, so the error is shown
+ * as both: the code with its meaning, and the message underneath.
+ */
+const STATUS_MEANING: Record<number, string> = {
+  400: 'Bad Request \u2013 the payload or its parameters were not understood',
+  401: 'Unauthorized \u2013 no valid credential was presented',
+  403: 'Forbidden \u2013 the credential was valid but not allowed to do this',
+  404: 'Not Found \u2013 no route, collection or record under this path',
+  405: 'Method Not Allowed \u2013 the route exists, this HTTP method does not',
+  409: 'Conflict \u2013 the change collides with existing data, e.g. a unique field',
+  413: 'Payload Too Large \u2013 the body exceeded the configured limit',
+  415: 'Unsupported Media Type \u2013 wrong or missing Content-Type',
+  422: 'Unprocessable Content \u2013 the payload failed validation',
+  429: 'Too Many Requests \u2013 a rate limit was hit',
+  500: 'Internal Server Error \u2013 Paprika failed while handling the request',
+  502: 'Bad Gateway \u2013 an upstream call, usually a hook, did not answer usably',
+  503: 'Service Unavailable \u2013 a dependency was not reachable',
+  504: 'Gateway Timeout \u2013 an upstream call, usually a hook, timed out'
+}
+
+const statusMeaning = computed(() => {
+  const code = entry.value?.statusCode
+  if (code == null) return ''
+  const known = STATUS_MEANING[code]
+  if (known) return known
+  if (code >= 500) return 'Server error \u2013 Paprika or something it depends on failed'
+  if (code >= 400) return 'Client error \u2013 the request was refused'
+  return ''
+})
 </script>
 
 <template>
@@ -103,7 +148,7 @@ function outcomeColor(outcome: string) {
             <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="lg">
               {{ entry.statusCode }}
             </UBadge>
-            <UBadge :color="hookColor" variant="soft" size="lg">hook: {{ hookLabel }}</UBadge>
+            <UBadge :color="hookColor" variant="soft" size="lg">hooks: {{ hookLabel }}</UBadge>
             <UBadge v-if="isHookEntry" color="primary" variant="outline" size="lg">
               async hook execution
             </UBadge>
@@ -126,7 +171,7 @@ function outcomeColor(outcome: string) {
               <dd class="mt-0.5 font-mono text-sm">{{ formatTimestamp(entry.timestamp) }}</dd>
             </div>
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-muted">Execution time</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-muted">Total time</dt>
               <dd class="mt-0.5 font-mono text-sm">
                 {{ entry.execTimeMs != null ? `${entry.execTimeMs} ms` : '—' }}
               </dd>
@@ -165,21 +210,30 @@ function outcomeColor(outcome: string) {
 
           <dl class="grid grid-cols-3 gap-3">
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-muted">Total</dt>
+              <dt
+                class="text-xs font-medium uppercase tracking-wide text-muted"
+                title="Time spent in Paprika itself, waiting for hooks excluded"
+              >Paprika</dt>
               <dd class="mt-0.5 font-mono text-sm">
-                {{ entry.execTimeMs != null ? `${entry.execTimeMs} ms` : '—' }}
+                {{ appTimeMs != null ? `${appTimeMs} ms` : '—' }}
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-muted">Hooks</dt>
-              <dd class="mt-0.5 font-mono text-sm">
+              <dt
+                class="text-xs font-medium uppercase tracking-wide text-muted"
+                title="Time spent waiting for hook endpoints"
+              >Hooks</dt>
+              <dd class="mt-0.5 font-mono text-sm" :class="hookTotalMs > 0 ? 'text-warning' : ''">
                 {{ entry.hookTotalMs != null ? `${entry.hookTotalMs} ms` : '—' }}
               </dd>
             </div>
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-muted">Paprika</dt>
-              <dd class="mt-0.5 font-mono text-sm">
-                {{ appTimeMs != null ? `${appTimeMs} ms` : '—' }}
+              <dt
+                class="text-xs font-medium uppercase tracking-wide text-muted"
+                title="Paprika + hooks: the time the client waited"
+              >Total</dt>
+              <dd class="mt-0.5 font-mono text-sm font-semibold">
+                {{ entry.execTimeMs != null ? `${entry.execTimeMs} ms` : '—' }}
               </dd>
             </div>
           </dl>
@@ -206,7 +260,10 @@ function outcomeColor(outcome: string) {
               class="rounded-lg border border-default bg-muted/20 p-3"
             >
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <span class="font-medium">{{ invocation.name }}</span>
+                <span class="font-medium">
+                  <span class="mr-1 font-mono text-xs text-dimmed">{{ index + 1 }}.</span>
+                  {{ invocation.name }}
+                </span>
                 <div class="flex items-center gap-2">
                   <UBadge :color="outcomeColor(invocation.outcome)" variant="soft" size="md">
                     {{ invocation.outcome }}
@@ -305,7 +362,17 @@ function outcomeColor(outcome: string) {
           <USeparator />
 
           <section class="space-y-2">
-            <h3 class="text-sm font-semibold uppercase tracking-wide text-muted">Error</h3>
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-muted">
+              Error <span class="normal-case text-dimmed">· from {{ errorSource }}</span>
+            </h3>
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="lg">
+                HTTP {{ entry.statusCode }}
+              </UBadge>
+              <span v-if="statusMeaning" class="text-sm text-muted">{{ statusMeaning }}</span>
+            </div>
+
+            <p class="text-xs font-medium uppercase tracking-wide text-muted">Message</p>
             <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-error/30 bg-error/5 p-3 font-mono text-sm text-error">{{ entry.errorMessage }}</pre>
           </section>
         </template>

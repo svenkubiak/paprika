@@ -66,6 +66,9 @@ public class AdminSettingsService {
         payload.put(
                 "requestLogClientIp",
                 settingsService.get(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_OFF));
+        payload.put(
+                "requestLogAdminUi",
+                settingsService.getBoolean(SettingKeys.REQUEST_LOG_ADMIN_UI, false));
 
         return AdminSettingsResult.ok(payload);
     }
@@ -75,7 +78,8 @@ public class AdminSettingsService {
                 || (dto.requestLogRetentionDays() == null
                 && dto.defaultTenantId() == null
                 && dto.requestLogClientInfo() == null
-                && dto.requestLogClientIp() == null)) {
+                && dto.requestLogClientIp() == null
+                && dto.requestLogAdminUi() == null)) {
             return AdminSettingsResult.badRequest("No settings to update");
         }
 
@@ -114,6 +118,12 @@ public class AdminSettingsService {
 
         if (clientIpMode != null) {
             settingsService.set(SettingKeys.REQUEST_LOG_CLIENT_IP, clientIpMode);
+        }
+
+        if (dto.requestLogAdminUi() != null) {
+            settingsService.set(
+                    SettingKeys.REQUEST_LOG_ADMIN_UI,
+                    String.valueOf(dto.requestLogAdminUi()));
         }
 
         return readSettings(request);

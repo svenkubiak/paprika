@@ -23,6 +23,9 @@ const requestLogRetentionDays = ref(7)
 const requestLogClientInfo = ref(false)
 const requestLogClientIp = ref<'off' | 'truncated' | 'full'>('off')
 const savingClientInfo = ref(false)
+/** Off by default: operating the admin UI is Paprika's own traffic, not the tenant's API traffic. */
+const requestLogAdminUi = ref(false)
+const savingAdminUi = ref(false)
 
 const clientIpOptions = [
   { label: 'Do not log (default)', value: 'off' },
@@ -83,6 +86,7 @@ async function refreshSettings() {
     defaultTenantId.value = settings.defaultTenantId || SELECT_EMPTY
     requestLogClientInfo.value = !!settings.requestLogClientInfo
     requestLogClientIp.value = settings.requestLogClientIp || 'off'
+    requestLogAdminUi.value = !!settings.requestLogAdminUi
   } catch (error) {
     toast.add({
       title: error instanceof Error ? error.message : 'Failed to load settings',
@@ -217,6 +221,27 @@ async function saveClientInfo() {
     })
   } finally {
     savingClientInfo.value = false
+  }
+}
+
+async function saveAdminUiLogging() {
+  savingAdminUi.value = true
+  try {
+    const settings = await api.updateSettings({ requestLogAdminUi: requestLogAdminUi.value })
+    requestLogAdminUi.value = !!settings.requestLogAdminUi
+    toast.add({
+      title: 'Admin UI logging updated',
+      color: 'success',
+      icon: 'i-lucide-circle-check'
+    })
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to update admin UI logging',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+  } finally {
+    savingAdminUi.value = false
   }
 }
 
@@ -480,6 +505,39 @@ async function savePassword() {
           >
             Save
           </UButton>
+        </form>
+
+        <USeparator />
+
+        <div class="space-y-1">
+          <h3 class="font-medium">Admin UI traffic</h3>
+          <p class="max-w-2xl text-sm text-muted">
+            Operating the admin UI is itself a stream of HTTP requests
+            (<code>/admin/…</code>, <code>/api/admin/…</code>, <code>/api/meta/…</code>, the login
+            flow and the UI assets). They are not logged by default, so the log shows the traffic
+            of your API instead of Paprika's own bookkeeping. Switch this on when you need an
+            audit trail of admin activity. Failed admin requests are logged either way, so a
+            rejected login never disappears.
+          </p>
+        </div>
+
+        <form class="flex max-w-2xl flex-col gap-4" @submit.prevent="saveAdminUiLogging">
+          <USwitch
+            v-model="requestLogAdminUi"
+            label="Log admin UI requests"
+            :disabled="!bootstrap?.isSuperAdmin"
+          />
+
+          <div>
+            <UButton
+              type="submit"
+              :loading="savingAdminUi"
+              icon="i-lucide-save"
+              :disabled="!bootstrap?.isSuperAdmin"
+            >
+              Save
+            </UButton>
+          </div>
         </form>
 
         <USeparator />

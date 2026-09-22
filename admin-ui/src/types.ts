@@ -255,6 +255,7 @@ export interface AppSettings {
   defaultTenantId?: string | null
   requestLogClientInfo?: boolean
   requestLogClientIp?: 'off' | 'truncated' | 'full'
+  requestLogAdminUi?: boolean
   [key: string]: string | boolean | number | null | undefined
 }
 

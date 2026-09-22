@@ -17,6 +17,7 @@
 ## Request logs
 
 - **Retention (days)** — how long request log entries are kept before automatic cleanup. Set to `0` to keep logs indefinitely. See [Request Logs](/admin-ui/request-logs) for what's actually recorded.
+- **Log admin UI requests** — off by default. Operating the admin UI is itself a stream of HTTP requests (`/admin/…`, `/api/admin/…`, `/api/meta/…`, the login flow, the UI assets); logging them buries your API traffic under Paprika's own bookkeeping. Switch it on when you want an audit trail of admin activity. **Failed** admin requests (status ≥ 400) are logged either way, so a rejected superadmin login is never hidden by this setting.
 - **Log user agent** — off by default. The user agent is personal data, so Paprika only stores it if you decide you need it.
 - **Client IP address** — `off` (default), `truncated`, or `full`. `truncated` keeps the network and drops the host (IPv4 `/24`, IPv6 `/48`), which is enough to recognise abusive traffic without singling out a caller. Addresses are read from `X-Forwarded-For` / `X-Real-IP`, so a reverse proxy has to set them.
 
