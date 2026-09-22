@@ -6,7 +6,7 @@ import { api } from '@/lib/api'
 import { useSchemaEditorSheet, emptyRow } from '@/composables/useSchemaEditorSheet'
 import { useAppToast } from '@/composables/useAppToast'
 import { modalUi } from '@/lib/overlay-ui'
-import { fieldTypeIcon, fieldTypeLabel } from '@/lib/utils'
+import { fieldTypeChoiceIcon, fieldTypeChoiceLabel } from '@/lib/utils'
 import IndexEditorSheet from '@/components/IndexEditorSheet.vue'
 import { isReservedSchemaFieldName, SYSTEM_RECORD_FIELDS } from '@/lib/system-fields'
 import {
@@ -456,8 +456,11 @@ function describeIndexFields(index: IndexDefinition): string {
         <template #type-cell="{ row }">
           <div class="flex flex-wrap items-center gap-2">
             <UBadge variant="soft" color="primary" class="gap-1">
-              <UIcon :name="fieldTypeIcon(row.original.type)" class="size-3.5" />
-              {{ fieldTypeLabel(row.original.type) }}
+              <UIcon
+                :name="fieldTypeChoiceIcon(row.original.type, row.original.stringMultiline)"
+                class="size-3.5"
+              />
+              {{ fieldTypeChoiceLabel(row.original.type, row.original.stringMultiline) }}
             </UBadge>
             <span
               v-if="row.original.type === 'RELATION' && row.original.relationCollection"

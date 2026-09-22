@@ -164,12 +164,75 @@ export function fieldTypeIcon(type: FieldType): string {
   return FIELD_TYPE_META[type]?.icon ?? 'i-lucide-circle-question-mark'
 }
 
-export function fieldTypeSelectItems() {
-  return FIELD_TYPES.map((type) => ({
+/**
+ * The schema editor offers "String" and "Text" as two entries, but both write the same
+ * `STRING` field type - they only differ in `options.multiline`, which decides whether the record
+ * editor renders a single-line input or a textarea. It is a presentation question, not a type
+ * question, so it stays out of FieldType.
+ */
+export const STRING_MULTILINE_CHOICE = 'STRING_MULTILINE'
+
+export type FieldTypeChoice = FieldType | typeof STRING_MULTILINE_CHOICE
+
+export const FIELD_TYPE_CHOICES: {
+  value: FieldTypeChoice
+  label: string
+  icon: string
+  type: FieldType
+  multiline: boolean
+}[] = FIELD_TYPES.flatMap((type) => {
+  const entry = {
+    value: type as FieldTypeChoice,
     label: FIELD_TYPE_META[type].label,
-    value: type,
-    icon: FIELD_TYPE_META[type].icon
+    icon: FIELD_TYPE_META[type].icon,
+    type: type as FieldType,
+    multiline: false
+  }
+  if (type !== 'STRING') {
+    return [entry]
+  }
+  return [
+    entry,
+    {
+      value: STRING_MULTILINE_CHOICE as FieldTypeChoice,
+      label: 'Text',
+      icon: 'i-lucide-align-left',
+      type: 'STRING' as FieldType,
+      multiline: true
+    }
+  ]
+})
+
+export function fieldTypeChoiceSelectItems() {
+  return FIELD_TYPE_CHOICES.map((choice) => ({
+    label: choice.label,
+    value: choice.value,
+    icon: choice.icon
   }))
+}
+
+export function fieldTypeChoice(type: FieldType, multiline?: boolean): FieldTypeChoice {
+  return type === 'STRING' && multiline ? STRING_MULTILINE_CHOICE : type
+}
+
+function choiceMeta(choice: FieldTypeChoice) {
+  return FIELD_TYPE_CHOICES.find((entry) => entry.value === choice)
+}
+
+export function fieldTypeChoiceType(choice: FieldTypeChoice): FieldType {
+  return choiceMeta(choice)?.type ?? (choice as FieldType)
+}
+
+export function fieldTypeChoiceMultiline(choice: FieldTypeChoice): boolean {
+  return choiceMeta(choice)?.multiline ?? false
+}
+
+export function fieldTypeChoiceLabel(type: FieldType, multiline?: boolean): string {
+  return choiceMeta(fieldTypeChoice(type, multiline))?.label ?? fieldTypeLabel(type)
+}
+
+export function fieldTypeChoiceIcon(type: FieldType, multiline?: boolean): string {
+  return choiceMeta(fieldTypeChoice(type, multiline))?.icon ?? fieldTypeIcon(type)
 }
 
 export const RULE_PRESETS = {

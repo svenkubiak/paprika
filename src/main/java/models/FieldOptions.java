@@ -28,7 +28,8 @@ public record FieldOptions(
         String maxTime,
         String minDateTime,
         String maxDateTime,
-        List<Integer> imageWidths
+        List<Integer> imageWidths,
+        Boolean multiline
 ) {
     public static final long DEFAULT_MAX_SIZE = 5L * 1024L * 1024L;
 
@@ -43,7 +44,7 @@ public record FieldOptions(
     public static final int MAX_IMAGE_WIDTH = 4096;
 
     public FieldOptions(String collection, Long maxSize, List<String> mimeTypes, Integer maxSelect, List<String> values) {
-        this(collection, maxSize, mimeTypes, maxSelect, values, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        this(collection, maxSize, mimeTypes, maxSelect, values, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public int maxSelectOrDefault() {
@@ -83,8 +84,16 @@ public record FieldOptions(
         return Boolean.TRUE.equals(cascadeDelete);
     }
 
+    /**
+     * Whether a STRING field asks the admin UI for a multi-line input. Purely declarative: no
+     * validator behaves differently for it, a multi-line value is the same string as any other.
+     */
+    public boolean multilineOrDefault() {
+        return Boolean.TRUE.equals(multiline);
+    }
+
     public static FieldOptions forRelation(String collection, Integer maxSelect, Boolean cascadeDelete) {
-        return new FieldOptions(collection, null, null, maxSelect, null, cascadeDelete, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return new FieldOptions(collection, null, null, maxSelect, null, cascadeDelete, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public static FieldOptions forRelation(String collection) {
@@ -96,34 +105,38 @@ public record FieldOptions(
     }
 
     public static FieldOptions forFile(long maxSize, List<String> mimeTypes, int maxSelect, List<Integer> imageWidths) {
-        return new FieldOptions(null, maxSize, mimeTypes, maxSelect, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, imageWidths);
+        return new FieldOptions(null, maxSize, mimeTypes, maxSelect, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, imageWidths, null);
     }
 
     public static FieldOptions forSelect(List<String> values, int maxSelect) {
-        return new FieldOptions(null, null, null, maxSelect, values, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return new FieldOptions(null, null, null, maxSelect, values, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public static FieldOptions forString(Integer minLength, Integer maxLength, String pattern) {
-        return new FieldOptions(null, null, null, null, null, null, minLength, maxLength, pattern, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        return forString(minLength, maxLength, pattern, null);
+    }
+
+    public static FieldOptions forString(Integer minLength, Integer maxLength, String pattern, Boolean multiline) {
+        return new FieldOptions(null, null, null, null, null, null, minLength, maxLength, pattern, null, null, null, null, null, null, null, null, null, null, null, null, null, multiline);
     }
 
     public static FieldOptions forNumber(Double min, Double max) {
-        return new FieldOptions(null, null, null, null, null, null, null, null, null, min, max, null, null, null, null, null, null, null, null, null, null, null);
+        return new FieldOptions(null, null, null, null, null, null, null, null, null, min, max, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public static FieldOptions forJson(Integer maxBytes, Integer maxDepth, Boolean onlyObject, Boolean onlyArray) {
-        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, maxBytes, maxDepth, onlyObject, onlyArray, null, null, null, null, null, null, null);
+        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, maxBytes, maxDepth, onlyObject, onlyArray, null, null, null, null, null, null, null, null);
     }
 
     public static FieldOptions forDateRange(String minDate, String maxDate) {
-        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, minDate, maxDate, null, null, null, null, null);
+        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, minDate, maxDate, null, null, null, null, null, null);
     }
 
     public static FieldOptions forTimeRange(String minTime, String maxTime) {
-        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, minTime, maxTime, null, null, null);
+        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, minTime, maxTime, null, null, null, null);
     }
 
     public static FieldOptions forDateTimeRange(String minDateTime, String maxDateTime) {
-        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, minDateTime, maxDateTime, null);
+        return new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, minDateTime, maxDateTime, null, null);
     }
 }

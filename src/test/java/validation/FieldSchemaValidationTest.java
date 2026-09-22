@@ -78,11 +78,41 @@ class FieldSchemaValidationTest {
                 false,
                 true,
                 new FieldOptions(null, null, null, null, null, null, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null, java.util.List.of(320)));
+                        null, null, null, null, null, null, null, null, java.util.List.of(320), null));
 
         assertThrows(
                 IllegalArgumentException.class,
                 () -> FieldSchemaValidation.validateFieldDefinition(field));
+    }
+
+    /** multiline only picks the input widget of a STRING field. */
+    @Test
+    void acceptsMultilineOnAStringField() {
+        FieldDefinition field = new FieldDefinition(
+                "description",
+                FieldType.STRING,
+                false,
+                true,
+                FieldOptions.forString(null, null, null, true));
+
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(field));
+    }
+
+    @Test
+    void rejectsMultilineOnANonStringField() {
+        for (FieldType type : new FieldType[]{FieldType.EMAIL, FieldType.URL, FieldType.NUMBER}) {
+            FieldDefinition field = new FieldDefinition(
+                    "value",
+                    type,
+                    false,
+                    true,
+                    FieldOptions.forString(null, null, null, true));
+
+            IllegalArgumentException error = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> FieldSchemaValidation.validateFieldDefinition(field));
+            assertTrue(error.getMessage().contains("multiline is only available on STRING fields"), error.getMessage());
+        }
     }
 
     @Test

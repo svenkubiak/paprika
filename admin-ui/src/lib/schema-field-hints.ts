@@ -1,6 +1,7 @@
 export const schemaFieldHints = {
   name: 'API field key stored on each record. Use letters, numbers, and underscores.',
-  type: 'Controls validation, storage, and how the field appears in the admin record editor.',
+  type:
+    'Controls validation, storage, and how the field appears in the admin record editor. "String" and "Text" are the same field type (STRING) with the same validation - "Text" only gets a multi-line input.',
   relationCollection:
     'Target collection for the stored relation ID(s). Relations to users always use accounts in the active tenant.',
   fileMaxSize: 'Maximum upload size per file, in bytes. Example: 5242880 = 5 MB.',

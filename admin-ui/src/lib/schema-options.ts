@@ -83,7 +83,10 @@ export function schemaRowToOptions(row: SchemaRow): FieldOptions | null {
     return compactOptions({
       minLength: row.minLength,
       maxLength: row.maxLength,
-      pattern: row.pattern.trim() || undefined
+      pattern: row.pattern.trim() || undefined,
+      // Only STRING may carry it - the server rejects it on every other type, EMAIL and URL
+      // included, and they share this options row.
+      multiline: row.type === 'STRING' && row.stringMultiline ? true : undefined
     })
   }
   if (row.type === 'NUMBER') {
@@ -172,6 +175,7 @@ export function optionsToSchemaRow(
     minLength: options.minLength,
     maxLength: options.maxLength,
     pattern: options.pattern || '',
+    stringMultiline: field.type === 'STRING' && options.multiline === true,
     numberMin: options.numberMin,
     numberMax: options.numberMax,
     jsonMaxBytes: options.maxBytes,

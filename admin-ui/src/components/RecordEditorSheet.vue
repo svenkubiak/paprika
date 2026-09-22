@@ -6,9 +6,14 @@ import { fieldDisplayName } from '@/lib/utils'
 import {
   booleanFieldSelectItems,
   booleanToFormValue,
+  selectFieldSelectItems,
+  selectToFormValue,
   serializeBooleanFieldValue,
+  serializeSelectFieldValue,
+  unsetFieldValue,
   validateRecordValues
 } from '@/lib/field-validation'
+import { toDateTimeInputValue, toDateTimeStoredValue } from '@/lib/datetime'
 
 export type RecordSavePayload = {
   values: Record<string, unknown>
@@ -36,6 +41,10 @@ const formState = ref<Record<string, any>>({})
 const jsonState = ref('')
 const jsonFieldState = ref<Record<string, string>>({})
 const fileSelections = ref<Record<string, File[]>>({})
+// Per DATETIME field the value as stored and the picker value derived from it. Opening and saving
+// a record without touching the field must not rewrite its timestamp - a different offset or a
+// dropped fraction of a second would be a silent data change caused by merely looking at it.
+const dateTimeInitial = ref<Record<string, { stored: unknown; input: string }>>({})
 
 function serializeJsonField(value: unknown): string {
   if (value === null || value === undefined) return ''
@@ -48,6 +57,7 @@ watch(
     formState.value = { ...record }
     fileSelections.value = {}
     jsonFieldState.value = {}
+    dateTimeInitial.value = {}
     for (const field of fields) {
       if (field.type === 'JSON') {
         jsonFieldState.value[field.name] = serializeJsonField(record[field.name])
@@ -57,6 +67,18 @@ watch(
       }
       if (field.type === 'BOOLEAN') {
         formState.value[field.name] = booleanToFormValue(record[field.name])
+      }
+      if (field.type === 'SELECT') {
+        formState.value[field.name] = selectToFormValue(field, record[field.name])
+      }
+      if (field.type === 'DATETIME') {
+        const input = toDateTimeInputValue(record[field.name])
+        dateTimeInitial.value[field.name] = { stored: record[field.name], input }
+        formState.value[field.name] = input
+      }
+      if (field.type === 'DATE' || field.type === 'TIME') {
+        const stored = record[field.name]
+        formState.value[field.name] = typeof stored === 'string' ? stored : ''
       }
     }
     const payload = { ...record }
@@ -90,11 +112,8 @@ function onFileChange(fieldName: string, event: Event) {
   fileSelections.value[fieldName] = input.files ? Array.from(input.files) : []
 }
 
-function selectItems(field: FieldDefinition) {
-  return (field.options?.values || []).map((value) => ({
-    label: value,
-    value
-  }))
+function isMultiline(field: FieldDefinition) {
+  return field.type === 'STRING' && field.options?.multiline === true
 }
 
 function isMultiSelect(field: FieldDefinition) {
@@ -152,6 +171,46 @@ function submit() {
       }
       if (field.type === 'BOOLEAN') {
         const serialized = serializeBooleanFieldValue(values[field.name], field, props.mode)
+        if (serialized === undefined) {
+          delete values[field.name]
+        } else {
+          values[field.name] = serialized
+        }
+      }
+      if (field.type === 'SELECT') {
+        const serialized = serializeSelectFieldValue(values[field.name], field, props.mode)
+        if (serialized === undefined) {
+          delete values[field.name]
+        } else {
+          values[field.name] = serialized
+        }
+      }
+      if (field.type === 'DATE' || field.type === 'TIME') {
+        const raw = values[field.name]
+        if (typeof raw !== 'string' || !raw.trim()) {
+          const serialized = unsetFieldValue(field, props.mode)
+          if (serialized === undefined) {
+            delete values[field.name]
+          } else {
+            values[field.name] = serialized
+          }
+        }
+      }
+      if (field.type === 'DATETIME') {
+        const raw = values[field.name]
+        const input = typeof raw === 'string' ? raw : ''
+        const initial = dateTimeInitial.value[field.name]
+        // Unchanged picker value: keep the stored string byte for byte, including fractions of a
+        // second and an offset this browser would not have produced.
+        let serialized: unknown
+        if (initial && input === initial.input) {
+          serialized =
+            typeof initial.stored === 'string' && initial.stored.trim()
+              ? initial.stored
+              : unsetFieldValue(field, props.mode)
+        } else {
+          serialized = toDateTimeStoredValue(input) ?? unsetFieldValue(field, props.mode)
+        }
         if (serialized === undefined) {
           delete values[field.name]
         } else {
@@ -239,10 +298,16 @@ function submit() {
               class="w-full font-mono"
               placeholder="{&#10;  &quot;key&quot;: &quot;value&quot;&#10;}"
             />
+            <UTextarea
+              v-else-if="isMultiline(field)"
+              v-model="formState[field.name]"
+              :rows="8"
+              class="w-full"
+            />
             <USelect
               v-else-if="field.type === 'SELECT'"
               v-model="formState[field.name]"
-              :items="selectItems(field)"
+              :items="selectFieldSelectItems(field)"
               :multiple="isMultiSelect(field)"
               placeholder="Select value"
               :content="selectContentProps"
@@ -261,6 +326,26 @@ function submit() {
               :items="booleanFieldSelectItems(field)"
               :content="selectContentProps"
               :ui="selectMenuUi"
+              class="w-full"
+            />
+            <UInput
+              v-else-if="field.type === 'DATE'"
+              v-model="formState[field.name]"
+              type="date"
+              class="w-full"
+            />
+            <UInput
+              v-else-if="field.type === 'TIME'"
+              v-model="formState[field.name]"
+              type="time"
+              step="1"
+              class="w-full"
+            />
+            <UInput
+              v-else-if="field.type === 'DATETIME'"
+              v-model="formState[field.name]"
+              type="datetime-local"
+              step="1"
               class="w-full"
             />
             <UInput

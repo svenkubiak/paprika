@@ -32,6 +32,8 @@ export interface FieldOptions {
   minLength?: number
   maxLength?: number
   pattern?: string
+  /** STRING only: render a textarea in the record editor. Purely a display hint. */
+  multiline?: boolean
   numberMin?: number
   numberMax?: number
   maxBytes?: number

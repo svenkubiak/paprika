@@ -6,7 +6,15 @@ import FieldLabelHelp from '@/components/FieldLabelHelp.vue'
 import { useBootstrap } from '@/composables/useBootstrap'
 import type { SchemaEditorMode } from '@/composables/useSchemaEditorSheet'
 import { schemaFieldHints } from '@/lib/schema-field-hints'
-import { fieldTypeIcon, fieldTypeSelectItems, SELECT_EMPTY } from '@/lib/utils'
+import {
+  fieldTypeChoice,
+  fieldTypeChoiceIcon,
+  fieldTypeChoiceMultiline,
+  fieldTypeChoiceSelectItems,
+  fieldTypeChoiceType,
+  SELECT_EMPTY,
+  type FieldTypeChoice
+} from '@/lib/utils'
 import { selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
 import type { FieldDefinition } from '@/types'
 
@@ -32,6 +40,8 @@ export interface SchemaRow {
   minLength?: number
   maxLength?: number
   pattern: string
+  /** STRING only: chooses the "Text" entry of the type list, i.e. options.multiline. */
+  stringMultiline: boolean
   numberMin?: number
   numberMax?: number
   jsonMaxBytes?: number
@@ -62,7 +72,19 @@ const emit = defineEmits<{
 const route = useRoute()
 const { bootstrap } = useBootstrap()
 
-const fieldTypeItems = fieldTypeSelectItems()
+const fieldTypeItems = fieldTypeChoiceSelectItems()
+
+/**
+ * "String" and "Text" are two entries over the same field type, so switching between them only
+ * flips options.multiline - the type stays STRING and the length/pattern options keep their values.
+ */
+const typeChoice = computed<FieldTypeChoice>({
+  get: () => fieldTypeChoice(props.row.type, props.row.stringMultiline),
+  set: (choice) => {
+    props.row.type = fieldTypeChoiceType(choice)
+    props.row.stringMultiline = fieldTypeChoiceMultiline(choice)
+  }
+})
 const directionItems = [
   { label: 'Ascending', value: 'ASC' },
   { label: 'Descending', value: 'DESC' }
@@ -137,8 +159,8 @@ function onTypeChange() {
   }
 }
 
-function typeIcon(type: FieldDefinition['type']) {
-  return fieldTypeIcon(type)
+function typeIcon(type: FieldDefinition['type'], multiline: boolean) {
+  return fieldTypeChoiceIcon(type, multiline)
 }
 </script>
 
@@ -186,9 +208,9 @@ function typeIcon(type: FieldDefinition['type']) {
               <FieldLabelHelp label="Type" :hint="schemaFieldHints.type" />
             </template>
             <USelect
-              v-model="row.type"
+              v-model="typeChoice"
               :items="fieldTypeItems"
-              :icon="typeIcon(row.type)"
+              :icon="typeIcon(row.type, row.stringMultiline)"
               :content="selectContentProps"
               :ui="selectMenuUi"
               class="w-full"

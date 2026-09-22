@@ -15,6 +15,19 @@ A few validation rules are enforced when saving a field:
 - The field name can't be a [reserved system field name](/concepts/collections#system-fields) (`id`, `createdAt`, `updatedAt`, or the legacy `created`/`updated`), and can't duplicate another field on the same collection.
 - A `RELATION` field must specify a target collection.
 - A `FILE` or `SELECT` field must allow at least one selection (`maxSelect ≥ 1`), and a `SELECT` field needs at least one allowed value.
+- A `DATETIME` range (`minDateTime`/`maxDateTime`) must be an ISO timestamp **including a zone offset**, e.g. `2026-01-01T00:00:00Z` or `2026-01-01T00:00:00+01:00`. The same applies to the values stored in a `DATETIME` field: the API rejects a timestamp without an offset, because it would be ambiguous. Dates are `yyyy-MM-dd`, times `HH:mm` or `HH:mm:ss`.
+
+## `String` and `Text`
+
+The type list offers **String** and **Text**. Both write the **same field type** `STRING` with the same validation — `minLength`, `maxLength` and `pattern` apply unchanged, and switching between the two entries keeps them. The only difference is the input mask on the [Data tab](/admin-ui/collection-data): **String** is a single-line input, **Text** a multi-line textarea, so line breaks can be entered at all.
+
+Technically **Text** sets the field option `multiline: true`:
+
+```json
+{ "name": "description", "type": "STRING", "options": { "multiline": true } }
+```
+
+The option is purely declarative and only allowed on `STRING` — on any other type (including `EMAIL` and `URL`, which share the length/pattern options) the API rejects the schema with `multiline is only available on STRING fields`. Existing `STRING` fields without the option stay single-line; nothing needs to be migrated.
 
 ## Image widths on a `FILE` field
 

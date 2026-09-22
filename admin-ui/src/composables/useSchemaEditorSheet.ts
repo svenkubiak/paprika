@@ -38,6 +38,7 @@ export function emptyRow(): SchemaRow {
     minLength: undefined,
     maxLength: undefined,
     pattern: '',
+    stringMultiline: false,
     numberMin: undefined,
     numberMax: undefined,
     jsonMaxBytes: undefined,

@@ -16,6 +16,12 @@ Paprika's list API only supports `offset`/`limit` — it has no server-side sear
 
 - Fields with a configured **default value** are pre-filled on the new-record form.
 - **FILE** fields upload via `multipart/form-data` behind the scenes automatically when the form is submitted — no separate action needed.
+- **DATE**, **TIME** and **DATETIME** fields use the browser's native pickers, so the value always has the format the API expects: `yyyy-MM-dd` for `DATE`, `HH:mm:ss` for `TIME`.
+- A **DATETIME** is picked in local time and stored **with the offset of the picked moment** — `2026-09-22T10:00:00` entered in Central European Summer Time is saved as `2026-09-22T10:00:00+02:00`. The offset belongs to the chosen date, so a January and a July appointment get `+01:00` and `+02:00` respectively. Reading back works the other way round: a stored `2026-09-22T08:00:00Z` shows as `10:00` in a browser running at `+02:00`.
+- Opening a record and saving it without touching a timestamp leaves that timestamp **byte for byte** as it was, including fractions of a second and an offset from another zone. Only a field you actually change is rewritten.
+- **Clearing a field** means "not set": on create the field is left out of the payload, on update it is sent as `null`. An empty string is never sent — the API would reject it. Optional **SELECT** fields have a **No value** entry for exactly this, the same way `BOOLEAN` fields do; required fields don't offer it.
+- A **STRING** field configured as [**Text**](/admin-ui/collection-schema#string-and-text) gets a multi-line textarea; line breaks are stored as typed.
+- Values the API can't represent through the form (an exotic offset, an old value the picker can't show) stay editable in the **JSON** view, which sends exactly what you type.
 - `id`, `createdAt`, and `updatedAt` are never editable; they're system-managed (see [Collections](/concepts/collections#system-fields)).
 
 ## Deleting records

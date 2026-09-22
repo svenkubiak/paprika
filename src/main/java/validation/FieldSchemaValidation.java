@@ -50,6 +50,12 @@ public final class FieldSchemaValidation {
             throw new IllegalArgumentException("imageWidths is only available on FILE fields");
         }
 
+        if (type != FieldType.STRING && Boolean.TRUE.equals(options.multiline())) {
+            // The option only picks the input widget of a STRING field; accepted elsewhere it would
+            // suggest an effect it does not have - an email over two lines is not an email.
+            throw new IllegalArgumentException("multiline is only available on STRING fields");
+        }
+
         if (type == FieldType.SELECT) {
             List<String> values = normalizeValues(options.valuesOrEmpty());
             if (values.isEmpty()) {
