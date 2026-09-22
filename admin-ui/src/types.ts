@@ -157,6 +157,8 @@ export interface TenantUser {
   role: string
   createdAt?: string | null
   updatedAt?: string | null
+  /** Fields the tenant added to its own users schema; the admin API returns them as they are. */
+  [key: string]: unknown
 }
 
 /** An API key as the admin UI sees it: never the key itself, only its metadata. */

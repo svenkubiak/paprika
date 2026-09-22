@@ -1,5 +1,7 @@
 package controllers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import dtos.ApiKeyDto;
 import dtos.TenantDto;
 import dtos.TenantUpdateDto;
@@ -8,11 +10,14 @@ import dtos.UserUpdateDto;
 import filters.admin.AdminAuthFilter;
 import io.mangoo.annotations.FilterWith;
 import io.mangoo.routing.Response;
+import io.mangoo.routing.bindings.Request;
+import io.mangoo.utils.JsonUtils;
 import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import models.TenantDefinition;
+import org.apache.commons.lang3.StringUtils;
 import services.ApiKeyService;
 import services.TenantService;
 import services.TenantUserService;
@@ -20,9 +25,16 @@ import services.TenantUserService;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @FilterWith(AdminAuthFilter.class)
 public class TenantController {
+    /**
+     * The user fields this controller passes as explicit arguments. Everything else in the body is
+     * a field of the tenant's own users schema and is handed to the service as a custom field.
+     */
+    private static final Set<String> CORE_USER_FIELDS = Set.of("username", "email", "password");
+
     private final TenantService tenantService;
     private final TenantUserService tenantUserService;
     private final ApiKeyService apiKeyService;
@@ -94,14 +106,19 @@ public class TenantController {
                 .orElseGet(Response::notFound);
     }
 
-    public Response createUser(String tenantId, @NotNull(message = "Request body is required") @Valid UserDto userDto) {
+    public Response createUser(
+            String tenantId,
+            @NotNull(message = "Request body is required") @Valid UserDto userDto,
+            Request request) {
         try {
+            Map<String, Object> customFields = customUserFields(request);
             return tenantService.findById(tenantId)
                     .map(tenant -> Response.created().bodyJson(tenantUserService.createUser(
                             tenant,
                             userDto.username(),
                             userDto.email(),
-                            userDto.password())))
+                            userDto.password(),
+                            customFields)))
                     .orElseGet(Response::notFound);
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
@@ -111,20 +128,54 @@ public class TenantController {
     public Response updateUser(
             String tenantId,
             String userId,
-            @NotNull(message = "Request body is required") @Valid UserUpdateDto userDto) {
+            @NotNull(message = "Request body is required") @Valid UserUpdateDto userDto,
+            Request request) {
 
         try {
+            Map<String, Object> customFields = customUserFields(request);
             return tenantService.findById(tenantId)
                     .flatMap(tenant -> tenantUserService.updateUser(
                             tenant,
                             userId,
                             userDto.username(),
                             userDto.email(),
-                            userDto.password()))
+                            userDto.password(),
+                            customFields))
                     .map(Response.ok()::bodyJson)
                     .orElseGet(Response::notFound);
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Everything in the request body that is not a core user field, as plain JSON values. A key
+     * with a {@code null} value is kept: on an update that is how the editor clears a field.
+     */
+    private Map<String, Object> customUserFields(Request request) {
+        String body = request.getBody();
+        if (StringUtils.isBlank(body)) {
+            return Map.of();
+        }
+
+        try {
+            JsonNode node = JsonUtils.getMapper().readTree(body);
+            if (!node.isObject()) {
+                return Map.of();
+            }
+
+            Map<String, Object> customFields = new LinkedHashMap<>();
+            node.properties().forEach(entry -> {
+                if (!CORE_USER_FIELDS.contains(entry.getKey())) {
+                    customFields.put(
+                            entry.getKey(),
+                            JsonUtils.getMapper().convertValue(entry.getValue(), Object.class));
+                }
+            });
+
+            return customFields;
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Invalid JSON body");
         }
     }
 

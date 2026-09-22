@@ -8,12 +8,20 @@ import { api } from '@/lib/api'
 import { modalUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
-import type { TenantUser } from '@/types'
+import { formatCellValue } from '@/lib/utils'
+import { validateRecordValues } from '@/lib/field-validation'
+import { buildRecordFormState, serializeRecordForm } from '@/lib/record-form'
+import type { FieldDefinition, TenantUser } from '@/types'
+
+/** Owned by the server or edited through their own inputs above the custom fields. */
+const CORE_USER_FIELDS = ['username', 'email', 'password', 'role']
 
 const toast = useAppToast()
 const { load, bootstrap } = useBootstrap()
 
 const users = ref<TenantUser[]>([])
+/** The fields this tenant added to its users schema - empty for a tenant that uses only the core. */
+const customFields = ref<FieldDefinition[]>([])
 const loading = ref(false)
 const editorOpen = ref(false)
 const editorMode = ref<UserEditorMode>('add')
@@ -24,26 +32,40 @@ const deleting = ref(false)
 const deletingUser = ref<TenantUser | null>(null)
 const bulkDeleteOpen = ref(false)
 const search = ref('')
-const sortField = ref<keyof TenantUser | 'id'>('updatedAt')
+// A custom field of the users schema is a valid sort key too, so this cannot be narrowed to the
+// core fields of TenantUser.
+const sortField = ref<string>('updatedAt')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 const page = ref(1)
 const pageSize = ref(25)
 const selectedIds = ref<Set<string>>(new Set())
 
-const form = ref<UserEditorForm>({ username: '', password: '', email: '' })
+function emptyCustomState() {
+  return { values: {}, jsonText: {}, dateTimeInitial: {} }
+}
+
+const form = ref<UserEditorForm>({
+  username: '',
+  password: '',
+  email: '',
+  custom: emptyCustomState()
+})
 
 const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 const activeTenant = computed(() => bootstrap.value?.activeTenant ?? null)
 
-const columns = [
+// The custom fields sit between the core fields and the timestamps, the same order the record
+// table of a regular collection uses.
+const columns = computed(() => [
   { id: 'select', header: '' },
   { id: 'userId', accessorKey: 'id', header: 'ID' },
   { accessorKey: 'username', header: 'Username' },
   { accessorKey: 'email', header: 'Email' },
+  ...customFields.value.map((field) => ({ accessorKey: field.name, header: field.name })),
   { accessorKey: 'createdAt', header: 'Created' },
   { accessorKey: 'updatedAt', header: 'Updated' },
   { id: 'actions', header: 'Actions' }
-]
+])
 
 const pageSizeOptions = [
   { label: '10', value: 10 },
@@ -52,29 +74,32 @@ const pageSizeOptions = [
   { label: '100', value: 100 }
 ]
 
-const sortOptions = [
+const sortOptions = computed(() => [
   { label: 'Updated', value: 'updatedAt' },
   { label: 'Created', value: 'createdAt' },
   { label: 'ID', value: 'id' },
   { label: 'Username', value: 'username' },
-  { label: 'Email', value: 'email' }
-]
+  { label: 'Email', value: 'email' },
+  ...customFields.value.map((field) => ({ label: field.name, value: field.name }))
+])
+
+function cellText(user: TenantUser, field: FieldDefinition): string {
+  return formatCellValue(user[field.name], field.type)
+}
 
 // The users endpoint hands out the full list in one response, so searching, sorting and paging all
 // happen here instead of going back to the server for every keystroke or page change.
 const filteredUsers = computed(() => {
   const query = search.value.trim().toLowerCase()
+  // Searching over the serialized record covers the custom fields without having to know their
+  // types here.
   const items = query
-    ? users.value.filter((user) =>
-        [user.id, user.username, user.email, user.createdAt, user.updatedAt]
-          .map((value) => String(value ?? '').toLowerCase())
-          .some((value) => value.includes(query))
-      )
+    ? users.value.filter((user) => JSON.stringify(user).toLowerCase().includes(query))
     : [...users.value]
 
   items.sort((a, b) => {
-    const left = a[sortField.value as keyof TenantUser]
-    const right = b[sortField.value as keyof TenantUser]
+    const left = a[sortField.value]
+    const right = b[sortField.value]
     const compare = String(left ?? '').localeCompare(String(right ?? ''), undefined, {
       numeric: true
     })
@@ -127,15 +152,32 @@ onMounted(async () => {
   }
 })
 
+/**
+ * The custom fields come from the users schema of the active tenant. A failure here must not take
+ * the user list down with it: without the schema the editor simply falls back to the core fields.
+ */
+async function loadCustomFields() {
+  try {
+    const definition = await api.getCollectionDefinition('users')
+    customFields.value = (definition.fields || []).filter(
+      (field) => !CORE_USER_FIELDS.includes(field.name)
+    )
+  } catch {
+    customFields.value = []
+  }
+}
+
 async function refresh() {
   const tenant = activeTenant.value
   if (!tenant) {
     users.value = []
+    customFields.value = []
     return
   }
 
   loading.value = true
   try {
+    await loadCustomFields()
     users.value = await api.listTenantUsers(tenant.id)
     selectedIds.value = new Set()
   } catch (error) {
@@ -166,7 +208,12 @@ function toggleOne(id: string, checked: boolean) {
 }
 
 function resetForm() {
-  form.value = { username: '', password: '', email: '' }
+  form.value = {
+    username: '',
+    password: '',
+    email: '',
+    custom: buildRecordFormState({}, customFields.value, 'new')
+  }
   editingUser.value = null
 }
 
@@ -180,7 +227,8 @@ function userToForm(user: TenantUser): UserEditorForm {
   return {
     username: user.username,
     password: '',
-    email: user.email ?? ''
+    email: user.email ?? '',
+    custom: buildRecordFormState(user, customFields.value, 'edit')
   }
 }
 
@@ -217,13 +265,39 @@ async function saveUser() {
     return
   }
 
+  // The custom fields go through the same conversion and the same client-side checks as a record
+  // of any other collection, so the editor cannot send something /api/collections/users would
+  // refuse afterwards.
+  let custom: Record<string, unknown>
+  try {
+    custom = serializeRecordForm(
+      editableCustomFields(),
+      form.value.custom,
+      editorMode.value === 'add' ? 'new' : 'edit'
+    )
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Invalid field value',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+    return
+  }
+
+  const issues = validateRecordValues(editableCustomFields(), custom)
+  if (issues.length > 0) {
+    toast.add({ title: issues[0].message, color: 'error', icon: 'i-lucide-circle-x' })
+    return
+  }
+
   saving.value = true
   try {
     if (editorMode.value === 'add') {
-      await api.createTenantUser(tenant.id, username, password, email || null)
+      await api.createTenantUser(tenant.id, username, password, email || null, custom)
       toast.add({ title: 'User created', color: 'success', icon: 'i-lucide-circle-check' })
     } else if (editingUser.value) {
-      const payload: { username: string; email: string; password?: string } = {
+      const payload: { username: string; email: string; password?: string } & Record<string, unknown> = {
+        ...custom,
         username,
         email
       }
@@ -245,6 +319,11 @@ async function saveUser() {
   } finally {
     saving.value = false
   }
+}
+
+/** FILE fields cannot be edited in this sheet, so they are not part of what it sends either. */
+function editableCustomFields(): FieldDefinition[] {
+  return customFields.value.filter((field) => field.type !== 'FILE')
 }
 
 function confirmDelete(user: TenantUser) {
@@ -376,6 +455,13 @@ async function bulkDelete() {
         <template #email-cell="{ row }">
           {{ row.original.email || '—' }}
         </template>
+        <template
+          v-for="field in customFields"
+          :key="field.name"
+          #[`${field.name}-cell`]="{ row }"
+        >
+          <span class="text-sm">{{ cellText(row.original, field) }}</span>
+        </template>
         <template #createdAt-cell="{ row }">
           <span class="font-mono text-sm text-muted">{{ row.original.createdAt || '—' }}</span>
         </template>
@@ -445,6 +531,7 @@ async function bulkDelete() {
       v-model:open="editorOpen"
       :mode="editorMode"
       :form="form"
+      :custom-fields="customFields"
       :user="editingUser"
       :saving="saving"
       @save="saveUser"

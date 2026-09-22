@@ -81,9 +81,23 @@ Paprika does no rate limiting of its own, so a login endpoint will happily accep
 | `/authenticate`, `/api/admin/login`, `/api/admin/login/2fa` | Superadmin login and second factor. |
 | `/api/admin/setup`, `/api/admin/token`, `/api/admin/token/2fa` | Initial setup and programmatic admin tokens. |
 
-The examples below throttle all of `/api/auth/` in one go, which covers every row above that starts with that prefix; the rest sits behind the admin location block and is throttled there.
+The examples below throttle all of `/api/auth/` in one go, which covers every row above that starts with that prefix, plus one block for the superadmin credential endpoints.
 
 A handful of requests per second per IP with a small burst is plenty for real users and cuts brute force down hard. Tune to taste; the numbers in the examples are a sane starting point, not a law.
+
+::: warning Never throttle the admin UI as a whole
+Throttle the credential endpoints, not `location /`. Opening the admin UI is not one request: the
+document, `boot.js`, the entry chunk, a dozen preloaded chunks, the stylesheet, the favicon, the
+web manifest, the route chunk and the first API calls all leave the browser inside the same
+second - well over twenty requests. A zone like `rate=5r/s burst=10` answers everything past the
+eleventh with nginx's own **503**, and since `rate=5r/s` drains the bucket for seconds, the next
+reload can get a 503 for the document itself.
+
+That is exactly what you see right after a restart or an update: every hashed filename changed, so
+nothing comes from the browser cache and the full burst hits the proxy. It looks like Paprika is
+down when it is only the rate limit. See [503 from the proxy after a
+restart](#getting-a-503-from-the-proxy-after-a-restart-or-update).
+:::
 
 ## Use API keys for machine access
 
@@ -225,6 +239,10 @@ There is exactly one superadmin identity and it can do everything. Enable TOTP t
 # Throttle zones, keyed on the real client IP.
 limit_req_zone $binary_remote_addr zone=paprika_auth:10m rate=5r/s;
 
+# 429 says "you are going too fast", 503 (the default) says "the app is down" - and a monitoring
+# system or a user should be able to tell those apart.
+limit_req_status 429;
+
 # Who is allowed into the admin UI.
 geo $paprika_admin_allowed {
     default         0;
@@ -232,8 +250,20 @@ geo $paprika_admin_allowed {
     203.0.113.10/32 1;      # a specific office IP
 }
 
+upstream paprika {
+    # An IP literal on purpose: a hostname like localhost can resolve to both ::1 and 127.0.0.1,
+    # which makes this a two server group. nginx then takes a failing address out of rotation for
+    # fail_timeout, and once both are out it answers "no live upstreams" with a 503 - for seconds
+    # after Paprika is already back up. max_fails=0 switches that bookkeeping off, which is what
+    # you want for a single instance: there is nothing to fail over to anyway.
+    server 127.0.0.1:8080 max_fails=0;
+
+    keepalive 32;
+}
+
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name paprika.example.com;
 
     ssl_certificate     /etc/letsencrypt/live/paprika.example.com/fullchain.pem;
@@ -248,6 +278,16 @@ server {
     proxy_set_header X-Forwarded-For   $remote_addr;
     proxy_set_header X-Forwarded-Proto https;
 
+    # Required for the keepalive pool above.
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    # A GET that hits a keepalive connection the restarting app just closed gets one more try on
+    # a fresh connection instead of turning into an error page. Writes are not retried, which is
+    # nginx's default and the right call - a POST may already have been processed.
+    proxy_next_upstream error timeout;
+    proxy_next_upstream_tries 2;
+
     # Machine-only route: issues a session for any user of the tenant. Uncomment to keep it
     # off the public internet. An exact-match location wins over the /api/auth/ prefix below,
     # so the rest of the auth API stays public.
@@ -259,30 +299,49 @@ server {
     #     deny  all;
     #
     #     limit_req zone=paprika_auth burst=10 nodelay;
-    #     proxy_pass http://127.0.0.1:8080;
+    #     proxy_pass http://paprika;
     # }
 
     # Public tenant API, open to the world but rate limited on auth.
     location /api/auth/ {
-        limit_req zone=paprika_auth burst=10 nodelay;
-        proxy_pass http://127.0.0.1:8080;
+        limit_req zone=paprika_auth burst=20 nodelay;
+        proxy_pass http://paprika;
     }
 
     location /api/collections/ {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://paprika;
     }
 
     location /api/realtime {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://paprika;
         proxy_buffering off;                 # let SSE stream through
         proxy_read_timeout 1h;
     }
 
-    # Admin UI, restricted to trusted IPs.
+    # Superadmin credentials: the only admin paths worth throttling. A regex location wins over
+    # the prefix locations, so this has to stay narrow - it must not catch the UI's own assets.
+    location ~ ^/(authenticate|api/admin/(login(/2fa)?|setup|token(/2fa)?))$ {
+        if ($paprika_admin_allowed = 0) { return 403; }
+        limit_req zone=paprika_auth burst=10 nodelay;
+        proxy_pass http://paprika;
+    }
+
+    # The admin UI bundle. Deliberately not rate limited: one page load is 20+ files. The file
+    # names are content hashed, so they can be cached forever; index.html is sent no-store by
+    # Paprika, which is what makes a new version show up after a deploy.
+    location ~ ^/assets/(js|css)/.+-[A-Za-z0-9_-]{6,}\.(js|css)$ {
+        if ($paprika_admin_allowed = 0) { return 403; }
+        proxy_pass http://paprika;
+
+        # add_header in a location replaces the inherited ones, so HSTS is repeated here.
+        add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    # Admin UI, restricted to trusted IPs. No throttle here - see the warning above.
     location / {
         if ($paprika_admin_allowed = 0) { return 403; }
-        limit_req zone=paprika_auth burst=10 nodelay;   # also covers /authenticate, /api/admin/login, ...
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://paprika;
     }
 }
 
@@ -296,7 +355,7 @@ server {
 
 If your middleware runs on the same host, the cleanest variant is to not proxy the route at all - `location = /api/auth/issue-token { deny all; }` - and let the middleware call `http://127.0.0.1:8080/api/auth/issue-token` directly, bypassing the proxy.
 
-The trailing `location /` block catches everything that isn't the public API, including `/admin`, `/api/admin`, `/api/meta`, `/login`, and `/assets`, so a single IP gate covers the whole admin UI. Keep the `/api/auth/` and `/api/collections/` blocks above it, since nginx matches prefix locations by longest match regardless of order but it reads more clearly this way.
+The trailing `location /` block catches everything that isn't the public API, including `/admin`, `/api/admin`, `/api/meta`, `/login`, and the unhashed `/assets/boot.js`, so a single IP gate covers the whole admin UI. Keep the `/api/auth/` and `/api/collections/` blocks above it, since nginx matches prefix locations by longest match regardless of order but it reads more clearly this way. The two regex locations are the exception to that rule: regex matches are tried before the prefix match wins, which is why the throttled one is written to match only the superadmin credential paths.
 
 ## Caddy example
 
@@ -395,6 +454,35 @@ location /health {
 ```
 
 The Docker setup includes a healthcheck on the `paprika` container that polls `/health` every 30 seconds. You can use the same endpoint in whatever tooling you prefer.
+
+## Getting a 503 from the proxy after a restart or update
+
+The symptom: you restart Paprika or install a new version, open the admin UI, and get a 503 - but the page is the *proxy's* error page, not Paprika's. A plain reload keeps showing it, a hard reload finally brings up the UI or the login page.
+
+If the 503 page comes from nginx, Paprika never answered that request, so the cause is in the proxy config. There are two, and both are easy to rule out:
+
+**1. The rate limit covers the admin UI.** This is the common one. `limit_req` answers with 503 by default, and one cold load of the admin UI is 20+ requests in the same second (document, `boot.js`, entry chunk, preloaded chunks, stylesheet, favicon, manifest, route chunk, first API calls). A zone of `rate=5r/s burst=10` therefore 503s a fresh page load *by design*, and because the bucket refills at five per second, the reload right after it can lose the document request too. It shows up after a restart or an update because the content hash in every filename changed, so the browser cache is empty and the whole burst goes to the proxy.
+
+Check it with:
+
+```bash
+grep -rn "limit_req " /etc/nginx/
+grep -c "limiting requests" /var/log/nginx/error.log
+```
+
+If a `limit_req` sits in `location /` - which earlier versions of the nginx example in this page did - move it to the auth and admin-credential locations as shown in the [nginx example](#nginx-example). Setting `limit_req_status 429` on top makes the difference between "too fast" and "app is down" visible in the browser and in your monitoring.
+
+**2. The upstream is still marked dead.** nginx answers `no live upstreams` with a 503, not a 502. That happens when the proxy target is a server group in which every address is currently marked failed - and `proxy_pass http://localhost:8080` is such a group whenever `localhost` resolves to both `::1` and `127.0.0.1`. During the restart the requests fail, both addresses get taken out for `fail_timeout` (10 seconds by default), and every request in that window gets an instant 503, even though Paprika is already accepting connections again. Waiting out those seconds is precisely what "it works after the hard reload" feels like.
+
+Check it with:
+
+```bash
+grep "no live upstreams" /var/log/nginx/error.log
+```
+
+The fix is an explicit upstream with `max_fails=0` and an IP literal, as in the example above. For a single instance there is nothing to fail over to, so there is no reason for nginx to keep a "this one is dead" flag at all.
+
+A 502 (not 503) during the first seconds after a start is different and harmless: the app has not bound its port yet. The admin UI handles that case itself - `boot.js` polls `/health` and reloads once the server answers - so it resolves without a reload from you. Only an error page produced by the proxy can't be recovered from inside the browser, which is why the two items above have to be fixed in the proxy.
 
 ## A few more things worth doing
 

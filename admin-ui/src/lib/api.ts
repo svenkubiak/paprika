@@ -296,23 +296,34 @@ export const api = {
     return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/users`)
   },
 
+  /**
+   * `customFields` carries the fields of the tenant's own users schema. They are sent alongside
+   * the core fields, which is what the admin API expects: everything that is not username, email
+   * or password is validated against that schema.
+   */
   createTenantUser(
     tenantId: string,
     username: string,
     password: string,
-    email?: string | null
+    email?: string | null,
+    customFields: Record<string, unknown> = {}
   ): Promise<TenantUser> {
     return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, email: email || undefined })
+      body: JSON.stringify({ ...customFields, username, password, email: email || undefined })
     })
   },
 
   updateTenantUser(
     tenantId: string,
     userId: string,
-    payload: { username?: string; password?: string; email?: string | null }
+    payload: {
+      username?: string
+      password?: string
+      email?: string | null
+      [field: string]: unknown
+    }
   ): Promise<TenantUser> {
     return request(
       `/api/meta/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}`,

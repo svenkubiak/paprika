@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import OverlayDrawer from '@/components/OverlayDrawer.vue'
-import type { TenantUser } from '@/types'
+import FieldValueInput from '@/components/FieldValueInput.vue'
+import { fieldDisplayName } from '@/lib/utils'
+import type { FieldDefinition, TenantUser } from '@/types'
+import type { RecordFormState } from '@/lib/record-form'
 
 export type UserEditorMode = 'add' | 'edit'
 
@@ -9,12 +12,19 @@ export interface UserEditorForm {
   username: string
   password: string
   email: string
+  /**
+   * The custom part of the tenant's users schema, in the same form representation the record
+   * editor uses. Empty when the tenant only uses the core fields.
+   */
+  custom: RecordFormState
 }
 
 const props = defineProps<{
   open: boolean
   mode: UserEditorMode
   form: UserEditorForm
+  /** The fields this tenant added to its users schema; the core fields are rendered above. */
+  customFields?: FieldDefinition[]
   user?: TenantUser | null
   saving?: boolean
 }>()
@@ -33,12 +43,13 @@ const title = computed(() =>
 const description = computed(() =>
   props.mode === 'add'
     ? 'Create a tenant user manually. They can sign in via POST /api/auth/login.'
-    : 'Update username, email, or password. Leave password blank to keep the current one.'
+    : 'Update username, email, password, or any field of this tenant\u2019s users schema.'
 )
 
 const submitLabel = computed(() => (props.mode === 'add' ? 'Create user' : 'Save user'))
 const submitIcon = computed(() => (props.mode === 'add' ? 'i-lucide-user-plus' : 'i-lucide-save'))
 const passwordRequired = computed(() => props.mode === 'add')
+const fields = computed(() => props.customFields ?? [])
 </script>
 
 <template>
@@ -91,6 +102,29 @@ const passwordRequired = computed(() => props.mode === 'add')
 
           <UFormField v-if="mode === 'edit' && user" label="Role" class="w-full">
             <UInput :model-value="user.role" icon="i-lucide-shield" class="w-full" disabled />
+          </UFormField>
+
+          <UFormField
+            v-for="field in fields"
+            :key="field.name"
+            :label="fieldDisplayName(field.name)"
+            :required="field.required"
+            class="w-full"
+          >
+            <!--
+              A FILE field of the users schema is not editable here: an upload goes through the
+              collection API as multipart, which this editor does not speak. It stays visible so
+              the field does not silently disappear from the schema's point of view.
+            -->
+            <p v-if="field.type === 'FILE'" class="text-sm text-muted">
+              File fields are managed through <code class="text-xs">/api/collections/users</code>.
+            </p>
+            <FieldValueInput
+              v-else-if="field.type === 'JSON'"
+              :field="field"
+              v-model="form.custom.jsonText[field.name]"
+            />
+            <FieldValueInput v-else :field="field" v-model="form.custom.values[field.name]" />
           </UFormField>
         </form>
       </div>

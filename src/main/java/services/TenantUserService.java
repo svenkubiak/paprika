@@ -2,6 +2,7 @@ package services;
 
 import auth.AuthContext;
 import auth.TenantContext;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.mongodb.client.model.Collation;
 import com.mongodb.client.model.CollationStrength;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
@@ -11,8 +12,11 @@ import constants.SystemCollections;
 import constants.SystemFields;
 import enums.Role;
 import io.mangoo.utils.CommonUtils;
+import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import models.CollectionDefinition;
+import models.FieldDefinition;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
@@ -22,8 +26,10 @@ import utils.AuthTokens;
 import utils.DbUtils;
 import utils.DbWrites;
 import utils.UserRecordUtils;
+import validation.ValidationResult;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.mongodb.client.model.Filters.eq;
 
@@ -36,18 +42,34 @@ public class TenantUserService {
             .build();
     private static final int PASSWORD_SALT_LENGTH = 22;
     private static final int MIN_PASSWORD_LENGTH = SystemUserService.MIN_PASSWORD_LENGTH;
+    /**
+     * Field names the admin user editor must never write: the core fields have their own
+     * parameters, the rest is server-managed. Everything else in a request body is a custom field
+     * of the tenant's users schema.
+     */
+    private static final Set<String> NON_CUSTOM_FIELDS = Set.of(
+            SystemFields.ID, SystemFields.CREATED_AT, SystemFields.UPDATED_AT,
+            UserRecordUtils.USERNAME, UserRecordUtils.EMAIL, UserRecordUtils.PASSWORD,
+            UserRecordUtils.ROLE);
+
     private final TenantDatabaseResolver resolver;
     private final TenantService tenantService;
     private final RealtimeService realtimeService;
+    private final TenantCollectionService tenantCollections;
+    private final ValidationService validationService;
 
     @Inject
     public TenantUserService(
             TenantDatabaseResolver resolver,
             TenantService tenantService,
-            RealtimeService realtimeService) {
+            RealtimeService realtimeService,
+            TenantCollectionService tenantCollections,
+            ValidationService validationService) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
+        this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
+        this.validationService = Objects.requireNonNull(validationService, "validationService must not be null");
     }
 
     public TenantLoginResult authenticateForLogin(String username, String password, String tenantSlug) {
@@ -91,9 +113,30 @@ public class TenantUserService {
         return TenantLoginResult.success(AuthContext.of(user.getString("id"), Role.USER, tenant.id()));
     }
 
+    /**
+     * Creates a user without touching the custom part of the users schema - used by
+     * self-registration, which only knows the core fields. A required custom field is therefore not
+     * enforced here; that check belongs to the callers that can actually supply one.
+     */
     public Map<String, Object> createUser(TenantDefinition tenant, String username, String email, String password) {
+        return createUser(tenant, username, email, password, null);
+    }
+
+    /**
+     * Creates a tenant user. {@code customFields} carries the fields the tenant added to its own
+     * users schema; they are validated against that schema exactly like a data-plane write, so the
+     * admin UI cannot store a value the API would later reject.
+     */
+    public Map<String, Object> createUser(
+            TenantDefinition tenant,
+            String username,
+            String email,
+            String password,
+            Map<String, Object> customFields) {
         validateUsername(username);
         validatePassword(password);
+
+        Document custom = validatedCustomFields(tenant, customFields, true);
 
         if (findByUsername(tenant, username.trim()) != null) {
             throw new IllegalArgumentException("Username already exists");
@@ -111,6 +154,8 @@ public class TenantUserService {
                 .append(SystemFields.CREATED_AT, now)
                 .append(SystemFields.UPDATED_AT, now);
 
+        user.putAll(custom);
+
         // The check above can be lost to a request arriving at the same time; the unique index on
         // the username is what settles it, and a lost race must read like a detected duplicate
         DbWrites.rejectDuplicateAs("Username already exists", () -> usersCollection(tenant).insertOne(user));
@@ -124,6 +169,21 @@ public class TenantUserService {
             String username,
             String email,
             String password) {
+        return updateUser(tenant, userId, username, email, password, null);
+    }
+
+    /**
+     * Updates a tenant user. Only the keys present in {@code customFields} are touched, so the
+     * editor can patch a single field without having to resend the whole record. A key with a
+     * {@code null} value clears the field.
+     */
+    public Optional<Map<String, Object>> updateUser(
+            TenantDefinition tenant,
+            String userId,
+            String username,
+            String email,
+            String password,
+            Map<String, Object> customFields) {
         if (StringUtils.isBlank(userId)) {
             return Optional.empty();
         }
@@ -135,6 +195,16 @@ public class TenantUserService {
         }
 
         Document updates = new Document();
+        Document unsets = new Document();
+
+        Document custom = validatedCustomFields(tenant, customFields, false);
+        custom.forEach((name, value) -> {
+            if (value == null) {
+                unsets.append(name, "");
+            } else {
+                updates.append(name, value);
+            }
+        });
 
         if (username != null) {
             validateUsername(username);
@@ -157,13 +227,17 @@ public class TenantUserService {
             updates.append("passwordHash", CommonUtils.hashArgon2(password, salt));
         }
 
-        if (updates.isEmpty()) {
+        if (updates.isEmpty() && unsets.isEmpty()) {
             return Optional.of(toPublicMap(existing));
         }
 
         updates.append(SystemFields.UPDATED_AT, SystemFields.timestamp());
+        Document operations = new Document("$set", updates);
+        if (!unsets.isEmpty()) {
+            operations.append("$unset", unsets);
+        }
         DbWrites.rejectDuplicateAs("Username already exists",
-                () -> usersCollection(tenant).updateOne(eq("id", normalizedUserId), new Document("$set", updates)));
+                () -> usersCollection(tenant).updateOne(eq("id", normalizedUserId), operations));
 
         return Optional.of(toPublicMap(findById(tenant, normalizedUserId)));
     }
@@ -465,6 +539,12 @@ public class TenantUserService {
         return CommonUtils.matchArgon2(password, salt, hash);
     }
 
+    /**
+     * The view of a user the admin API hands out: the core fields in a fixed order, followed by
+     * whatever the tenant added to its own users schema. Credentials and single-use auth tokens are
+     * filtered out by name, so a new internal field is only ever exposed by also listing it in
+     * {@link UserRecordUtils#CREDENTIAL_FIELDS}.
+     */
     private Map<String, Object> toPublicMap(Document user) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", user.getString("id"));
@@ -473,7 +553,103 @@ public class TenantUserService {
         map.put("role", user.getString("role"));
         map.put(SystemFields.CREATED_AT, user.getString(SystemFields.CREATED_AT));
         map.put(SystemFields.UPDATED_AT, user.getString(SystemFields.UPDATED_AT));
+
+        user.forEach((name, value) -> {
+            if (map.containsKey(name)
+                    || "_id".equals(name)
+                    || UserRecordUtils.PASSWORD.equals(name)
+                    || UserRecordUtils.CREDENTIAL_FIELDS.contains(name)) {
+                return;
+            }
+            map.put(name, value);
+        });
+
         return map;
+    }
+
+    /**
+     * Checks the custom part of a user write against the tenant's users schema and returns it as a
+     * Mongo document. An unknown field name, a wrong type or a violated constraint is rejected here
+     * rather than stored, which keeps the admin editor and {@code /api/collections/users} in
+     * agreement about what a user record may contain.
+     */
+    private Document validatedCustomFields(TenantDefinition tenant, Map<String, Object> customFields, boolean create) {
+        Document document = new Document();
+
+        // null means "this caller does not manage custom fields at all", an empty map means "it
+        // does, and there are none" - only the latter can be held to a required custom field.
+        if (customFields == null) {
+            return document;
+        }
+
+        if (customFields.isEmpty()) {
+            if (create) {
+                requireCustomFieldsPresent(tenant, Set.of());
+            }
+            return document;
+        }
+
+        for (String name : customFields.keySet()) {
+            if (NON_CUSTOM_FIELDS.contains(name) || UserRecordUtils.INTERNAL_FIELDS.contains(name)) {
+                throw new IllegalArgumentException("Field \"" + name + "\" is read-only");
+            }
+        }
+
+        CollectionDefinition users = usersDefinition(tenant);
+
+        // The values arrive as plain JSON, so validating them means going through the same node
+        // tree the data-plane validators see - anything else would be a second, diverging notion of
+        // what a valid value is.
+        JsonNode node = JsonUtils.getMapper().valueToTree(customFields);
+        ValidationResult result = validationService.validateUpdate(users, node);
+        if (!result.isValid()) {
+            throw new IllegalArgumentException(result.errors().stream()
+                    .map(error -> error.field() == null
+                            ? error.message()
+                            : error.field() + ": " + error.message())
+                    .collect(Collectors.joining(", ")));
+        }
+
+        if (create) {
+            requireCustomFieldsPresent(tenant, customFields.entrySet().stream()
+                    .filter(entry -> entry.getValue() != null)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toSet()));
+        }
+
+        document.putAll(customFields);
+        return document;
+    }
+
+    /** A required custom field has to be supplied on create, just like on a data-plane POST. */
+    private void requireCustomFieldsPresent(TenantDefinition tenant, Set<String> supplied) {
+        for (FieldDefinition field : customFieldDefinitions(tenant)) {
+            if (field.required() && !supplied.contains(field.name())) {
+                throw new IllegalArgumentException("Field \"" + field.name() + "\" is required");
+            }
+        }
+    }
+
+    private List<FieldDefinition> customFieldDefinitions(TenantDefinition tenant) {
+        CollectionDefinition users = usersDefinition(tenant);
+        if (users.fields() == null) {
+            return List.of();
+        }
+        return users.fields().stream()
+                .filter(field -> !NON_CUSTOM_FIELDS.contains(field.name()))
+                .filter(field -> !UserRecordUtils.INTERNAL_FIELDS.contains(field.name()))
+                .toList();
+    }
+
+    private CollectionDefinition usersDefinition(TenantDefinition tenant) {
+        CollectionDefinition users = tenantCollections.findDefinition(
+                TenantContext.guest(tenant.id(), tenant.databaseName()), SystemCollections.USERS);
+
+        if (users == null) {
+            throw new IllegalArgumentException("This tenant has no users schema");
+        }
+
+        return users;
     }
 
     private void validateUsername(String username) {
