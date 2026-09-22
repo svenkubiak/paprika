@@ -218,13 +218,18 @@ async function openEditRecord(record: Record<string, unknown>) {
 }
 
 function buildDefaultRecord(): Record<string, unknown> {
-  const record: Record<string, unknown> = {}
-  for (const field of definition.value?.fields || []) {
+  const fields = definition.value?.fields || []
+  // Defaults first: applyDefaultsToRecord only fills fields that are still missing, so the
+  // empty-string placeholders must be written after it ran - otherwise every configured default
+  // would be shadowed by an empty string.
+  const withDefaults = applyDefaultsToRecord(fields, {})
+  for (const field of fields) {
     if (field.type === 'FILE' || field.type === 'BOOLEAN') continue
-    record[field.name] = ''
+    if (withDefaults[field.name] === undefined) {
+      withDefaults[field.name] = ''
+    }
   }
-  const withDefaults = applyDefaultsToRecord(definition.value?.fields || [], record)
-  for (const field of definition.value?.fields || []) {
+  for (const field of fields) {
     if (field.type !== 'BOOLEAN') continue
     if (field.default !== undefined) {
       withDefaults[field.name] = booleanToFormValue(field.default)

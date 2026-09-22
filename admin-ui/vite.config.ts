@@ -14,8 +14,9 @@ export default defineConfig({
           scan: true,
           icons: [
             // Field-type icons (resolved dynamically via fieldTypeIcon(); scan cannot detect them)
-            'lucide:type', 'lucide:hash', 'lucide:toggle-left', 'lucide:calendar', 'lucide:clock',
-            'lucide:git-branch', 'lucide:paperclip', 'lucide:braces',
+            'lucide:type', 'lucide:align-left', 'lucide:hash', 'lucide:toggle-left',
+            'lucide:calendar', 'lucide:clock', 'lucide:git-branch', 'lucide:paperclip',
+            'lucide:braces',
             'lucide:activity', 'lucide:archive', 'lucide:arrow-down-left', 'lucide:arrow-left',
             'lucide:arrow-right-left', 'lucide:arrow-up-down', 'lucide:arrow-up-right',
             'lucide:building-2', 'lucide:calendar-clock', 'lucide:check', 'lucide:chevron-down',

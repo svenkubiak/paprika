@@ -20,6 +20,32 @@ function formatOffset(date: Date): string {
   return `${sign}${pad(Math.floor(total / 60))}:${pad(total % 60)}`
 }
 
+function formatDatePart(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function formatTimePart(date: Date): string {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+/**
+ * The current local date as the value of an `<input type="date">` (`yyyy-MM-dd`). Used to
+ * pre-fill DATE fields of a new record; the editor keeps a way to clear it again.
+ */
+export function currentDateInputValue(now: Date = new Date()): string {
+  return formatDatePart(now)
+}
+
+/** The current local time as the value of an `<input type="time">` (`HH:mm:ss`). */
+export function currentTimeInputValue(now: Date = new Date()): string {
+  return formatTimePart(now)
+}
+
+/** The current local moment as the value of an `<input type="datetime-local">`. */
+export function currentDateTimeInputValue(now: Date = new Date()): string {
+  return `${formatDatePart(now)}T${formatTimePart(now)}`
+}
+
 /**
  * Stored value -> value for the picker (`yyyy-MM-ddTHH:mm:ss`, local time of this browser).
  * A stored value with a foreign offset is converted into the local zone; null, undefined and
@@ -41,10 +67,7 @@ export function toDateTimeInputValue(stored: unknown): string {
     return ''
   }
 
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-  )
+  return `${formatDatePart(date)}T${formatTimePart(date)}`
 }
 
 /**
@@ -70,8 +93,7 @@ export function toDateTimeStoredValue(input: string): string | undefined {
 
   const milliseconds = date.getMilliseconds()
   return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+    `${formatDatePart(date)}T${formatTimePart(date)}` +
     `${milliseconds > 0 ? `.${pad(milliseconds, 3)}` : ''}` +
     formatOffset(date)
   )

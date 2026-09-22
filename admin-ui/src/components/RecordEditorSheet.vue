@@ -13,7 +13,12 @@ import {
   unsetFieldValue,
   validateRecordValues
 } from '@/lib/field-validation'
-import { toDateTimeInputValue, toDateTimeStoredValue } from '@/lib/datetime'
+import {
+  currentDateInputValue,
+  currentDateTimeInputValue,
+  toDateTimeInputValue,
+  toDateTimeStoredValue
+} from '@/lib/datetime'
 
 export type RecordSavePayload = {
   values: Record<string, unknown>
@@ -46,6 +51,15 @@ const fileSelections = ref<Record<string, File[]>>({})
 // dropped fraction of a second would be a silent data change caused by merely looking at it.
 const dateTimeInitial = ref<Record<string, { stored: unknown; input: string }>>({})
 
+/**
+ * A new record starts with an empty string for every field, so "no value" and "explicitly empty"
+ * cannot be told apart here - which is fine, because the pre-fill only ever runs while the sheet
+ * is being populated from the record, never while the user types.
+ */
+function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined || (typeof value === 'string' && !value.trim())
+}
+
 function serializeJsonField(value: unknown): string {
   if (value === null || value === undefined) return ''
   return JSON.stringify(value, null, 2)
@@ -72,13 +86,24 @@ watch(
         formState.value[field.name] = selectToFormValue(field, record[field.name])
       }
       if (field.type === 'DATETIME') {
-        const input = toDateTimeInputValue(record[field.name])
-        dateTimeInitial.value[field.name] = { stored: record[field.name], input }
-        formState.value[field.name] = input
+        const stored = record[field.name]
+        const input = toDateTimeInputValue(stored)
+        dateTimeInitial.value[field.name] = { stored, input }
+        // New records start at "now" as a convenience; the clear button next to the picker puts
+        // the field back to empty. The initial pair above stays at the stored (empty) value, so
+        // the pre-filled timestamp counts as a change and is serialized on save.
+        formState.value[field.name] =
+          !input && props.mode === 'new' && isEmptyValue(stored)
+            ? currentDateTimeInputValue()
+            : input
       }
       if (field.type === 'DATE' || field.type === 'TIME') {
         const stored = record[field.name]
-        formState.value[field.name] = typeof stored === 'string' ? stored : ''
+        const input = typeof stored === 'string' ? stored : ''
+        formState.value[field.name] =
+          !input && field.type === 'DATE' && props.mode === 'new' && isEmptyValue(stored)
+            ? currentDateInputValue()
+            : input
       }
     }
     const payload = { ...record }
@@ -126,6 +151,24 @@ function isMultiRelation(field: FieldDefinition) {
 
 function relationPlaceholder(field: FieldDefinition) {
   return isMultiRelation(field) ? 'id-1, id-2' : 'Related record id'
+}
+
+function dateInputType(field: FieldDefinition): 'date' | 'time' | 'datetime-local' {
+  if (field.type === 'DATE') return 'date'
+  if (field.type === 'TIME') return 'time'
+  return 'datetime-local'
+}
+
+function hasDateValue(fieldName: string): boolean {
+  return !isEmptyValue(formState.value[fieldName])
+}
+
+/**
+ * Clears a date/time picker. Not every browser offers a way to empty these inputs again, so the
+ * pre-filled "now" of a new record would otherwise be impossible to remove.
+ */
+function clearDateValue(fieldName: string) {
+  formState.value[fieldName] = ''
 }
 
 function submit() {
@@ -329,25 +372,24 @@ function submit() {
               class="w-full"
             />
             <UInput
-              v-else-if="field.type === 'DATE'"
+              v-else-if="field.type === 'DATE' || field.type === 'TIME' || field.type === 'DATETIME'"
               v-model="formState[field.name]"
-              type="date"
+              :type="dateInputType(field)"
+              :step="field.type === 'DATE' ? undefined : '1'"
               class="w-full"
-            />
-            <UInput
-              v-else-if="field.type === 'TIME'"
-              v-model="formState[field.name]"
-              type="time"
-              step="1"
-              class="w-full"
-            />
-            <UInput
-              v-else-if="field.type === 'DATETIME'"
-              v-model="formState[field.name]"
-              type="datetime-local"
-              step="1"
-              class="w-full"
-            />
+            >
+              <template v-if="hasDateValue(field.name)" #trailing>
+                <UButton
+                  color="neutral"
+                  variant="link"
+                  size="sm"
+                  icon="i-lucide-x"
+                  aria-label="Clear value"
+                  title="Clear value"
+                  @click="clearDateValue(field.name)"
+                />
+              </template>
+            </UInput>
             <UInput
               v-else
               v-model="formState[field.name]"
