@@ -224,7 +224,8 @@ class HookHeaderForwardingIntegrationTest {
                 false,
                 null,
                 null,
-                List.of("x-app-key-id"));
+                List.of("x-app-key-id"),
+                null);
         collections.insertHook(ctx, hook);
 
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
@@ -274,7 +275,8 @@ class HookHeaderForwardingIntegrationTest {
                 false,
                 null,
                 null,
-                forwardHeaders);
+                forwardHeaders,
+                null);
     }
 
     /** Creates a record with a credential-carrying request and returns the caller's token. */

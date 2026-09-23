@@ -85,6 +85,7 @@ class HookServiceSsrfTest {
                 null,
                 null,
                 null,
+                null,
                 null);
         hookService.validate(hook, ctx);
     }

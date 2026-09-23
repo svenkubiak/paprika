@@ -55,7 +55,8 @@ public class MetaGlobalHooksController {
                 hookDefinition.failOpen(),
                 hookDefinition.applyToAllCollections(),
                 hookDefinition.targetCollections(),
-                HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders()));
+                HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders()),
+                hookDefinition.includeFileRoutes());
 
         try {
             hookService.validate(hook, ctx);
@@ -102,7 +103,10 @@ public class MetaGlobalHooksController {
                         : current.targetCollections(),
                 hookDefinition.forwardHeaders() != null
                         ? HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders())
-                        : current.forwardHeaders());
+                        : current.forwardHeaders(),
+                hookDefinition.includeFileRoutes() != null
+                        ? hookDefinition.includeFileRoutes()
+                        : current.includeFileRoutes());
 
         try {
             hookService.validate(updated, ctx);

@@ -193,7 +193,8 @@ public class SchemaService {
                     hook.failOpen(),
                     hook.applyToAllCollections(),
                     hook.targetCollections(),
-                    HookRequestUtils.normalizeForwardHeaders(hook.forwardHeaders())
+                    HookRequestUtils.normalizeForwardHeaders(hook.forwardHeaders()),
+                    hook.includeFileRoutes()
             ));
         }
 

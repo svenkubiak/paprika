@@ -129,6 +129,8 @@ public class HookService {
             }
         } else if (GlobalHooks.isGlobalCollection(hook.collection())) {
             throw new IllegalArgumentException("Only beforeRequest hooks may use the global collection scope");
+        } else if (hook.includesFileRoutes()) {
+            throw new IllegalArgumentException("includeFileRoutes is only allowed for beforeRequest hooks");
         }
 
         if (hook.event().isAuthEvent() && !SystemCollections.USERS.equals(hook.collection())) {
@@ -246,6 +248,32 @@ public class HookService {
                 null,
                 null,
                 null,
+                true,
+                false);
+    }
+
+    /**
+     * Runs the global beforeRequest hooks for a file route (download/delete of a file field).
+     * The collection scope applies as on any other collection route, and only hooks that opted
+     * into file routes run at all. The record is deliberately not loaded: beforeRequest is the
+     * upfront filter, not the lifecycle event, and a read per download would be a permanent cost
+     * for a value the hook does not get on collection routes either.
+     */
+    public HookExecutionResult runBeforeRequestForFileRoute(
+            TenantContext ctx,
+            CollectionDefinition definition,
+            Request request,
+            String recordId) {
+
+        return runBeforeRequestHooks(
+                ctx,
+                request,
+                definition.name(),
+                null,
+                null,
+                recordId,
+                definition,
+                false,
                 true);
     }
 
@@ -266,6 +294,7 @@ public class HookService {
                 record,
                 recordId,
                 definition,
+                false,
                 false);
 
         if (!requestResult.continueOperation()) {
@@ -312,9 +341,10 @@ public class HookService {
             Document record,
             String recordId,
             CollectionDefinition definition,
-            boolean authFlow) {
+            boolean authFlow,
+            boolean fileRoute) {
 
-        List<HookDefinition> hooks = findMatchingBeforeRequestHooks(ctx, collection, authFlow);
+        List<HookDefinition> hooks = findMatchingBeforeRequestHooks(ctx, collection, authFlow, fileRoute);
         JsonNode currentBody = body;
         boolean anyHookRan = false;
 
@@ -415,7 +445,8 @@ public class HookService {
     private List<HookDefinition> findMatchingBeforeRequestHooks(
             TenantContext ctx,
             String collection,
-            boolean authFlow) {
+            boolean authFlow,
+            boolean fileRoute) {
 
         return tenantCollections.metaHooks(ctx)
                 .find(Filters.and(
@@ -424,6 +455,7 @@ public class HookService {
                 .into(new ArrayList<>())
                 .stream()
                 .filter(HookDefinition::isEnabled)
+                .filter(hook -> !fileRoute || hook.includesFileRoutes())
                 .filter(hook -> authFlow || hook.matchesCollectionScope(collection))
                 .sorted(Comparator.comparingInt(HookDefinition::priorityOrDefault))
                 .toList();
@@ -884,7 +916,8 @@ public class HookService {
                 hook.failOpen(),
                 hook.applyToAllCollections(),
                 hook.targetCollections(),
-                HookRequestUtils.normalizeForwardHeaders(hook.forwardHeaders()));
+                HookRequestUtils.normalizeForwardHeaders(hook.forwardHeaders()),
+                hook.includeFileRoutes());
     }
 
     private String httpPathForTest(HookEvent event, String collection) {

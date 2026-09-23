@@ -57,7 +57,9 @@ public class MetaHooksController {
                 hookDefinition.failOpen(),
                 null,
                 null,
-                HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders())
+                HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders()),
+                // Collection hooks never guard file routes: that switch belongs to beforeRequest.
+                null
         );
 
         try {
@@ -102,7 +104,8 @@ public class MetaHooksController {
                 current.targetCollections(),
                 hookDefinition.forwardHeaders() != null
                         ? HookRequestUtils.normalizeForwardHeaders(hookDefinition.forwardHeaders())
-                        : current.forwardHeaders()
+                        : current.forwardHeaders(),
+                current.includeFileRoutes()
         );
 
         try {

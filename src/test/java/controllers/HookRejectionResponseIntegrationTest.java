@@ -192,6 +192,7 @@ class HookRejectionResponseIntegrationTest {
                 failOpen,
                 null,
                 null,
+                null,
                 null);
     }
 

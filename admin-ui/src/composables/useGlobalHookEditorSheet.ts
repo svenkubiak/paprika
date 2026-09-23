@@ -33,7 +33,8 @@ export function emptyGlobalHookForm(): GlobalHookEditorForm {
     failOpen: false,
     applyToAllCollections: true,
     targetCollections: [],
-    forwardHeaders: ''
+    forwardHeaders: '',
+    includeFileRoutes: false
   }
 }
 

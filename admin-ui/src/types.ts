@@ -112,6 +112,7 @@ export interface HookDefinition {
   applyToAllCollections?: boolean | null
   targetCollections?: string[] | null
   forwardHeaders?: string[] | null
+  includeFileRoutes?: boolean | null
 }
 
 export interface HookTestResult {

@@ -50,6 +50,16 @@ field you sort by.
 
 That means the server-generated `id` is available right after a create, so a client can immediately reference the new record (for example from a second record pointing at it) without a follow-up list or read call. `DELETE` still answers without a body.
 
+## File routes and global hooks
+
+The file routes (`GET`/`DELETE /api/collections/{collection}/{id}/files/{field}[/{fileId}]`) are
+gated by the collection's [rules](/admin-ui/collection-rules) like every other route — a download
+is checked as `view`, a file deletion as `update`.
+
+A tenant-wide [`beforeRequest` hook](/admin-ui/global-hooks) only runs before them when it has
+**Also guard file routes** switched on. That is off by default, and it costs one hook roundtrip
+per file request; see [Global Hooks → File routes](/admin-ui/global-hooks#file-routes-off-by-default).
+
 ## File downloads are cacheable
 
 A download (`GET /api/collections/{collection}/{id}/files/{field}[/{fileId}]`) answers with a strong

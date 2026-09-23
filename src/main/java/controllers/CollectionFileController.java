@@ -3,6 +3,7 @@ package controllers;
 import auth.TenantContextHolder;
 import filters.TenantContextFilter;
 import filters.api.ApiAuthFilter;
+import filters.api.ApiFileRouteHookFilter;
 import helpers.CollectionFileResponseHelper;
 import io.mangoo.annotations.FilterWith;
 import io.mangoo.routing.Response;
@@ -12,7 +13,10 @@ import services.CollectionFileService;
 
 import java.util.Objects;
 
-@FilterWith({TenantContextFilter.class, ApiAuthFilter.class})
+// The hook filter runs last on purpose: a beforeRequest hook acting as an external authorizer
+// needs the resolved auth context (context.auth.id/role) in the envelope, just like on the
+// collection routes.
+@FilterWith({TenantContextFilter.class, ApiAuthFilter.class, ApiFileRouteHookFilter.class})
 public class CollectionFileController {
     private final CollectionFileService collectionFileService;
 

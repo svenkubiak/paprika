@@ -38,10 +38,23 @@ public record HookDefinition(
          * the fixed non-sensitive allowlist. Opt-in per hook because every entry is sent to an
          * externally configured URL; blocked headers are rejected on save.
          */
-        List<String> forwardHeaders
+        List<String> forwardHeaders,
+
+        /*
+         * Whether this beforeRequest hook also guards the file routes
+         * (/api/collections/{collection}/{id}/files/{field}[/{fileId}]). Opt-in and off by
+         * default: an existing hook was written for collection and auth routes only, and a guard
+         * that rejects what it does not know would otherwise block every download after an
+         * upgrade. Costs one hook roundtrip per file request.
+         */
+        Boolean includeFileRoutes
 ) {
     public boolean appliesToAllCollections() {
         return Boolean.TRUE.equals(applyToAllCollections);
+    }
+
+    public boolean includesFileRoutes() {
+        return Boolean.TRUE.equals(includeFileRoutes);
     }
 
     public List<String> forwardHeadersOrEmpty() {

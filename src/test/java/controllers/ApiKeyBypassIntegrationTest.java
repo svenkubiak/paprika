@@ -381,6 +381,7 @@ class ApiKeyBypassIntegrationTest {
                 false,
                 null,
                 null,
+                null,
                 null);
     }
 

@@ -116,6 +116,7 @@ class AuthIssueTokenForIntegrationTest {
                 false,
                 null,
                 null,
+                null,
                 null);
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
@@ -215,6 +216,7 @@ class AuthIssueTokenForIntegrationTest {
                 null,
                 null,
                 false,
+                null,
                 null,
                 null,
                 null);

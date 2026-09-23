@@ -77,7 +77,8 @@ function hookToForm(hook: HookDefinition) {
     failOpen: !!hook.failOpen,
     applyToAllCollections: hook.applyToAllCollections === true,
     targetCollections: [...(hook.targetCollections || [])],
-    forwardHeaders: (hook.forwardHeaders || []).join(', ')
+    forwardHeaders: (hook.forwardHeaders || []).join(', '),
+    includeFileRoutes: hook.includeFileRoutes === true
   }
 }
 
@@ -126,7 +127,8 @@ async function saveHook() {
       targetCollections: editorForm.value.applyToAllCollections
         ? []
         : editorForm.value.targetCollections,
-      forwardHeaders: parseForwardHeaders(editorForm.value.forwardHeaders)
+      forwardHeaders: parseForwardHeaders(editorForm.value.forwardHeaders),
+      includeFileRoutes: editorForm.value.includeFileRoutes
     }
 
     if (editorId.value) {

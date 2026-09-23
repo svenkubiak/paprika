@@ -21,6 +21,7 @@ export interface GlobalHookEditorForm {
   targetCollections: string[]
   /** Comma-separated header names, sent to the backend as a list. */
   forwardHeaders: string
+  includeFileRoutes: boolean
 }
 
 const props = defineProps<{
@@ -212,6 +213,14 @@ watch(
               </UFormField>
               <USwitch v-model="form.enabled" label="Enabled" />
               <USwitch v-model="form.failOpen" label="Fail open on errors" />
+              <USwitch v-model="form.includeFileRoutes" label="Also guard file routes" />
+              <p class="text-xs text-muted">
+                Off by default. When on, this hook also runs before file downloads and file
+                deletions ({{ '/api/collections/{collection}/{id}/files/{field}' }}) — one hook
+                roundtrip per file request. An image list fires many of them at once, so the hook
+                needs its own cache and a timeout below Paprika's 5-second budget for blocking
+                hooks.
+              </p>
             </div>
           </UCard>
 

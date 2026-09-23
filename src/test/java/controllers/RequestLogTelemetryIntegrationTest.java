@@ -378,6 +378,7 @@ class RequestLogTelemetryIntegrationTest {
                 false,
                 null,
                 null,
+                null,
                 null);
     }
 
