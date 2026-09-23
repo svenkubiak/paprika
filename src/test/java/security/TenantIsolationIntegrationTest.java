@@ -221,6 +221,15 @@ class TenantIsolationIntegrationTest {
                     response.getStatusCode(), anyOf(equalTo(401), equalTo(403), equalTo(404)));
             assertThat(uri + " must not leak tenant B data", findLeak(response.getContent()), nullValue());
         }
+
+        // The writing counterparts of the two exports, listed explicitly: an import reshapes a
+        // tenant or replaces the whole instance, so it is the last route that may answer a token
+        for (String uri : List.of("/api/meta/schema/import", "/api/admin/backup/import")) {
+            TestResponse response = call("POST", uri);
+            assertThat(uri + " must not be reachable with a tenant token",
+                    response.getStatusCode(), anyOf(equalTo(401), equalTo(403), equalTo(404)));
+            assertThat(uri + " must not leak tenant B data", findLeak(response.getContent()), nullValue());
+        }
     }
 
     // ---------------------------------------------------------------------------------------

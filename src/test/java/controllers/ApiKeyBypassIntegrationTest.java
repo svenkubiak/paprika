@@ -195,6 +195,50 @@ class ApiKeyBypassIntegrationTest {
             assertThat(path + " must stay closed for a bypass key",
                     response.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
         }
+
+        // The writing counterparts matter more than the reading ones: schema import reshapes a
+        // tenant, backup import replaces the whole instance. They are listed explicitly because a
+        // GET-only loop would not notice a route that forgot its filter on the POST side.
+        for (String path : List.of(
+                "/api/meta/schema/import",
+                "/api/admin/backup/import")) {
+
+            TestResponse response = TestRequest.post(path)
+                    .withHeader("Authorization", "Bearer " + key)
+                    .withStringBody("{\"collections\":[]}")
+                    .withContentType("application/json")
+                    .execute();
+
+            assertThat(path + " must stay closed for a bypass key",
+                    response.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
+        }
+    }
+
+    /**
+     * The scheme of an {@code Authorization} header is case-insensitive, so spelling it in lower
+     * case must not make a key look like an absent credential - which on the admin API would mean
+     * falling through to the cookie branch instead of being rejected outright.
+     */
+    @Test
+    void lowercaseBearerSchemeIsTreatedAsAKeyAsWell() {
+        UserService userService = Application.getInstance(UserService.class);
+        String boundId = userId(userService.createUser("bypass-lowercase-user", null, "secret-password-123"));
+        String key = createKey("bypass-lowercase-key", boundId, true).key();
+
+        String collection = "posts_bypass_lowercase";
+        TenantTestUtils.seedCollection(collection, CollectionRules.locked());
+        TenantTestUtils.seedRecord(collection, "lowercase scheme record");
+
+        TestResponse data = TestRequest.get("/api/collections/" + collection)
+                .withHeader("Authorization", "bearer " + key)
+                .execute();
+        assertThat(data.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(data.getContent(), containsString("lowercase scheme record"));
+
+        TestResponse meta = TestRequest.get("/api/meta/schema/export")
+                .withHeader("Authorization", "bearer " + key)
+                .execute();
+        assertThat(meta.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
     }
 
     @Test
