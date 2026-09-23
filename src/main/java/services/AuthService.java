@@ -70,10 +70,8 @@ public class AuthService {
     }
 
     public AuthContext resolveBearer(Request request) {
-        String authorization = request.getHeader("Authorization");
-        if (StringUtils.isNotBlank(authorization) && authorization.startsWith(BEARER_PREFIX)) {
-            String token = authorization.substring(BEARER_PREFIX.length()).trim();
-
+        String token = bearerToken(request);
+        if (token != null) {
             // An API key is a bearer value as well, so it travels the existing filter paths
             // untouched; the prefix decides which of the two it is without a parse attempt.
             if (ApiKeys.isApiKey(token)) {
@@ -87,6 +85,25 @@ public class AuthService {
         }
 
         return AuthContext.guest();
+    }
+
+    /**
+     * The credential of an {@code Authorization: Bearer …} header, or {@code null} when the header
+     * is absent or carries a different scheme.
+     * <p>
+     * RFC 7235 defines the scheme as case-insensitive, and it is matched that way here so that the
+     * exact spelling a client chose can never decide an authorization outcome: a lower case
+     * {@code bearer} must not turn an API key into an anonymous request on the data plane, and it
+     * must not look like "no bearer at all" to the admin API, whose only defence is rejecting
+     * every bearer it sees.
+     */
+    private String bearerToken(Request request) {
+        String authorization = request.getHeader("Authorization");
+        if (StringUtils.isBlank(authorization) || !StringUtils.startsWithIgnoreCase(authorization, BEARER_PREFIX)) {
+            return null;
+        }
+
+        return authorization.substring(BEARER_PREFIX.length()).trim();
     }
 
     /**
@@ -108,8 +125,7 @@ public class AuthService {
     }
 
     public boolean hasBearerToken(Request request) {
-        String authorization = request.getHeader("Authorization");
-        return StringUtils.isNotBlank(authorization) && authorization.startsWith(BEARER_PREFIX);
+        return bearerToken(request) != null;
     }
 
     /**
@@ -123,12 +139,7 @@ public class AuthService {
 
         Authentication authentication = request.getAuthentication();
         if (authentication != null && authentication.isValid()) {
-            String subject = authentication.getSubject();
-            return systemUserService.findPublicUser(subject)
-                    .map(user -> AuthContext.of(
-                            subject,
-                            Role.SUPERADMIN,
-                            null));
+            return resolveSuperadmin(authentication.getSubject());
         }
 
         Cookie cookie = request.getCookie(config.getAuthenticationCookieName());
@@ -150,11 +161,29 @@ public class AuthService {
                 return Optional.empty();
             }
 
-            return systemUserService.findPublicUser(subject)
-                    .map(user -> AuthContext.of(subject, Role.SUPERADMIN, null));
+            return resolveSuperadmin(subject);
         } catch (MangooJwtException | IllegalArgumentException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * The admin context of an account, but only if that account still <em>is</em> a superadmin.
+     * <p>
+     * The role is read back from the stored user instead of being assumed from the fact that a
+     * valid session cookie exists: the cookie only carries a subject, and it outlives any change
+     * to the account it points at. Without this check every system user would be handed superadmin
+     * authority - which today is true for all of them, but is exactly the assumption that would
+     * silently turn into a privilege escalation the day a lesser system role is introduced.
+     */
+    private Optional<AuthContext> resolveSuperadmin(String subject) {
+        if (StringUtils.isBlank(subject)) {
+            return Optional.empty();
+        }
+
+        return systemUserService.findPublicUser(subject)
+                .filter(user -> Role.SUPERADMIN.equals(user.get("role")))
+                .map(user -> AuthContext.of(subject, Role.SUPERADMIN, null));
     }
 
     public TokenPair createTokenPair(AuthContext auth) {
