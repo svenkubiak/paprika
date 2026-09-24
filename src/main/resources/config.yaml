@@ -161,7 +161,7 @@ environments:
 
   prod:
     paprika:
-      storage: env{}          # PAPRIKA_STORAGE - absolute path, required in prod
+      storage: env{}
     token:
       secret: env{}
       key: env{}
