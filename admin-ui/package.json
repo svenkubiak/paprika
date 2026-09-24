@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "typecheck": "vue-tsc --noEmit",
     "build": "vite build && node scripts/prune-build-output.mjs",
-    "prebuild": "rm -rf ../src/main/resources/files/assets/js ../src/main/resources/files/assets/css ../src/main/resources/files/assets/img ../src/main/resources/files/assets/manifest.json ../src/main/resources/files/assets/admin ../src/main/resources/files/assets/.vite",
+    "prebuild": "npm run typecheck && rm -rf ../src/main/resources/files/assets/js ../src/main/resources/files/assets/css ../src/main/resources/files/assets/img ../src/main/resources/files/assets/manifest.json ../src/main/resources/files/assets/admin ../src/main/resources/files/assets/.vite",
     "preview": "vite preview"
   },
   "dependencies": {
