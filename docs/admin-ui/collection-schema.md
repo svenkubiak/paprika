@@ -4,7 +4,7 @@
 
 ## Creating a collection
 
-Use **New collection** (available from the sidebar's collection list). Names are normalized to lowercase letters, numbers, and underscores. A collection is created with an empty schema — you land straight on its Schema tab to start adding fields.
+Use **New collection** (available from the sidebar's collection list). The dialog normalizes what you type to lowercase letters, numbers, and underscores; the server then holds the result to the same rule it applies to [field names](/concepts/collections#fields) — letters, digits, underscores and hyphens, starting with a letter, under 64 characters — and answers a name it will not take (one starting with a digit, say) with a 400. A collection is created with an empty schema — you land straight on its Schema tab to start adding fields.
 
 ## Adding and editing fields
 

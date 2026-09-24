@@ -4,7 +4,7 @@ A **collection** is Paprika's equivalent of a database table: a named, schema-de
 
 ## Fields
 
-Each field has a **name** (letters, numbers, underscores — used as the JSON key in API requests/responses) and a **type**:
+Each field has a **name** — used as the JSON key in API requests and responses — and a **type**. A name may contain letters, digits, underscores and hyphens, has to start with a letter and stays under 64 characters. That is enforced, on the Schema tab and on a [schema import](/admin-ui/collection-schema) alike: a name is also a key in MongoDB, where a dot means "nested path" and a `$` starts an operator, and a field called `_id` would collide with MongoDB's own primary key. Collection names follow the same rule.
 
 | Type | Stores | Notable options |
 |---|---|---|
@@ -36,6 +36,10 @@ Relations are validated when the record that holds them is written: create/updat
 ## Files
 
 `FILE` fields are part of the schema, not a bolted-on system: they're validated (max size, allowed MIME types, max count) the same way any other field is, and they follow the same [collection rules](/concepts/roles-and-permissions) as the rest of the record — a `viewRule` that denies a user also denies downloading that record's files. Files are cleaned up automatically when their record is deleted or when a file field is overwritten. FILE fields can't be sent as JSON — creating or updating a record with a file requires a `multipart/form-data` request (see the [API Reference tab](/admin-ui/collection-api) for exact examples per collection).
+
+::: warning One request, at most 4 MiB
+`maxSize` limits a single file, but the whole `multipart/form-data` request is capped at 4 MiB by the server (Undertow's `undertow.maxentitysize`), and a reverse proxy in front of it may cap it lower still — nginx defaults to 1 MB, see the [nginx example](/operations/going-to-production#nginx-example). A `maxSize` above that, or several files that add up beyond it, cannot be uploaded no matter what the schema says. Keep the sum of what a client may send in one request under 4 MiB.
+:::
 
 On disk, uploaded files are stored under `<PAPRIKA_STORAGE>/<tenantId>/<fileId>` — one folder per tenant, flat within it. [Deleting a tenant](/admin-ui/tenants#deleting-a-tenant) removes this folder along with the tenant's MongoDB database, so no files are left behind.
 
