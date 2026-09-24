@@ -60,12 +60,23 @@ public class TenantService {
         ensureTenantIndexes();
     }
 
+    /**
+     * Creates the tenant an empty installation starts out with - and only then.
+     * <p>
+     * The condition is deliberately "no tenants at all" and not "no tenant under the bootstrap
+     * slug". Keyed on the slug, deleting that tenant on an installation that has since grown
+     * other ones would bring it back on the next start, with a new id and an empty database,
+     * next to the tenants actually in use - and, through {@link #resolveDefaultTenant()}, as the
+     * default the admin plane works on. The slug is the name the first tenant is bootstrapped
+     * under, nothing more; a tenant does not become special by carrying it, and does not stop
+     * being the default by being renamed.
+     */
     public void ensureDefaultTenant() {
-        String slug = config.getString("paprika.bootstrap.default-tenant-slug", "default");
-        if (findBySlug(slug).isPresent()) {
+        if (hasAnyTenant()) {
             return;
         }
 
+        String slug = config.getString("paprika.bootstrap.default-tenant-slug", "default");
         String name = config.getString("paprika.bootstrap.default-tenant-name", "Default");
         create(name, slug);
     }
@@ -77,6 +88,11 @@ public class TenantService {
         if (findBySlug(slug).isPresent()) {
             throw new IllegalArgumentException("Tenant slug already exists");
         }
+
+        // The first tenant of an installation is the only one it can mean, so it becomes the
+        // default explicitly instead of being inferred later. Read before the insert, because
+        // afterwards every tenant looks like it was there all along.
+        boolean isFirstTenant = !hasAnyTenant();
 
         String id = DbUtils.id();
         TenantDefinition tenant = new TenantDefinition(
@@ -101,6 +117,10 @@ public class TenantService {
         DbWrites.rejectDuplicateAs("Tenant slug already exists",
                 () -> resolver.systemCollection(TenantDefinition.COLLECTION).insertOne(toDocument(tenant)));
 
+        if (isFirstTenant) {
+            settingsService.set(SettingKeys.DEFAULT_TENANT_ID, tenant.id());
+        }
+
         initializeTenantDatabase(tenant);
 
         return tenant;
@@ -120,6 +140,18 @@ public class TenantService {
         return Optional.ofNullable(doc).map(this::fromDocument);
     }
 
+    /**
+     * The tenant the admin plane falls back to when a request names none.
+     * <p>
+     * The configured setting decides, as long as it points at a tenant that still exists and is
+     * active. Without one, an installation that has exactly one active tenant has only one
+     * possible answer, so it is given rather than none - which keeps the admin plane working
+     * through a state nobody configured, such as a restored backup or a default tenant that was
+     * just switched to inactive.
+     * <p>
+     * The bootstrap slug is deliberately not consulted: it would make one name special forever
+     * and resurrect the behaviour {@link #ensureDefaultTenant()} exists to avoid.
+     */
     public Optional<TenantDefinition> resolveDefaultTenant() {
         String configuredId = settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null);
         if (configuredId != null && !configuredId.isBlank()) {
@@ -129,8 +161,7 @@ public class TenantService {
             }
         }
 
-        String slug = config.getString("paprika.bootstrap.default-tenant-slug", "default");
-        return findBySlug(slug).filter(TenantDefinition::isActive);
+        return soleActiveTenantId().flatMap(this::findById);
     }
 
     public List<TenantDefinition> listAll() {
@@ -288,13 +319,41 @@ public class TenantService {
         resolver.tenantDatabase(tenant.databaseName()).drop();
         fileStorageService.deleteTenantDirectory(tenant.id());
 
-        if (id.equals(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null))) {
-            settingsService.set(SettingKeys.DEFAULT_TENANT_ID, "");
-        }
+        boolean wasDefault = id.equals(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null));
 
-        return resolver.systemCollection(TenantDefinition.COLLECTION)
+        boolean deleted = resolver.systemCollection(TenantDefinition.COLLECTION)
                 .deleteOne(eq("id", id))
                 .getDeletedCount() == 1;
+
+        if (wasDefault) {
+            // Deleting the default leaves the setting pointing at nothing, and the admin plane
+            // without a tenant to fall back to. If exactly one active tenant remains, the choice
+            // is unambiguous and is written down here, so that adding a second tenant later does
+            // not silently take the default away again. With several left there is nothing to
+            // infer - the admin picks one in the settings.
+            settingsService.set(SettingKeys.DEFAULT_TENANT_ID, soleActiveTenantId().orElse(""));
+        }
+
+        return deleted;
+    }
+
+    private boolean hasAnyTenant() {
+        return resolver.systemCollection(TenantDefinition.COLLECTION)
+                .find()
+                .projection(Projections.include("id"))
+                .limit(1)
+                .first() != null;
+    }
+
+    /**
+     * The id of the only active tenant, if there is exactly one.
+     * <p>
+     * Reads two so that "more than one" is answered without loading them all - the caller only
+     * ever distinguishes one from not-one.
+     */
+    private Optional<String> soleActiveTenantId() {
+        List<TenantLookup> active = findActiveForLookup(2);
+        return active.size() == 1 ? Optional.of(active.getFirst().id()) : Optional.empty();
     }
 
     public void ensureRequestLogsForAllTenants() {
