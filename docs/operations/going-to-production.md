@@ -99,6 +99,38 @@ down when it is only the rate limit. See [503 from the proxy after a
 restart](#getting-a-503-from-the-proxy-after-a-restart-or-update).
 :::
 
+## Cap the concurrent realtime connections
+
+A rate limit counts requests. It does not count what a request costs, and it does not count
+connections that stay open — so it is the wrong tool for `/api/realtime`.
+
+`GET /api/realtime` opens a Server-Sent-Events stream. The connection is accepted and registered
+**before** anything is authenticated: a client gets its `clientId` first and authenticates
+afterwards, when it calls `POST /api/realtime/subscribe` with a token. Paprika puts no ceiling on
+how many of those streams one client may hold open, and the proxy is told to keep them alive for
+an hour (`proxy_read_timeout 1h`, which SSE needs). Without a connection limit, an
+unauthenticated client can therefore park as many open streams as it can afford file descriptors
+for, and each one costs a socket on the proxy, a socket on the app, and an entry in the client
+registry.
+
+Limit concurrent connections per IP at the proxy, in addition to the request rate:
+
+- **nginx** — `limit_conn_zone` plus a `limit_conn` in the `/api/realtime` location (in the
+  [example below](#nginx-example)). Ten per IP is generous for a browser app: one tab is one
+  stream. Raise it if many of your users sit behind one NAT, lower it if they do not.
+- **Caddy** — there is no built-in equivalent. Either add a rate-limiting plugin, put nginx in
+  front, or cap it at the firewall (`iptables`/`nftables` `connlimit`).
+
+The same `limit_conn` is worth having on the rest of the API as a blunt backstop; the realtime
+path is the one where it is not optional.
+
+::: tip Check what is actually open
+`ss -tn state established '( sport = :443 )' | wc -l` on the proxy host tells you how many
+connections are being held. On the Paprika side, the scheduled `purgeStaleClients` task logs how
+many dead realtime clients it dropped — at `DEBUG` level, so turn that on while you are sizing
+the limit.
+:::
+
 ## Use API keys for machine access
 
 Do not let a backend log in with a username and password. `/api/auth/login` has to stay public
@@ -237,11 +269,18 @@ There is exactly one superadmin identity and it can do everything. Enable TOTP t
 
 ```nginx
 # Throttle zones, keyed on the real client IP.
-limit_req_zone $binary_remote_addr zone=paprika_auth:10m rate=5r/s;
+limit_req_zone  $binary_remote_addr zone=paprika_auth:10m rate=5r/s;
+
+# Concurrent connections, not requests per second. This is what bounds /api/realtime: an SSE
+# stream is one long-lived connection that is accepted before anything is authenticated, and
+# the request rate limit above never sees it again. See "Cap the concurrent realtime
+# connections" above.
+limit_conn_zone $binary_remote_addr zone=paprika_conn:10m;
 
 # 429 says "you are going too fast", 503 (the default) says "the app is down" - and a monitoring
 # system or a user should be able to tell those apart.
-limit_req_status 429;
+limit_req_status  429;
+limit_conn_status 429;
 
 # Who is allowed into the admin UI.
 geo $paprika_admin_allowed {
@@ -309,10 +348,25 @@ server {
     }
 
     location /api/collections/ {
+        # A blunt backstop, not a throttle: uploads and long polls should not let one IP occupy
+        # the worker pool. 50 is far above what a normal client needs.
+        limit_conn paprika_conn 50;
+
+        # File uploads go through here. nginx defaults to 1m, which caps every upload at one
+        # megabyte no matter what the field's maxSize says. 4m matches Undertow's own limit
+        # (undertow.maxentitysize, 4 MiB), which is the real ceiling - a larger value here only
+        # moves the rejection from a clean 413 to a dropped connection.
+        client_max_body_size 4m;
+
         proxy_pass http://paprika;
     }
 
     location /api/realtime {
+        # One tab is one stream, so ten per IP is generous for a browser app. Raise it if your
+        # users share a NAT. Without it, an unauthenticated client can hold open as many streams
+        # as it likes for an hour each - the request rate limit does not see them.
+        limit_conn paprika_conn 10;
+
         proxy_pass http://paprika;
         proxy_buffering off;                 # let SSE stream through
         proxy_read_timeout 1h;
@@ -341,6 +395,12 @@ server {
     # Admin UI, restricted to trusted IPs. No throttle here - see the warning above.
     location / {
         if ($paprika_admin_allowed = 0) { return 403; }
+
+        # A backup restore is a file upload on this path, and nginx's 1m default would reject
+        # anything bigger with a 413. 4m is as far as it goes: Undertow refuses a larger request
+        # body. See Backup & Restore for what that means for the size of an instance.
+        client_max_body_size 4m;
+
         proxy_pass http://paprika;
     }
 }
@@ -396,6 +456,18 @@ paprika.example.com {
         }
     }
 
+    # Caddy has no built-in equivalent of nginx's limit_conn, so the open SSE streams on
+    # /api/realtime are not capped here. Add a plugin that can do it, put nginx in front, or
+    # cap concurrent connections per source at the firewall - see "Cap the concurrent realtime
+    # connections" above for why this is not optional.
+
+    # Caddy has no request body limit by default either. Undertow refuses a body over 4 MiB,
+    # so there is nothing to raise - only something to know when an upload or a backup restore
+    # comes back as a dropped request.
+    request_body {
+        max_size 4MB
+    }
+
     header Strict-Transport-Security "max-age=63072000; includeSubDomains"
 
     reverse_proxy 127.0.0.1:8080 {
@@ -407,7 +479,7 @@ paprika.example.com {
 }
 ```
 
-Caddy gets you automatic Let's Encrypt certificates out of the box, so there's no certificate path to manage. The rate limiting directive comes from a community module; if you'd rather not build a custom Caddy binary, put nginx in front for the throttling or drop that block and rely on the IP restriction alone.
+Caddy gets you automatic Let's Encrypt certificates out of the box, so there's no certificate path to manage. The rate limiting directive comes from a community module; if you'd rather not build a custom Caddy binary, put nginx in front for the throttling or drop that block and rely on the IP restriction alone. The same caveat applies to concurrent connections: capping the realtime streams needs a module, a fronting nginx, or a firewall rule.
 
 ## Email (SMTP)
 
