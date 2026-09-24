@@ -21,6 +21,7 @@ import rules.RuleParseException;
 import rules.RuleService;
 import utils.DbWrites;
 import validation.FieldSchemaValidation;
+import validation.SchemaNames;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -104,6 +105,7 @@ public class TenantCollectionService {
     }
 
     public void validateDefinition(CollectionDefinition definition) throws RuleParseException {
+        SchemaNames.requireValidCollectionName(definition.name());
         validateSchemaFields(definition.fields());
         ruleService.validateRules(definition.rules(), definition.name());
 
@@ -342,6 +344,8 @@ public class TenantCollectionService {
             if (field == null || field.name() == null || field.name().isBlank()) {
                 throw new IllegalArgumentException("Field name must not be empty");
             }
+
+            SchemaNames.requireValidFieldName(field.name());
 
             if (SystemFields.isReservedSchemaName(field.name())) {
                 throw new IllegalArgumentException("Reserved field name: " + field.name());

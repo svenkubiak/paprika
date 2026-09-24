@@ -132,6 +132,74 @@ class TenantCollectionServiceTest {
         assertThrows(RuleParseException.class, () -> service.validateDefinition(definition));
     }
 
+    /**
+     * A field name is a key in every document of the collection and in the {@code $set} of every
+     * update. A dot there means "nested path", so the write would land somewhere else than the
+     * schema says - and a rule or an index naming that field would mean a third thing again.
+     */
+    @Test
+    void validateDefinitionRejectsAFieldNameWithADot() {
+        TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
+
+        CollectionDefinition definition = new CollectionDefinition(
+                "def-1",
+                "posts",
+                List.of(new FieldDefinition("author.name", FieldType.STRING, true, false, null, null)),
+                List.of(),
+                CollectionRules.locked(),
+                false);
+
+        assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
+    }
+
+    /** A dollar sign starts a MongoDB operator; the write fails with a 500 instead of a 400. */
+    @Test
+    void validateDefinitionRejectsAFieldNameWithADollarSign() {
+        TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
+
+        CollectionDefinition definition = new CollectionDefinition(
+                "def-1",
+                "posts",
+                List.of(new FieldDefinition("$set", FieldType.STRING, true, false, null, null)),
+                List.of(),
+                CollectionRules.locked(),
+                false);
+
+        assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
+    }
+
+    /** {@code _id} is MongoDB's own primary key - a field of that name collides with it. */
+    @Test
+    void validateDefinitionRejectsAFieldNameStartingWithAnUnderscore() {
+        TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
+
+        CollectionDefinition definition = new CollectionDefinition(
+                "def-1",
+                "posts",
+                List.of(new FieldDefinition("_id", FieldType.STRING, true, false, null, null)),
+                List.of(),
+                CollectionRules.locked(),
+                false);
+
+        assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
+    }
+
+    /** The name becomes a MongoDB collection, so the same character set applies. */
+    @Test
+    void validateDefinitionRejectsACollectionNameWithMongoSyntax() {
+        TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
+
+        CollectionDefinition definition = new CollectionDefinition(
+                "def-1",
+                "meta.collections",
+                List.of(new FieldDefinition("title", FieldType.STRING, true, false, null, null)),
+                List.of(),
+                CollectionRules.locked(),
+                false);
+
+        assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
+    }
+
     @Test
     void findDefinitionByIdReturnsSeededCollection() {
         TenantCollectionService service = Application.getInstance(TenantCollectionService.class);

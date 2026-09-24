@@ -299,6 +299,59 @@ class SchemaImportValidationIntegrationTest {
         assertThat(definition(collection), nullValue());
     }
 
+    /**
+     * A field name ends up as a key in every document and in the {@code $set} of every update. A
+     * dot addresses a nested path there, so the write would go somewhere else than the schema
+     * says; a dollar sign starts an operator and turns a write into a 500. The meta API refuses
+     * both, so the import has to as well.
+     */
+    @Test
+    void aFieldNameWithMongoSyntaxIsRejectedAndNothingIsWritten() {
+        String dotted = "schemaval_dotted_" + DbUtils.id();
+        String dollar = "schemaval_dollar_" + DbUtils.id();
+
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+        TestResponse withDot = AdminTestUtils.postWithAdminCookies(IMPORT_URI, cookies, """
+                {"version":"1","collections":[
+                  {"name":"%s","fields":[{"name":"author.name","type":"STRING","required":true}],"indexes":[],
+                   "rules":{"listRule":"*","ownerField":"owner"}}
+                ],"hooks":[]}
+                """.formatted(dotted), "application/json");
+
+        assertThat(withDot.getContent(), withDot.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(withDot.getContent(), containsString("author.name"));
+        assertThat(definition(dotted), nullValue());
+
+        TestResponse withDollar = AdminTestUtils.postWithAdminCookies(IMPORT_URI, cookies, """
+                {"version":"1","collections":[
+                  {"name":"%s","fields":[{"name":"$set","type":"STRING","required":true}],"indexes":[],
+                   "rules":{"listRule":"*","ownerField":"owner"}}
+                ],"hooks":[]}
+                """.formatted(dollar), "application/json");
+
+        assertThat(withDollar.getContent(), withDollar.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(definition(dollar), nullValue());
+    }
+
+    /** The collection name becomes a MongoDB collection, so it is held to the same characters. */
+    @Test
+    void aCollectionNameWithMongoSyntaxIsRejected() {
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+        String name = "schemaval.dotted." + DbUtils.id();
+        TestResponse response = AdminTestUtils.postWithAdminCookies(IMPORT_URI, cookies, """
+                {"version":"1","collections":[
+                  {"name":"%s","fields":[{"name":"title","type":"STRING","required":true}],"indexes":[],
+                   "rules":{"listRule":"*","ownerField":"owner"}}
+                ],"hooks":[]}
+                """.formatted(name), "application/json");
+
+        assertThat(response.getContent(), response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(response.getContent(), containsString("Collection name"));
+        assertThat(definition(name), nullValue());
+    }
+
     private static void createHook(AdminTestUtils.AdminCookies cookies, String collection, String name) {
         TestResponse created = AdminTestUtils.postWithAdminCookies(
                 "/api/meta/collections/" + collection + "/hooks",
