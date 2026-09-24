@@ -6,6 +6,7 @@ import FieldLabelHelp from '@/components/FieldLabelHelp.vue'
 import { useBootstrap } from '@/composables/useBootstrap'
 import type { SchemaEditorMode } from '@/composables/useSchemaEditorSheet'
 import { schemaFieldHints } from '@/lib/schema-field-hints'
+import { DEFAULT_FILE_MAX_SIZE } from '@/lib/schema-options'
 import {
   fieldTypeChoice,
   fieldTypeChoiceIcon,
@@ -148,7 +149,7 @@ function onTypeChange() {
     props.row.relationCollection = ''
   }
   if (props.row.type !== 'FILE') {
-    props.row.fileMaxSize = 5 * 1024 * 1024
+    props.row.fileMaxSize = DEFAULT_FILE_MAX_SIZE
     props.row.fileMimeTypes = ''
     props.row.fileMaxSelect = 1
     props.row.fileImageWidths = ''

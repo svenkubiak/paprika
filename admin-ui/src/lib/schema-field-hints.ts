@@ -1,10 +1,12 @@
 export const schemaFieldHints = {
-  name: 'API field key stored on each record. Use letters, numbers, and underscores.',
+  name:
+    'API field key stored on each record. Letters, digits, underscores and hyphens, starting with a letter, under 64 characters.',
   type:
     'Controls validation, storage, and how the field appears in the admin record editor. "String" and "Text" are the same field type (STRING) with the same validation - "Text" only gets a multi-line input.',
   relationCollection:
     'Target collection for the stored relation ID(s). Relations to users always use accounts in the active tenant.',
-  fileMaxSize: 'Maximum upload size per file, in bytes. Example: 5242880 = 5 MB.',
+  fileMaxSize:
+    'Maximum upload size per file, in bytes. Default 4000000 (4 MB). The whole request may not exceed 4 MiB, so several files in one request have to fit into that together.',
   fileMimeTypes:
     'Comma-separated allow list. Examples: image/jpeg, image/png, or image/* for any image type.',
   fileMaxSelect: 'Maximum number of files stored on one record. Use 1 for a single file field.',

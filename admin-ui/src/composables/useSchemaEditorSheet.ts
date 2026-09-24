@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import type { SchemaRow } from '@/components/SchemaEditorSheet.vue'
+import { DEFAULT_FILE_MAX_SIZE } from '@/lib/schema-options'
 
 export type SchemaEditorMode = 'add' | 'edit'
 
@@ -29,7 +30,7 @@ export function emptyRow(): SchemaRow {
     relationCollection: '',
     relationMaxSelect: 1,
     relationCascadeDelete: false,
-    fileMaxSize: 5 * 1024 * 1024,
+    fileMaxSize: DEFAULT_FILE_MAX_SIZE,
     fileMimeTypes: '',
     fileMaxSelect: 1,
     fileImageWidths: '',

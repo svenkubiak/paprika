@@ -31,7 +31,16 @@ public record FieldOptions(
         List<Integer> imageWidths,
         Boolean multiline
 ) {
-    public static final long DEFAULT_MAX_SIZE = 5L * 1024L * 1024L;
+    /**
+     * The largest file a FILE field accepts unless the schema says otherwise.
+     * <p>
+     * Four million bytes, not four mebibytes, and deliberately not the five megabytes this used
+     * to be: Undertow refuses a request body over 4 MiB ({@code undertow.maxentitysize}), and
+     * the body of an upload is not only the file - it carries the multipart boundaries, the part
+     * headers and every other field of the same request. A default above that ceiling is a
+     * promise the stack cannot keep; the ~190 KiB of headroom is what makes this one keepable.
+     */
+    public static final long DEFAULT_MAX_SIZE = 4_000_000L;
 
     /**
      * How many image widths one file field may keep. Four cover list, preview, detail and retina;

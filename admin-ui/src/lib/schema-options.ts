@@ -5,6 +5,13 @@ import { parseDefaultValue } from '@/lib/field-validation'
 /** Mirrors FieldOptions.MAX_IMAGE_WIDTHS on the server. */
 export const MAX_IMAGE_WIDTHS = 4
 
+/**
+ * Mirrors FieldOptions.DEFAULT_MAX_SIZE on the server: four million bytes, kept under the
+ * 4 MiB the server accepts as a whole request body so that boundaries, part headers and the
+ * other fields of the same upload still fit.
+ */
+export const DEFAULT_FILE_MAX_SIZE = 4_000_000
+
 /** Mirrors FieldOptions.MAX_IMAGE_WIDTH on the server. */
 export const MAX_IMAGE_WIDTH = 4096
 
@@ -166,7 +173,7 @@ export function optionsToSchemaRow(
     relationCollection: options.collection || '',
     relationMaxSelect: options.maxSelect ?? 1,
     relationCascadeDelete: options.cascadeDelete ?? false,
-    fileMaxSize: options.maxSize ?? 5 * 1024 * 1024,
+    fileMaxSize: options.maxSize ?? DEFAULT_FILE_MAX_SIZE,
     fileMimeTypes: (options.mimeTypes || []).join(', '),
     fileMaxSelect: options.maxSelect ?? 1,
     fileImageWidths: (options.imageWidths || []).join(', '),
