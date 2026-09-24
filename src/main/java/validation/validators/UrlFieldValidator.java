@@ -42,7 +42,12 @@ public class UrlFieldValidator implements FieldValidator {
         }
 
         FieldOptions options = field.optionsOrDefault();
-        FieldConstraintUtils.validateTextLength(field.name(), url, options, result);
+        // See StringFieldValidator: a value that breaks the length limits never reaches the
+        // pattern engine.
+        if (!FieldConstraintUtils.validateTextLength(field.name(), url, options, result)) {
+            return;
+        }
+
         FieldConstraintUtils.validatePattern(field.name(), url, options, result);
     }
 }

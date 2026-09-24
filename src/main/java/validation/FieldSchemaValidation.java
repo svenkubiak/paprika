@@ -136,8 +136,12 @@ public final class FieldSchemaValidation {
         }
 
         if (field.type() == FieldType.STRING || field.type() == FieldType.EMAIL || field.type() == FieldType.URL) {
-            FieldConstraintUtils.validateTextLength(field.name(), value.asText(), field.optionsOrDefault(), result);
-            FieldConstraintUtils.validatePattern(field.name(), value.asText(), field.optionsOrDefault(), result);
+            // Same order as the runtime validators: a default that is already too long is not
+            // matched against the pattern on top.
+            if (FieldConstraintUtils.validateTextLength(
+                    field.name(), value.asText(), field.optionsOrDefault(), result)) {
+                FieldConstraintUtils.validatePattern(field.name(), value.asText(), field.optionsOrDefault(), result);
+            }
         }
         if (field.type() == FieldType.NUMBER) {
             FieldConstraintUtils.validateNumberRange(field.name(), value, field.optionsOrDefault(), result);

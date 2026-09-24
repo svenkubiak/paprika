@@ -35,7 +35,12 @@ public class EmailFieldValidator implements FieldValidator {
         }
 
         FieldOptions options = field.optionsOrDefault();
-        FieldConstraintUtils.validateTextLength(field.name(), email, options, result);
+        // See StringFieldValidator: a value that breaks the length limits never reaches the
+        // pattern engine.
+        if (!FieldConstraintUtils.validateTextLength(field.name(), email, options, result)) {
+            return;
+        }
+
         FieldConstraintUtils.validatePattern(field.name(), email, options, result);
     }
 }

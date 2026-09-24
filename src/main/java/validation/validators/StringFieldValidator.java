@@ -29,7 +29,14 @@ public class StringFieldValidator implements FieldValidator {
 
         FieldOptions options = field.optionsOrDefault();
         String text = value.asText();
-        FieldConstraintUtils.validateTextLength(field.name(), text, options, result);
+
+        // Length first, and no pattern match when it is already violated: the record is rejected
+        // either way, and running a regex over a value the schema does not allow is work an
+        // unauthenticated caller would otherwise get to schedule.
+        if (!FieldConstraintUtils.validateTextLength(field.name(), text, options, result)) {
+            return;
+        }
+
         FieldConstraintUtils.validatePattern(field.name(), text, options, result);
     }
 }
