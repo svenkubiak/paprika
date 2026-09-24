@@ -3,6 +3,7 @@ package services;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
+import com.mongodb.client.model.Projections;
 import constants.CollectionName;
 import constants.SettingKeys;
 import constants.SystemCollections;
@@ -137,6 +138,40 @@ public class TenantService {
                 .map(this::fromDocument)
                 .toList();
     }
+
+    /**
+     * The active tenants, reduced to what a cross-tenant lookup needs.
+     * <p>
+     * A login without a tenant slug has to find out which tenant a username belongs to, which
+     * means one query per tenant. Loading every tenant document in full to then use three of its
+     * fields makes an already expensive operation worse, so this reads only what is needed, only
+     * for tenants that can be logged into, and never more than {@code limit} of them - the caller
+     * decides what it is willing to spend.
+     *
+     * @param limit the most entries to return; pass one more than the cap to detect the overflow
+     */
+    public List<TenantLookup> findActiveForLookup(int limit) {
+        return StreamSupport.stream(
+                        resolver.systemCollection(TenantDefinition.COLLECTION)
+                                .find(eq("status", TenantDefinition.STATUS_ACTIVE))
+                                .projection(Projections.include("id", "slug", "databaseName"))
+                                .limit(limit)
+                                .spliterator(), false)
+                .map(doc -> new TenantLookup(
+                        doc.getString("id"),
+                        doc.getString("slug"),
+                        doc.getString("databaseName")))
+                .filter(lookup -> lookup.id() != null && lookup.databaseName() != null)
+                .toList();
+    }
+
+    /**
+     * Deliberately not a {@link TenantDefinition}: the document behind it is projected, so every
+     * other field would be null and a caller reading, say, {@code emailVerificationRequired} off
+     * it would silently get the wrong answer. Load the full definition by id once the right
+     * tenant is known.
+     */
+    public record TenantLookup(String id, String slug, String databaseName) {}
 
     /**
      * Kept so callers that predate {@code tokenIssuers} keep compiling and keep their behaviour:

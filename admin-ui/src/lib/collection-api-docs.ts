@@ -482,7 +482,10 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
       },
       {
         title: 'Request',
-        description: 'Explicit tenant slug (optional, for ambiguous usernames)',
+        description:
+          'Explicit tenant slug. Optional, but required whenever the username exists in more than one tenant - '
+          + 'a login without it is rejected as invalid credentials rather than revealing that. Recommended for '
+          + 'every client: without it the server has to search the tenants, which it stops doing on large instances.',
         code: `POST /api/auth/login
 
 {
@@ -510,11 +513,6 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
         '403 Forbidden',
         "Email verification is required for login (tenant's Require for login) and the user hasn't verified yet",
         '{\n  "error": "Email address is not verified"\n}'
-      ),
-      errorBlock(
-        '409 Conflict',
-        'Ambiguous username across tenants',
-        '{\n  "error": "Ambiguous username, specify tenant slug"\n}'
       ),
       errorBlock(
         '400 Bad Request',

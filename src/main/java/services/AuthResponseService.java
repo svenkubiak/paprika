@@ -1,7 +1,6 @@
 package services;
 
 import io.mangoo.routing.Response;
-import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import models.TokenPair;
 import results.TenantLoginResult;
@@ -27,9 +26,6 @@ public class AuthResponseService {
                             .bodyJson(Map.of("error", INVALID_CREDENTIALS))
                             .end());
             case TENANT_NOT_FOUND -> Response.badRequest().bodyJson(Map.of("error", "Tenant not found")).end();
-            case AMBIGUOUS_USERNAME -> Response.status(StatusCodes.CONFLICT)
-                    .bodyJson(Map.of("error", "Ambiguous username, specify tenant slug"))
-                    .end();
             case INVALID_CREDENTIALS -> Response.unauthorized()
                     .bodyJson(Map.of("error", INVALID_CREDENTIALS))
                     .end();
