@@ -139,6 +139,11 @@ class TenantIsolationIntegrationTest {
 
     @Test
     void dataPlaneReadsAreScopedToTheCallersTenant() {
+        // The route sweep above calls every route, DELETE included, and only restores before a
+        // call - so whether the fixture still exists afterwards depends on which route happened
+        // to come last. Restoring here keeps this test independent of that order.
+        restoreRecords();
+
         TestResponse list = call("GET", "/api/collections/" + SHARED_COLLECTION + "?offset=0&limit=25");
         assertThat(list.getStatusCode(), equalTo(200));
         assertThat(list.getContent(), containsString(TENANT_A_RECORD));

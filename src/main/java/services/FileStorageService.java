@@ -1,6 +1,7 @@
 package services;
 
 import auth.TenantContext;
+import io.mangoo.core.Application;
 import io.mangoo.core.Config;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -20,7 +21,15 @@ import java.util.stream.Stream;
 @Singleton
 public class FileStorageService {
     private static final Logger LOG = LogManager.getLogger(FileStorageService.class);
-    private static final String STORAGE_ROOT_KEY = "paprika.storage.root";
+    /**
+     * A single key, not {@code paprika.storage.root}: the prod environment overrides it with
+     * {@code env{}}, and mangoo's config merge replaces a whole subtree when the override is a
+     * scalar. A nested key would therefore not exist in production at all, and this service
+     * would silently use the default below - a relative path, resolved against whatever the
+     * working directory of the process happens to be. The derived variable is PAPRIKA_STORAGE.
+     */
+    public static final String STORAGE_KEY = "paprika.storage";
+    static final String DEFAULT_ROOT = "storage";
 
     // A variant key is derived from the file id, so no second index is needed to find, read or
     // delete the scaled copies that belong to a file.
@@ -30,11 +39,55 @@ public class FileStorageService {
 
     @Inject
     public FileStorageService(Config config) {
-        this(Path.of(config.getString(STORAGE_ROOT_KEY, "storage")));
+        this(Path.of(config.getString(STORAGE_KEY, DEFAULT_ROOT)), Application.inProdMode());
     }
 
     FileStorageService(Path root) {
+        this(root, false);
+    }
+
+    /**
+     * @param requireAbsolute whether a relative path is an error rather than a convenience. It
+     *                        is in production: the only persistent directory of the application
+     *                        must not depend on the working directory the process was started
+     *                        in. A deployment that changes it - a different unit file, a
+     *                        container with another WORKDIR, a manual {@code java -jar} - would
+     *                        otherwise serve an empty storage while the files are still on disk
+     *                        somewhere else, and new uploads would land where no backup looks.
+     */
+    FileStorageService(Path root, boolean requireAbsolute) {
+        Objects.requireNonNull(root, "root must not be null");
+
+        if (!root.isAbsolute()) {
+            if (requireAbsolute) {
+                throw new IllegalStateException(STORAGE_KEY + " must be an absolute path, but is \""
+                        + root + "\". Set PAPRIKA_STORAGE to the absolute path of the storage directory.");
+            }
+            LOG.warn("{} is the relative path \"{}\" and resolves to {} - set PAPRIKA_STORAGE to an "
+                    + "absolute path to make it independent of the working directory",
+                    STORAGE_KEY, root, root.toAbsolutePath().normalize());
+        }
+
         this.root = root.toAbsolutePath().normalize();
+        ensureUsable();
+    }
+
+    /**
+     * Fails at startup rather than on the first upload. A storage directory that cannot be
+     * created or written to is a deployment problem, and it is cheaper to learn about it while
+     * the service is coming up than from a 500 on a customer's file upload.
+     */
+    private void ensureUsable() {
+        try {
+            Files.createDirectories(root);
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Storage directory " + root + " could not be created: " + e.getMessage(), e);
+        }
+
+        if (!Files.isWritable(root)) {
+            throw new IllegalStateException("Storage directory " + root + " is not writable");
+        }
     }
 
     public Path root() {

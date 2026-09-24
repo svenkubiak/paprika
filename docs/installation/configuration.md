@@ -18,7 +18,7 @@ Not every variable is filled in automatically, though. The install scripts gener
 | `FLASH_COOKIE_KEY` | 64-character key for flash cookies. | Yes, by both install scripts. |
 | `AUTHENTICATION_COOKIE_SECRET` | 64-character secret for admin auth cookies. | Yes, by both install scripts. |
 | `AUTHENTICATION_COOKIE_KEY` | 64-character key for admin auth cookies. | Yes, by both install scripts. |
-| `PAPRIKA_STORAGE` | Absolute path to the file storage directory. | No — preset by the installer to a sensible path (`storage/` under the install directory); only change it if you know you need a different location. |
+| `PAPRIKA_STORAGE` | Absolute path to the file storage directory. Must be absolute in production — Paprika refuses to start on a relative path, and on a directory it cannot create or write to. | No — preset by the installer to a sensible path (`storage/` under the install directory); only change it if you know you need a different location. If you do, also adjust `ReadWritePaths` in the systemd unit (standalone) or the volume mount (Docker). |
 | `PERSISTENCE_MONGO_HOST` | MongoDB hostname. | Docker: preset to the bundled `mongodb` container. Standalone: **no** — left as `CHANGE_ME`, since you bring your own instance. |
 | `PERSISTENCE_MONGO_PORT` | MongoDB port (default `27017`). | Docker: preset. Standalone: **no** — left as `CHANGE_ME`. |
 | `PERSISTENCE_MONGO_USERNAME` | MongoDB username. | Docker: yes, a fixed `paprika` username is set for a scoped application user — not the MongoDB root account. Standalone: **no** — left as `CHANGE_ME`, you must provide credentials for your own instance. |

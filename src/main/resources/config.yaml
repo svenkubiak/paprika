@@ -66,8 +66,12 @@ default:
       superadmin-username: admin
       default-tenant-name: Default
       default-tenant-slug: default
-    storage:
-      root: storage
+    # A single scalar, not a nested block: an environment overrides this with env{}, and mangoo's
+    # config merge only recurses when both sides are maps. A scalar override of a nested block
+    # replaces the whole subtree, so paprika.storage.root would stop existing in that environment
+    # and every reader would silently fall back to its hardcoded default (see ConfigYamlTest).
+    # The derived environment variable is PAPRIKA_STORAGE.
+    storage: storage
   flash:
     cookie:
       name: paprika-flash
@@ -80,7 +84,9 @@ default:
     username: ""
     password: ""
     from: no-reply@localhost
-    from-name: Paprika
+    # Underscore, not a hyphen: the environment variable is the key upper-cased with dots turned
+    # into underscores, and SMTP_FROM-NAME cannot be set in a POSIX shell. SMTP_FROM_NAME can.
+    from_name: Paprika
     protocol: smtp
     authentication: false
 
@@ -116,8 +122,7 @@ environments:
         port: 29019
         package: models
     paprika:
-      storage:
-        root: target/test-storage
+      storage: target/test-storage
     smtp:
       # Points at the GreenMail server the recovery mail tests start on this port. Set here
       # because mangoo builds its mail session once from the configuration; tests that do not
@@ -125,7 +130,7 @@ environments:
       host: localhost
       port: 3025
       from: no-reply@paprika.test
-      from-name: Paprika Test
+      from_name: Paprika Test
       authentication: false
 
   dev:
@@ -156,7 +161,7 @@ environments:
 
   prod:
     paprika:
-      storage: env{}
+      storage: env{}          # PAPRIKA_STORAGE - absolute path, required in prod
     token:
       secret: env{}
       key: env{}
@@ -189,7 +194,7 @@ environments:
       username: env{}
       password: env{}
       from: env{}
-      from-name: env{}
+      from_name: env{}
       protocol: env{}
       authentication: env{}
     persistence:

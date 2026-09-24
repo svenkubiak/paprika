@@ -8,18 +8,28 @@ import io.mangoo.routing.Bind;
 import io.mangoo.routing.On;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import services.FileStorageService;
 import services.RequestLogService;
 import services.SystemCollectionService;
 
 @Singleton
 public class Bootstrap implements MangooBootstrap {
+    private static final Logger LOG = LogManager.getLogger(Bootstrap.class);
+
     private final SystemCollectionService systemCollectionService;
     private final RequestLogService requestLogService;
+    private final FileStorageService fileStorageService;
 
     @Inject
-    public Bootstrap(SystemCollectionService systemCollectionService, RequestLogService requestLogService) {
+    public Bootstrap(
+            SystemCollectionService systemCollectionService,
+            RequestLogService requestLogService,
+            FileStorageService fileStorageService) {
         this.systemCollectionService = systemCollectionService;
         this.requestLogService = requestLogService;
+        this.fileStorageService = fileStorageService;
     }
     
     @Override
@@ -192,6 +202,11 @@ public class Bootstrap implements MangooBootstrap {
 
     @Override
     public void applicationStarted() {
+        // Injected and logged here so that a storage path which is missing, unwritable or - in
+        // production - relative stops the boot, instead of surfacing as a 500 on the first
+        // upload of whoever tries one first.
+        LOG.info("File storage root: {}", fileStorageService.root());
+
         systemCollectionService.ensureSystemCollections();
         requestLogService.purgeAllExpired();
     }

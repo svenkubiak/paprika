@@ -21,6 +21,14 @@ import java.util.Objects;
 public class MailService {
     private static final Logger LOG = LogManager.getLogger(MailService.class);
 
+    /**
+     * Underscore rather than hyphen on purpose: mangoo derives the environment variable of a
+     * config key by upper-casing it and replacing dots with underscores, and nothing else. A
+     * key named {@code smtp.from-name} would derive {@code SMTP_FROM-NAME}, which no POSIX
+     * shell can set - the {@code SMTP_FROM_NAME} the installers write would never arrive.
+     */
+    public static final String SMTP_FROM_NAME_KEY = "smtp.from_name";
+
     private final Config config;
 
     @Inject
@@ -106,7 +114,7 @@ public class MailService {
     }
 
     private String fromName() {
-        return config.getString("smtp.from-name", "Paprika");
+        return config.getString(SMTP_FROM_NAME_KEY, "Paprika");
     }
 
     private static String htmlBody(String heading, String intro, String action, String link, String footer) {
