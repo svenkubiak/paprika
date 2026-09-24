@@ -28,8 +28,39 @@ There's no subdomain-based routing. Instead, Paprika resolves which tenant's dat
 
 - **Tenant user with a bearer JWT** — the tenant is embedded in the token's `tid` claim; it's fixed for the token's lifetime.
 - **Superadmin in the admin UI** — the tenant currently "active" in their session, set by [switching tenants](/admin-ui/tenants) from the Tenants page or the sidebar tenant selector.
-- **Login / registration requests** — the client sends an explicit `tenant` slug in the request body. The `tenant` field is only required when a username is ambiguous across multiple tenants; otherwise Paprika resolves it automatically from the username.
+- **Login / registration requests** — the client sends an explicit `tenant` slug in the request body. Registration always requires it. Login can resolve the tenant from the username alone, but only within the limits below — send `tenant` and you never depend on them.
 - **Anonymous / guest requests** — fall back to the configured **default tenant** (see below).
+
+### Logging in without a tenant slug
+
+`POST /api/auth/login` accepts a request without `tenant`. Paprika then has to find out which
+tenant the username belongs to, and that means **one database query per active tenant** — a
+single unauthenticated request whose cost grows with your customer count. That convenience
+therefore has limits, and they are deliberate:
+
+| Situation | What the client gets |
+|---|---|
+| The username exists in exactly one active tenant | A normal login |
+| The username exists in several tenants | `401 Invalid username or password` |
+| The username exists nowhere | `401 Invalid username or password` |
+| The instance has **more than 25 active tenants** | `401 Invalid username or password`, for every slug-less login |
+
+The three failure rows answer identically on purpose. Which tenants know a username is
+information about somebody else's user base, and an unauthenticated caller must not be able to
+read it out of a status code — nor out of the response time, which is why a failed login costs a
+password hash whether or not the account exists. The reason a particular login failed is in the
+server log, not in the response.
+
+::: warning The 25-tenant cap is a cliff, not a slowdown
+Creating the 26th active tenant stops the lookup for the **whole instance**: from then on every
+login without a `tenant` slug is answered with a 401, including logins that worked the day
+before. There is no partial degradation and no warning to the client — only a `WARN` line in the
+server log.
+
+So treat the slug-less login as a convenience for development and single-tenant installs. **Any
+client that is meant to keep working should always send `tenant`**, and if you operate an
+instance that will grow, make that a rule before you approach the limit rather than after.
+:::
 
 ## The tenant switcher
 
