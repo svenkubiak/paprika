@@ -42,13 +42,9 @@ function formatUptime(seconds: number | undefined): string {
   return parts.join(' ')
 }
 
+// Ordered so that the three-column grid breaks into "what this instance holds" on the first
+// row and "how it is doing" on the second.
 const statCards = computed(() => [
-  {
-    label: 'Uptime',
-    value: formatUptime(stats.value?.uptimeSeconds),
-    icon: 'i-lucide-clock',
-    color: 'primary'
-  },
   {
     label: 'Tenants',
     value: String(stats.value?.tenants ?? 0),
@@ -65,6 +61,12 @@ const statCards = computed(() => [
     label: 'Records',
     value: String(stats.value?.records ?? 0),
     icon: 'i-lucide-file-text',
+    color: 'primary'
+  },
+  {
+    label: 'Uptime',
+    value: formatUptime(stats.value?.uptimeSeconds),
+    icon: 'i-lucide-clock',
     color: 'primary'
   },
   {

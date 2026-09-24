@@ -228,47 +228,49 @@ async function removeAvatar() {
  * Scales and centre-crops the picked file to a square PNG in the browser. Doing it here keeps the
  * upload small enough to live on the account record, and it is also what makes the picture safe to
  * store: the canvas only ever produces image data, so nothing of the original file survives.
+ *
+ * The file is decoded with createImageBitmap instead of being handed to an <img> as an object
+ * URL. That URL has the blob: scheme, which the img-src directive of the Content Security Policy
+ * does not cover - 'self' never matches blob:, so the browser refused to load it and every
+ * upload failed as "not an image", whatever the file actually was. Decoding the file directly
+ * needs no URL at all, so the policy can stay as strict as it is.
  */
-function toSquareDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const image = new Image()
+async function toSquareDataUrl(file: File): Promise<string> {
+  let bitmap: ImageBitmap
+  try {
+    // Phone photos are usually stored sideways with an EXIF tag saying which way is up. An <img>
+    // applies that tag on its own; a bitmap has to be asked for it.
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  } catch {
+    throw new Error('This file is not an image Paprika can read')
+  }
 
-    image.onload = () => {
-      URL.revokeObjectURL(url)
-
-      const canvas = document.createElement('canvas')
-      canvas.width = AVATAR_SIZE
-      canvas.height = AVATAR_SIZE
-      const context = canvas.getContext('2d')
-      if (!context) {
-        reject(new Error('This browser cannot process the image'))
-        return
-      }
-
-      const side = Math.min(image.width, image.height)
-      context.drawImage(
-        image,
-        (image.width - side) / 2,
-        (image.height - side) / 2,
-        side,
-        side,
-        0,
-        0,
-        AVATAR_SIZE,
-        AVATAR_SIZE
-      )
-
-      resolve(canvas.toDataURL('image/png'))
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = AVATAR_SIZE
+    canvas.height = AVATAR_SIZE
+    const context = canvas.getContext('2d')
+    if (!context) {
+      throw new Error('This browser cannot process the image')
     }
 
-    image.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('This file is not an image Paprika can read'))
-    }
+    const side = Math.min(bitmap.width, bitmap.height)
+    context.drawImage(
+      bitmap,
+      (bitmap.width - side) / 2,
+      (bitmap.height - side) / 2,
+      side,
+      side,
+      0,
+      0,
+      AVATAR_SIZE,
+      AVATAR_SIZE
+    )
 
-    image.src = url
-  })
+    return canvas.toDataURL('image/png')
+  } finally {
+    bitmap.close()
+  }
 }
 
 async function savePassword() {
