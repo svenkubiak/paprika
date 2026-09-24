@@ -24,4 +24,4 @@ A single superadmin is a single point of failure — losing that one account's c
 
 ## Next steps
 
-Head to **Settings → Security** to enable TOTP two-factor authentication for your account, then start defining collections. See [Concepts → Collections](/concepts/collections) for the data model, or jump straight into the [Admin UI Guide](/admin-ui/dashboard).
+Head to **Profile → Security** (the avatar in the top right corner) to enable TOTP two-factor authentication for your account, then start defining collections. See [Concepts → Collections](/concepts/collections) for the data model, or jump straight into the [Admin UI Guide](/admin-ui/dashboard).

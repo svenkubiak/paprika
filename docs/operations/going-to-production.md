@@ -263,7 +263,7 @@ This is defense in depth, not the only thing holding the door shut: the admin UI
 
 ## Turn on MFA for the superadmin
 
-There is exactly one superadmin identity and it can do everything. Enable TOTP two-factor for it under [Settings → Security](/admin-ui/settings#security) right after setup. Once it's on, a password alone is no longer enough to reach the admin UI. Combined with the IP restriction above, an attacker would need your network *and* your password *and* your second factor.
+There is exactly one superadmin identity and it can do everything. Enable TOTP two-factor for it under [Profile → Security](/admin-ui/profile#security) right after setup. Once it's on, a password alone is no longer enough to reach the admin UI. Combined with the IP restriction above, an attacker would need your network *and* your password *and* your second factor.
 
 ## nginx example
 

@@ -79,15 +79,15 @@ class BeanValidationResponseIntegrationTest {
     }
 
     /**
-     * The admin settings endpoints hand the DTO straight to AdminSettingsService, which
-     * dereferences it without a null check - a request without a body used to fail there with a
-     * 500 instead of being rejected as a bad request.
+     * The admin endpoints hand the DTO straight to the service behind them, which dereferences it
+     * without a null check - a request without a body used to fail there with a 500 instead of
+     * being rejected as a bad request.
      */
     @Test
     void adminEndpointWithoutABodyIsRejectedRatherThanFailingInTheService() {
         HttpCookie auth = AdminTestUtils.loginAsAdmin();
 
-        TestResponse response = TestRequest.post("/api/admin/settings/2fa/setup")
+        TestResponse response = TestRequest.post("/api/admin/profile/2fa/setup")
                 .withCookie(auth)
                 .execute();
 
@@ -102,7 +102,7 @@ class BeanValidationResponseIntegrationTest {
      */
     @Test
     void authenticationIsCheckedBeforeValidation() {
-        TestResponse response = TestRequest.post("/api/admin/settings/2fa/setup").execute();
+        TestResponse response = TestRequest.post("/api/admin/profile/2fa/setup").execute();
 
         assertThat(response.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
         assertThat(response.getContent(), containsString("Unauthorized"));

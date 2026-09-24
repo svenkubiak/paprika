@@ -10,9 +10,9 @@ import io.undertow.util.Headers;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
-import org.apache.commons.lang3.StringUtils;
 import services.MailService;
 import services.SystemUserService;
+import utils.InstanceLinks;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -76,11 +76,7 @@ public class SuperadminController {
      * case the invite still works through the copy link shown in the admin UI.
      */
     static String setupLink(String host, String forwardedProto, String token) {
-        if (StringUtils.isBlank(host)) {
-            return null;
-        }
-        String scheme = StringUtils.isNotBlank(forwardedProto) ? forwardedProto : "https";
-        return scheme + "://" + host + "/setup#token=" + token;
+        return InstanceLinks.absolute(host, forwardedProto, "/setup#token=" + token);
     }
 
     public Response delete(String id) {

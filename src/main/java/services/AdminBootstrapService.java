@@ -22,6 +22,7 @@ public class AdminBootstrapService {
     private final TenantCollectionService tenantCollections;
     private final TenantService tenantService;
     private final AuthService authService;
+    private final SystemUserService systemUserService;
     private final Config config;
 
     @Inject
@@ -29,10 +30,12 @@ public class AdminBootstrapService {
             TenantCollectionService tenantCollections,
             TenantService tenantService,
             AuthService authService,
+            SystemUserService systemUserService,
             Config config) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
+        this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
         this.config = Objects.requireNonNull(config, "config must not be null");
     }
 
@@ -46,6 +49,7 @@ public class AdminBootstrapService {
             return unauthenticatedPayload();
         }
 
+        Optional<SystemUserService.SuperadminProfile> profile = systemUserService.findProfile(auth.id());
         boolean defaultTenantApplied = applyDefaultTenantIfMissing(request, auth);
         TenantContext ctx = resolveContext(request, auth);
         boolean hasActiveTenant = ctx.hasTenantContext();
@@ -55,6 +59,11 @@ public class AdminBootstrapService {
         payload.put("authenticated", auth.isAuthenticated());
         payload.put("isSuperAdmin", auth.isSuperAdmin());
         payload.put("adminId", auth.isAuthenticated() ? auth.id() : null);
+        payload.put("adminUsername", profile.map(SystemUserService.SuperadminProfile::username).orElse(null));
+        // The header shows the picture, so its URL travels with the payload the header is built
+        // from. It carries a version instead of the bytes: the picture is cacheable, the payload
+        // is fetched on every navigation.
+        payload.put("adminAvatarUrl", profile.map(SuperadminProfileService::avatarUrl).orElse(null));
         payload.put("smtpConfigured", StringUtils.isNotBlank(config.getSmtpHost()));
         payload.put("hasActiveTenant", hasActiveTenant);
         payload.put("activeTenant", resolveActiveTenant(ctx));
@@ -73,6 +82,8 @@ public class AdminBootstrapService {
         payload.put("authenticated", false);
         payload.put("isSuperAdmin", false);
         payload.put("adminId", null);
+        payload.put("adminUsername", null);
+        payload.put("adminAvatarUrl", null);
         payload.put("smtpConfigured", false);
         payload.put("hasActiveTenant", false);
         payload.put("activeTenant", null);

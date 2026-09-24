@@ -5,8 +5,10 @@ import dtos.CompleteSetupDto;
 import dtos.LoginDto;
 import dtos.SwitchTenantDto;
 import dtos.TwoFactorCodeDto;
+import dtos.VerifyEmailDto;
 import enums.Role;
 import helpers.AdminLoginResponseHelper;
+import helpers.AdminSettingsResponseHelper;
 import helpers.AdminUiResponseHelper;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Authentication;
@@ -35,6 +37,7 @@ public class AdminController {
     private final AdminBootstrapService adminBootstrapService;
     private final AdminLoginService adminLoginService;
     private final SystemUserService systemUserService;
+    private final SuperadminProfileService superadminProfileService;
     private final TenantService tenantService;
     private final AuthService authService;
 
@@ -44,12 +47,14 @@ public class AdminController {
             AdminBootstrapService adminBootstrapService,
             AdminLoginService adminLoginService,
             SystemUserService systemUserService,
+            SuperadminProfileService superadminProfileService,
             TenantService tenantService,
             AuthService authService) {
         this.authResponseService = Objects.requireNonNull(authResponseService, "authResponseService must not be null");
         this.adminBootstrapService = Objects.requireNonNull(adminBootstrapService, "adminBootstrapService must not be null");
         this.adminLoginService = Objects.requireNonNull(adminLoginService, "adminLoginService must not be null");
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
+        this.superadminProfileService = Objects.requireNonNull(superadminProfileService, "superadminProfileService must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
     }
@@ -112,6 +117,15 @@ public class AdminController {
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage())).end();
         }
+    }
+
+    /**
+     * Confirms the email address a superadmin stored on their own profile. Deliberately without the
+     * admin filter: the token that arrives here is the credential, and it is opened from a mailbox,
+     * which is rarely the browser the superadmin happens to be signed in with.
+     */
+    public Response verifyEmail(@NotNull(message = "Request body is required") @Valid VerifyEmailDto dto) {
+        return AdminSettingsResponseHelper.toResponse(superadminProfileService.confirmEmail(dto));
     }
 
     public Response switchTenantJwt(@NotNull(message = "Request body is required") @Valid SwitchTenantDto dto, Request request) {

@@ -10,7 +10,7 @@ Each row is one superadmin:
 
 - **Username** and **email**. Your own account is tagged with a **You** badge.
 - **Status**: *Active* for a completed account, or *Pending invite* for someone who has been invited but hasn't finished setup yet.
-- **2FA**: whether that account has two-factor authentication enrolled. This is per account (see [Settings → Security](/admin-ui/settings#security)), so it's normal for some superadmins to have it on and others not. A pending invite shows nothing here until the account exists.
+- **2FA**: whether that account has two-factor authentication enrolled. This is per account (see [Profile → Security](/admin-ui/profile#security)), so it's normal for some superadmins to have it on and others not. A pending invite shows nothing here until the account exists.
 
 ## Adding a superadmin by invite
 

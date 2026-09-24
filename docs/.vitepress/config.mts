@@ -54,6 +54,7 @@ export default defineConfig({
           },
           { text: 'Global Hooks', link: '/admin-ui/global-hooks' },
           { text: 'Superadmins', link: '/admin-ui/superadmins' },
+          { text: 'Profile', link: '/admin-ui/profile' },
           { text: 'Settings', link: '/admin-ui/settings' },
           { text: 'Request Logs', link: '/admin-ui/request-logs' },
           { text: 'Backup & Restore', link: '/admin-ui/backup-restore' }

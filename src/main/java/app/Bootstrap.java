@@ -37,6 +37,10 @@ public class Bootstrap implements MangooBootstrap {
         Bind.controller(AdminController.class).withRoutes(
                 On.get().to("/login").respondeWith("admin"),
                 On.get().to("/setup").respondeWith("admin"),
+                // Confirming an email address has to work without a session: the link is opened
+                // from a mailbox, which is rarely the browser the superadmin is signed in with.
+                On.get().to("/verify-email").respondeWith("admin"),
+                On.post().to("/api/admin/verify-email").respondeWith("verifyEmail"),
                 On.post().to("/authenticate").respondeWith("authenticate"),
                 On.post().to("/api/admin/login").respondeWith("loginJson"),
                 On.post().to("/api/admin/setup").respondeWith("completeSetup"),
@@ -66,6 +70,7 @@ public class Bootstrap implements MangooBootstrap {
                 // serves the shell, otherwise reloading the page (or any full page load the SPA
                 // itself triggers) ends on the framework's 404 page instead of the admin UI.
                 On.get().to("/admin/user-settings").respondeWith("admin"),
+                On.get().to("/admin/profile").respondeWith("admin"),
                 On.get().to("/admin/backup").respondeWith("admin"),
                 On.get().to("/admin/superadmins").respondeWith("admin"),
                 On.get().to("/admin/collections/{collection}/data").respondeWith("admin"),
@@ -144,11 +149,22 @@ public class Bootstrap implements MangooBootstrap {
 
         Bind.controller(AdminSettingsController.class).withRoutes(
                 On.get().to("/api/admin/settings").respondeWith("list"),
-                On.patch().to("/api/admin/settings").respondeWith("update"),
-                On.post().to("/api/admin/settings/password").respondeWith("changePassword"),
-                On.post().to("/api/admin/settings/2fa/setup").respondeWith("setupTwoFactor"),
-                On.post().to("/api/admin/settings/2fa/confirm").respondeWith("confirmTwoFactor"),
-                On.post().to("/api/admin/settings/2fa/disable").respondeWith("disableTwoFactor")
+                On.patch().to("/api/admin/settings").respondeWith("update")
+        );
+
+        Bind.controller(AdminProfileController.class).withRoutes(
+                On.get().to("/api/admin/profile").respondeWith("read"),
+                On.post().to("/api/admin/profile/email").respondeWith("updateEmail"),
+                On.post().to("/api/admin/profile/email/resend").respondeWith("resendEmailVerification"),
+                On.delete().to("/api/admin/profile/email").respondeWith("deleteEmail"),
+                On.post().to("/api/admin/profile/login-alert").respondeWith("updateLoginAlert"),
+                On.get().to("/api/admin/profile/avatar").respondeWith("avatar"),
+                On.post().to("/api/admin/profile/avatar").respondeWith("updateAvatar"),
+                On.delete().to("/api/admin/profile/avatar").respondeWith("deleteAvatar"),
+                On.post().to("/api/admin/profile/password").respondeWith("changePassword"),
+                On.post().to("/api/admin/profile/2fa/setup").respondeWith("setupTwoFactor"),
+                On.post().to("/api/admin/profile/2fa/confirm").respondeWith("confirmTwoFactor"),
+                On.post().to("/api/admin/profile/2fa/disable").respondeWith("disableTwoFactor")
         );
 
         Bind.controller(SuperadminController.class).withRoutes(

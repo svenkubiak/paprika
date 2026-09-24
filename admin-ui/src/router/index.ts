@@ -32,6 +32,15 @@ const router = createRouter({
       }
     },
     {
+      // Opened from a mailbox, so it has to work without a session. The token travels in the
+      // fragment for the same reason it does on /setup: it never reaches the server as part of a
+      // URL, so no access log or proxy can end up holding it.
+      path: '/verify-email',
+      name: 'verify-email',
+      component: () => import('@/pages/VerifyEmailPage.vue'),
+      meta: { public: true, title: 'Confirm email address' }
+    },
+    {
       path: '/',
       name: 'dashboard',
       component: () => import('@/pages/DashboardPage.vue'),
@@ -102,6 +111,12 @@ const router = createRouter({
       name: 'superadmins',
       component: () => import('@/pages/SuperadminsPage.vue'),
       meta: { title: 'Superadmins', requiresSuperAdmin: true }
+    },
+    {
+      path: '/admin/profile',
+      name: 'profile',
+      component: () => import('@/pages/ProfilePage.vue'),
+      meta: { title: 'Profile' }
     },
     {
       path: '/admin/settings',

@@ -1,14 +1,8 @@
 # Settings
 
-`/admin/settings` covers configuration for your own superadmin account (password, 2FA) and instance-wide settings (default tenant, request-log retention). Most controls here are disabled unless you're signed in as a superadmin. To add or remove superadmins, see [Superadmins](/admin-ui/superadmins).
+`/admin/settings` covers instance-wide settings: the default tenant and what the request log keeps. Most controls here are disabled unless you're signed in as a superadmin.
 
-## Security
-
-- **Superadmin password**: change the password of the account you're signed in with. Requires the current password and a new password of at least 16 characters. This changes your own password only, not any other superadmin's.
-- **Two-factor authentication (TOTP)**: enable or disable a second sign-in factor **for your own account**. Uses standard TOTP (6-digit codes, 30-second period), so any authenticator app (Google Authenticator, Authy, 1Password, etc.) works:
-  - **Enable**: confirm your current password, scan the displayed QR code (or enter the manual key) in an authenticator app, then confirm with a 6-digit code.
-  - **Disable**: requires both your password and a current 6-digit code, a deliberate extra check since disabling 2FA reduces account security.
-  - 2FA is **per superadmin account**. Turning it on or off here only affects the account you're signed in with, never another superadmin's, and there's no instance-wide switch that forces or removes it for everyone. Each superadmin decides for their own login, and you can see who has it enabled on the [Superadmins](/admin-ui/superadmins) page. There's no equivalent setting for tenant users.
+Everything that belongs to **your own account** — password, two-factor authentication, email address, profile picture, sign-in alerts — lives on [Profile](/admin-ui/profile) instead, reachable through the avatar in the top right corner. To add or remove superadmins, see [Superadmins](/admin-ui/superadmins).
 
 ## Tenants
 

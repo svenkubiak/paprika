@@ -209,6 +209,9 @@ export interface BootstrapData {
   authenticated: boolean
   isSuperAdmin: boolean
   adminId?: string | null
+  adminUsername?: string | null
+  /** Carries the version of the stored picture, so the browser can cache it and still see a new one. */
+  adminAvatarUrl?: string | null
   smtpConfigured?: boolean
   hasActiveTenant: boolean
   activeTenant: TenantDefinition | null
@@ -251,13 +254,27 @@ export interface ValidationError {
 }
 
 export interface AppSettings {
-  twoFactorEnabled: boolean
   requestLogRetentionDays: number
   defaultTenantId?: string | null
   requestLogClientInfo?: boolean
   requestLogClientIp?: 'off' | 'truncated' | 'full'
   requestLogAdminUi?: boolean
   [key: string]: string | boolean | number | null | undefined
+}
+
+/** The signed-in superadmin's own account, as the profile page sees it. */
+export interface SuperadminProfile {
+  username: string
+  email?: string | null
+  emailVerified: boolean
+  /** A confirmation link is out and has not expired yet. */
+  emailVerificationPending: boolean
+  loginAlertEnabled: boolean
+  twoFactorEnabled: boolean
+  smtpConfigured: boolean
+  avatarUrl?: string | null
+  /** Only present on the responses that trigger a confirmation mail. */
+  verificationEmailSent?: boolean
 }
 
 export interface TwoFactorSetupResult {

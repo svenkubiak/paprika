@@ -14,20 +14,29 @@ import session.PendingTwoFactorSession;
 import java.util.Objects;
 import java.util.Optional;
 
+/**
+ * Signs superadmins in, both into the admin UI session and into an API token pair. Every path that
+ * ends in a completed sign-in tells {@link LoginAlertService} about it, so a login from a device
+ * the account has not been used from before can be reported to its owner. A deferred 2FA challenge
+ * is not a login yet - only the confirmation step is.
+ */
 @Singleton
 public class AdminLoginService {
     private final SystemUserService systemUserService;
     private final TwoFactorService twoFactorService;
     private final AuthService authService;
+    private final LoginAlertService loginAlertService;
 
     @Inject
     public AdminLoginService(
             SystemUserService systemUserService,
             TwoFactorService twoFactorService,
-            AuthService authService) {
+            AuthService authService,
+            LoginAlertService loginAlertService) {
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
         this.twoFactorService = Objects.requireNonNull(twoFactorService, "twoFactorService must not be null");
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
+        this.loginAlertService = Objects.requireNonNull(loginAlertService, "loginAlertService must not be null");
     }
 
     /**
@@ -65,6 +74,7 @@ public class AdminLoginService {
         authentication.login(userId.orElseThrow());
         PendingTwoFactorSession.clear(request);
         AdminTenantSession.resetTenantSelection(request);
+        loginAlertService.recordLogin(userId.orElseThrow(), request);
 
         return AdminLoginResult.success();
     }
@@ -86,6 +96,8 @@ public class AdminLoginService {
             return AdminLoginResult.invalidCredentials();
         }
 
+        loginAlertService.recordLogin(userId.orElseThrow(), request);
+
         return AdminLoginResult.success(
                 authService.createTokenPair(AuthContext.of(userId.orElseThrow(), Role.SUPERADMIN, null)));
     }
@@ -103,6 +115,7 @@ public class AdminLoginService {
         authentication.login(auth.id());
         AdminTenantSession.resetTenantSelection(request);
         PendingTwoFactorSession.clear(request);
+        loginAlertService.recordLogin(auth.id(), request);
 
         return AdminLoginResult.success();
     }
@@ -115,6 +128,7 @@ public class AdminLoginService {
 
         PendingTwoFactorSession.clear(request);
         AdminTenantSession.resetTenantSelection(request);
+        loginAlertService.recordLogin(auth.id(), request);
 
         return AdminLoginResult.success(authService.createTokenPair(auth));
     }

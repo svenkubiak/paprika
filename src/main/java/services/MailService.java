@@ -11,11 +11,12 @@ import org.apache.logging.log4j.Logger;
 import java.util.Objects;
 
 /**
- * Sends the tenant-user recovery emails (password reset, email verification) straight from Paprika
- * over the instance's global SMTP configuration. Delivery is best-effort: {@code Mail.send()} sends
+ * Sends the mails Paprika produces itself - tenant-user recovery (password reset, email
+ * verification) and the superadmin mails (invite, address confirmation, login alert) - over the
+ * instance's global SMTP configuration. Delivery is best-effort: {@code Mail.send()} sends
  * asynchronously, and an unconfigured or failed send is logged, never surfaced to the caller, so the
- * auth endpoints can keep their uniform responses. The link is built by the caller and points at the
- * tenant's own app.
+ * auth endpoints can keep their uniform responses. Recovery links are built by the caller and point
+ * at the tenant's own app.
  */
 @Singleton
 public class MailService {
@@ -85,6 +86,87 @@ public class MailService {
                 link,
                 "If you weren't expecting this, you can ignore this email.");
         send(toEmail, "You've been invited as a Paprika superadmin", text, html);
+    }
+
+    /**
+     * Confirms the address a superadmin stored on their own profile. Deliberately worded for the
+     * admin control plane rather than reusing the tenant-user wording: the account this confirms is
+     * the one that operates the whole instance.
+     */
+    public void sendSuperadminEmailVerification(String toEmail, String link, String username) {
+        String greeting = StringUtils.isNotBlank(username) ? username : "there";
+        String text = "Hi " + greeting + ",\n\n"
+                + "Please confirm this address for your Paprika superadmin account by opening the link "
+                + "below. It expires in 30 minutes.\n\n"
+                + link + "\n\n"
+                + "Until it is confirmed, Paprika will not send anything else to this address. If you "
+                + "didn't add it, you can ignore this email.";
+        String html = htmlBody(
+                "Confirm your email address",
+                "Please confirm this address for your Paprika superadmin account using the button "
+                        + "below. This link expires in 30 minutes.",
+                "Confirm address",
+                link,
+                "Until it is confirmed, Paprika will not send anything else to this address. If you "
+                        + "didn't add it, you can ignore this email.");
+        send(toEmail, "Confirm your Paprika superadmin email address", text, html);
+    }
+
+    /**
+     * Tells a superadmin that their account was used from a device Paprika has not seen before.
+     * The user agent and IP address are only passed through into this mail - neither is stored, the
+     * account only keeps a hash of the two.
+     */
+    public void sendSuperadminLoginAlert(
+            String toEmail,
+            String username,
+            String userAgent,
+            String ipAddress,
+            String signedInAt) {
+
+        String greeting = StringUtils.isNotBlank(username) ? username : "there";
+        String device = StringUtils.isNotBlank(userAgent) ? userAgent : "unknown";
+        String address = StringUtils.isNotBlank(ipAddress) ? ipAddress : "unknown";
+
+        String text = "Hi " + greeting + ",\n\n"
+                + "Your Paprika superadmin account was just signed in from a device or location it "
+                + "has not been used from before.\n\n"
+                + "Time: " + signedInAt + "\n"
+                + "IP address: " + address + "\n"
+                + "Browser: " + device + "\n\n"
+                + "If that was you, nothing needs to happen. If it wasn't, change your password "
+                + "immediately and enable two-factor authentication.";
+        String html = "<!doctype html><html><body style=\"font-family:sans-serif;line-height:1.5;color:#111\">"
+                + "<h2>New sign-in to your superadmin account</h2>"
+                + "<p>Your Paprika superadmin account was just signed in from a device or location it "
+                + "has not been used from before.</p>"
+                + "<table style=\"font-size:14px;border-collapse:collapse\">"
+                + row("Time", signedInAt)
+                + row("IP address", address)
+                + row("Browser", device)
+                + "</table>"
+                + "<p style=\"color:#777;font-size:13px\">If that was you, nothing needs to happen. If it "
+                + "wasn't, change your password immediately and enable two-factor authentication.</p>"
+                + "</body></html>";
+
+        send(toEmail, "New sign-in to your Paprika superadmin account", text, html);
+    }
+
+    private static String row(String label, String value) {
+        return "<tr><td style=\"padding:2px 12px 2px 0;color:#555\">" + label + "</td>"
+                + "<td style=\"padding:2px 0;word-break:break-all\">" + escape(value) + "</td></tr>";
+    }
+
+    /**
+     * The user agent is attacker-controlled and ends up in an HTML mail, so it is escaped rather
+     * than trusted. It is the only value in these mails that does not come from Paprika itself.
+     */
+    private static String escape(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
 
     private void send(String toEmail, String subject, String text, String html) {

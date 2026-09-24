@@ -203,6 +203,10 @@ class OutboundSecretLeakIntegrationTest {
                 AdminTestUtils.getWithAdminCookies("/api/admin/settings", admin).getContent());
         assertNoSecret("superadmin list",
                 AdminTestUtils.getWithAdminCookies("/api/admin/superadmins", admin).getContent());
+        // The profile is read straight off the account document, which is also where the password
+        // hash, the TOTP secret and the confirmation token hash live.
+        assertNoSecret("superadmin profile",
+                AdminTestUtils.getWithAdminCookies("/api/admin/profile", admin).getContent());
     }
 
     /**

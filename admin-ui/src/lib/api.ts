@@ -12,6 +12,7 @@ import type {
   RequestLogDelta,
   SchemaImportResult,
   SuperadminInvite,
+  SuperadminProfile,
   SuperadminSummary,
   TenantDefinition,
   TenantUser,
@@ -604,6 +605,57 @@ export const api = {
     return request('/api/admin/settings')
   },
 
+  getProfile(): Promise<SuperadminProfile> {
+    return request('/api/admin/profile')
+  },
+
+  /** Stores the address and mails the confirmation link to it. */
+  updateProfileEmail(email: string): Promise<SuperadminProfile> {
+    return request('/api/admin/profile/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    })
+  },
+
+  resendProfileEmailVerification(): Promise<SuperadminProfile> {
+    return request('/api/admin/profile/email/resend', { method: 'POST' })
+  },
+
+  deleteProfileEmail(): Promise<SuperadminProfile> {
+    return request('/api/admin/profile/email', { method: 'DELETE' })
+  },
+
+  /** Public on purpose: the token from the mail is the credential, no session is needed. */
+  confirmProfileEmail(token: string): Promise<{ success: boolean; username: string }> {
+    return request('/api/admin/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    })
+  },
+
+  setLoginAlert(enabled: boolean): Promise<SuperadminProfile> {
+    return request('/api/admin/profile/login-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    })
+  },
+
+  /** `image` is a base64 data URL; the caller scales the picture down before sending it. */
+  updateAvatar(image: string): Promise<SuperadminProfile> {
+    return request('/api/admin/profile/avatar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image })
+    })
+  },
+
+  deleteAvatar(): Promise<SuperadminProfile> {
+    return request('/api/admin/profile/avatar', { method: 'DELETE' })
+  },
+
   updateSettings(settings: {
     requestLogRetentionDays?: number
     defaultTenantId?: string | null
@@ -622,7 +674,7 @@ export const api = {
     currentPassword: string,
     newPassword: string
   ): Promise<{ success: boolean }> {
-    return request('/api/admin/settings/password', {
+    return request('/api/admin/profile/password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ currentPassword, newPassword })
@@ -630,7 +682,7 @@ export const api = {
   },
 
   setupTwoFactor(password: string): Promise<TwoFactorSetupResult> {
-    return request('/api/admin/settings/2fa/setup', {
+    return request('/api/admin/profile/2fa/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password })
@@ -638,7 +690,7 @@ export const api = {
   },
 
   confirmTwoFactor(code: string): Promise<{ twoFactorEnabled: boolean; fallbackCode: string }> {
-    return request('/api/admin/settings/2fa/confirm', {
+    return request('/api/admin/profile/2fa/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code })
@@ -646,7 +698,7 @@ export const api = {
   },
 
   disableTwoFactor(password: string, code: string): Promise<{ twoFactorEnabled: boolean }> {
-    return request('/api/admin/settings/2fa/disable', {
+    return request('/api/admin/profile/2fa/disable', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password, code })

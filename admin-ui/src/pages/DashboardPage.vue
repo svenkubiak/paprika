@@ -10,8 +10,7 @@ onMounted(async () => {
   const data = await load()
   if (data?.isSuperAdmin) {
     try {
-      const settings = await api.getSettings()
-      twoFactorEnabled.value = settings.twoFactorEnabled
+      twoFactorEnabled.value = (await api.getProfile()).twoFactorEnabled
     } catch {
       twoFactorEnabled.value = null
     }
@@ -89,7 +88,7 @@ const statCards = computed(() => [
           </p>
         </div>
       </div>
-      <UButton variant="outline" color="neutral" size="sm" to="/admin/settings" class="shrink-0">
+      <UButton variant="outline" color="neutral" size="sm" to="/admin/profile" class="shrink-0">
         Enable 2FA
       </UButton>
     </UCard>

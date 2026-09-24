@@ -61,7 +61,7 @@ public class AdminControllerTest {
         for (String path : new String[]{
                 "/admin/tenants", "/admin/settings", "/admin/global-hooks", "/admin/tenant-settings",
                 "/admin/logs", "/admin/users", "/admin/user-settings", "/admin/backup",
-                "/admin/superadmins", "/admin/collections/users/data"}) {
+                "/admin/superadmins", "/admin/profile", "/admin/collections/users/data"}) {
             TestResponse response = TestRequest.get(path).withDisabledRedirects().execute();
 
             assertThat("no server route for " + path,
@@ -224,11 +224,11 @@ public class AdminControllerTest {
     }
 
     @Test
-    void superadminCanChangePasswordInSettings() {
+    void superadminCanChangePasswordOnTheirProfile() {
         String currentPassword = AdminTestUtils.prepareAdminPassword();
         HttpCookie authentication = AdminTestUtils.loginAsAdmin();
 
-        TestResponse response = TestRequest.post("/api/admin/settings/password")
+        TestResponse response = TestRequest.post("/api/admin/profile/password")
                 .withCookie(authentication)
                 .withStringBody(
                         "{\"currentPassword\":\"" + currentPassword

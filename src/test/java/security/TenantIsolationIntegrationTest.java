@@ -217,6 +217,7 @@ class TenantIsolationIntegrationTest {
                 "/api/meta/global-hooks",
                 "/api/meta/schema/export",
                 "/api/admin/settings",
+                "/api/admin/profile",
                 "/api/admin/superadmins",
                 "/api/admin/request-logs",
                 "/api/admin/backup/export")) {

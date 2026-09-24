@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
+import utils.AuthTokens;
 import utils.DbUtils;
 import utils.DbWrites;
 
@@ -36,6 +37,41 @@ public class SystemUserService {
     private static final Duration SETUP_TOKEN_TTL = Duration.ofMinutes(30);
     private static final Logger LOG = LogManager.getLogger(SystemUserService.class);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    private static final String EMAIL = "email";
+    private static final String EMAIL_VERIFIED = "emailVerified";
+    private static final String EMAIL_TOKEN_HASH = "emailVerifyTokenHash";
+    private static final String EMAIL_TOKEN_EXPIRES_AT = "emailVerifyTokenExpiresAt";
+    private static final String AVATAR = "avatar";
+    private static final String AVATAR_DATA = "data";
+    private static final String AVATAR_CONTENT_TYPE = "contentType";
+    private static final String LOGIN_ALERT_ENABLED = "loginAlertEnabled";
+    private static final String AUTH_ORIGINS = "authOrigins";
+    private static final String FINGERPRINT = "fingerprint";
+
+    /**
+     * How many devices a superadmin is remembered on. The list only exists to tell a login from a
+     * device this account has used before apart from one that has not, so it is bounded: the oldest
+     * entry drops out rather than growing the user document without end. Dropping an entry is
+     * harmless - the next login from that device counts as new and sends one more alert.
+     */
+    private static final int MAX_AUTH_ORIGINS = 20;
+
+    /** Everything the profile page shows about the signed-in superadmin. */
+    public record SuperadminProfile(
+            String id,
+            String username,
+            String email,
+            boolean emailVerified,
+            boolean emailVerificationPending,
+            boolean loginAlertEnabled,
+            boolean twoFactorEnabled,
+            String avatarVersion) {
+    }
+
+    /** A stored profile picture, decoded and ready to be written to the response. */
+    public record Avatar(byte[] data, String contentType, String version) {
+    }
 
     private final TenantDatabaseResolver resolver;
 
@@ -227,6 +263,229 @@ public class SystemUserService {
         }
         Document user = findByUsername(username.trim());
         return user == null ? Optional.empty() : Optional.of(toPublicMap(user));
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Profile of the signed-in superadmin
+    // ------------------------------------------------------------------------------------------
+
+    public Optional<SuperadminProfile> findProfile(String userId) {
+        Document user = findById(userId);
+        if (user == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(new SuperadminProfile(
+                user.getString("id"),
+                user.getString("username"),
+                user.getString(EMAIL),
+                isEmailVerified(user),
+                AuthTokens.isActive(user.getString(EMAIL_TOKEN_EXPIRES_AT)),
+                Boolean.TRUE.equals(user.getBoolean(LOGIN_ALERT_ENABLED)),
+                StringUtils.isNotBlank(user.getString("totpSecret")),
+                avatarVersion(user)));
+    }
+
+    /**
+     * Stores a new address for this superadmin and issues the one-time token that confirms it. The
+     * address counts as unconfirmed until that token comes back, so everything that mails the
+     * superadmin stays switched off in the meantime.
+     * <p>
+     * Re-saving the address that is already confirmed is a no-op and returns no token: it would
+     * otherwise throw away a confirmation for nothing.
+     */
+    public Optional<String> setEmail(String userId, String email) {
+        String normalized = normalizeEmail(email);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Email is required");
+        }
+
+        Document user = findById(userId);
+        if (user == null) {
+            return Optional.empty();
+        }
+
+        if (normalized.equals(user.getString(EMAIL)) && isEmailVerified(user)) {
+            return Optional.empty();
+        }
+
+        String token = AuthTokens.generate();
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                combine(
+                        set(EMAIL, normalized),
+                        set(EMAIL_VERIFIED, false),
+                        set(EMAIL_TOKEN_HASH, AuthTokens.hash(token)),
+                        set(EMAIL_TOKEN_EXPIRES_AT, AuthTokens.expiresAt()),
+                        // An address that is not confirmed cannot receive the alert, so leaving the
+                        // switch on would claim a protection that is not in place.
+                        set(LOGIN_ALERT_ENABLED, false)
+                )
+        );
+
+        return Optional.of(token);
+    }
+
+    /** A fresh confirmation token for the address already on the account, or empty when there is none to confirm. */
+    public Optional<String> renewEmailVerificationToken(String userId) {
+        Document user = findById(userId);
+        if (user == null || StringUtils.isBlank(user.getString(EMAIL)) || isEmailVerified(user)) {
+            return Optional.empty();
+        }
+
+        String token = AuthTokens.generate();
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                combine(
+                        set(EMAIL_TOKEN_HASH, AuthTokens.hash(token)),
+                        set(EMAIL_TOKEN_EXPIRES_AT, AuthTokens.expiresAt())
+                )
+        );
+
+        return Optional.of(token);
+    }
+
+    /** Removes the address, its pending confirmation and everything that depends on it. */
+    public void clearEmail(String userId) {
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                combine(
+                        unset(EMAIL),
+                        unset(EMAIL_VERIFIED),
+                        unset(EMAIL_TOKEN_HASH),
+                        unset(EMAIL_TOKEN_EXPIRES_AT),
+                        set(LOGIN_ALERT_ENABLED, false)
+                )
+        );
+    }
+
+    /**
+     * Confirms an address from the token that was mailed to it and returns the account it belongs
+     * to, or empty when the token is unknown, already used or expired.
+     * <p>
+     * Finding the token and clearing it is a single operation for the same reason the tenant side
+     * does it that way: two requests arriving together would otherwise both pass the check before
+     * either one consumes the token.
+     */
+    public Optional<SuperadminProfile> confirmEmailVerification(String token) {
+        if (StringUtils.isBlank(token)) {
+            return Optional.empty();
+        }
+
+        Document claimed = resolver.systemCollection(CollectionName.USERS).findOneAndUpdate(
+                eq(EMAIL_TOKEN_HASH, AuthTokens.hash(token)),
+                combine(unset(EMAIL_TOKEN_HASH), unset(EMAIL_TOKEN_EXPIRES_AT)),
+                new FindOneAndUpdateOptions().returnDocument(ReturnDocument.BEFORE));
+
+        if (claimed == null || !AuthTokens.isActive(claimed.getString(EMAIL_TOKEN_EXPIRES_AT))) {
+            return Optional.empty();
+        }
+
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", claimed.getString("id")),
+                set(EMAIL_VERIFIED, true));
+
+        return findProfile(claimed.getString("id"));
+    }
+
+    /**
+     * Stores the profile picture. The bytes are kept Base64 encoded on the user document itself:
+     * a superadmin lives in the system database, which has no file storage of its own, and this
+     * way the picture travels with the instance backup like the rest of the account does.
+     */
+    public void setAvatar(String userId, byte[] data, String contentType) {
+        Objects.requireNonNull(data, "data must not be null");
+
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                set(AVATAR, new Document(AVATAR_DATA, Base64.getEncoder().encodeToString(data))
+                        .append(AVATAR_CONTENT_TYPE, contentType)));
+    }
+
+    public void clearAvatar(String userId) {
+        resolver.systemCollection(CollectionName.USERS).updateOne(eq("id", userId), unset(AVATAR));
+    }
+
+    public Optional<Avatar> findAvatar(String userId) {
+        Document user = findById(userId);
+        if (user == null) {
+            return Optional.empty();
+        }
+
+        Document avatar = user.get(AVATAR, Document.class);
+        String encoded = avatar == null ? null : avatar.getString(AVATAR_DATA);
+        if (StringUtils.isBlank(encoded)) {
+            return Optional.empty();
+        }
+
+        try {
+            return Optional.of(new Avatar(
+                    Base64.getDecoder().decode(encoded),
+                    avatar.getString(AVATAR_CONTENT_TYPE),
+                    avatarVersion(user)));
+        } catch (IllegalArgumentException e) {
+            LOG.warn("Stored avatar of superadmin {} is not decodable and is ignored", userId);
+            return Optional.empty();
+        }
+    }
+
+    public void setLoginAlertEnabled(String userId, boolean enabled) {
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                set(LOGIN_ALERT_ENABLED, enabled));
+    }
+
+    /**
+     * Records that this account was used from the given origin and reports whether that origin had
+     * never been seen before - which is what decides if a login is worth an alert.
+     * <p>
+     * The insert only matches documents that do not carry the fingerprint yet, so two logins racing
+     * on the same new device produce exactly one "new" answer and therefore exactly one alert.
+     * Nothing about the device itself is stored: the fingerprint is a hash, and the user agent and
+     * IP address it was derived from are used for the mail and then dropped.
+     */
+    public boolean rememberAuthOrigin(String userId, String fingerprint) {
+        if (StringUtils.isBlank(userId) || StringUtils.isBlank(fingerprint)) {
+            return false;
+        }
+
+        Document origin = new Document(FINGERPRINT, fingerprint)
+                .append("firstSeenAt", Instant.now().toString())
+                .append("lastSeenAt", Instant.now().toString());
+
+        long added = resolver.systemCollection(CollectionName.USERS).updateOne(
+                and(eq("id", userId), ne(AUTH_ORIGINS + "." + FINGERPRINT, fingerprint)),
+                new Document("$push", new Document(AUTH_ORIGINS, new Document("$each", List.of(origin))
+                        .append("$slice", -MAX_AUTH_ORIGINS)))
+        ).getModifiedCount();
+
+        if (added == 1) {
+            return true;
+        }
+
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                and(eq("id", userId), eq(AUTH_ORIGINS + "." + FINGERPRINT, fingerprint)),
+                set(AUTH_ORIGINS + ".$.lastSeenAt", Instant.now().toString()));
+
+        return false;
+    }
+
+    private boolean isEmailVerified(Document user) {
+        return Boolean.TRUE.equals(user.getBoolean(EMAIL_VERIFIED));
+    }
+
+    /**
+     * Identifies the stored bytes so the browser can cache the picture and still pick up a new one
+     * immediately: it is part of the avatar URL and doubles as the ETag.
+     */
+    private String avatarVersion(Document user) {
+        Document avatar = user.get(AVATAR, Document.class);
+        String encoded = avatar == null ? null : avatar.getString(AVATAR_DATA);
+        if (StringUtils.isBlank(encoded)) {
+            return null;
+        }
+
+        return sha256(encoded).substring(0, 16);
     }
 
     public void changePassword(String userId, String newPassword) {

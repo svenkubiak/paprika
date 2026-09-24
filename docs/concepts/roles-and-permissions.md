@@ -13,7 +13,7 @@ There is no intermediate "tenant admin" role. Every tenant user is a plain `user
 
 ## Admin authentication
 
-Superadmins sign in to the admin UI with a session cookie (optionally protected by TOTP 2FA, configured under [Settings](/admin-ui/settings)). A separate JWT-based flow (`/api/admin/token`) exists for programmatic access to the admin API. The two are mutually exclusive per request: an endpoint guarded for the admin session (`AdminAuthFilter`) rejects bearer tokens outright, and vice versa.
+Superadmins sign in to the admin UI with a session cookie (optionally protected by TOTP 2FA, configured under [Profile](/admin-ui/profile)). A separate JWT-based flow (`/api/admin/token`) exists for programmatic access to the admin API. The two are mutually exclusive per request: an endpoint guarded for the admin session (`AdminAuthFilter`) rejects bearer tokens outright, and vice versa.
 
 ### Session lifetime
 

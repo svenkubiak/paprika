@@ -20,6 +20,7 @@ const pageTitle = computed(() => {
   if (route.name === 'dashboard') return 'Overview'
   if (route.name === 'tenants') return 'Tenants'
   if (route.name === 'settings') return 'Settings'
+  if (route.name === 'profile') return 'Profile'
   if (route.name === 'backup') return 'Backup'
   if (route.name === 'global-hooks') return 'Global hooks'
   if (route.name === 'request-logs') return 'Logs'
@@ -101,6 +102,9 @@ function toggleColorMode() {
           <p v-else-if="route.name === 'superadmins'" class="text-sm text-muted">
             Manage superadmin accounts and invites
           </p>
+          <p v-else-if="route.name === 'profile'" class="text-sm text-muted">
+            Your own superadmin account
+          </p>
           <p v-else-if="route.name === 'user-settings'" class="text-sm text-muted">
             Self-registration, password reset, and email verification for tenant users
           </p>
@@ -134,6 +138,26 @@ function toggleColorMode() {
             aria-label="Instance navigation"
           />
         </UDropdownMenu>
+
+        <!-- The picture and the name of the account this session belongs to, and the way to the
+             page that changes them. Deliberately not a menu: there is exactly one destination. -->
+        <UButton
+          to="/admin/profile"
+          variant="ghost"
+          :color="route.name === 'profile' ? 'primary' : 'neutral'"
+          class="gap-2"
+          aria-label="Your profile"
+        >
+          <UAvatar
+            :src="bootstrap?.adminAvatarUrl || undefined"
+            :alt="bootstrap?.adminUsername || 'Profile'"
+            icon="i-lucide-user"
+            size="2xs"
+          />
+          <span class="hidden max-w-32 truncate text-sm font-medium sm:inline">
+            {{ bootstrap?.adminUsername || 'Profile' }}
+          </span>
+        </UButton>
 
         <UButton
           :icon="colorMode === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"

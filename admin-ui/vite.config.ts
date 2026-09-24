@@ -17,7 +17,7 @@ export default defineConfig({
             'lucide:type', 'lucide:align-left', 'lucide:hash', 'lucide:toggle-left',
             'lucide:calendar', 'lucide:clock', 'lucide:git-branch', 'lucide:paperclip',
             'lucide:braces',
-            'lucide:activity', 'lucide:archive', 'lucide:arrow-down-left', 'lucide:arrow-left',
+            'lucide:activity', 'lucide:archive', 'lucide:bell', 'lucide:bell-off', 'lucide:send', 'lucide:arrow-down-left', 'lucide:arrow-left',
             'lucide:arrow-right-left', 'lucide:arrow-up-down', 'lucide:arrow-up-right',
             'lucide:building-2', 'lucide:calendar-clock', 'lucide:check', 'lucide:chevron-down',
             'lucide:chevron-left', 'lucide:chevron-right', 'lucide:chevron-up', 'lucide:circle-check',

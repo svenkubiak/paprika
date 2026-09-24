@@ -46,7 +46,7 @@ Each tenant has its own MongoDB database, its own users, and independent registr
 
 ### Authenticate users securely
 
-Paprika handles the full auth lifecycle: Argon2 password hashing, JWT access and refresh tokens, opt-in password reset and email verification per tenant, and TOTP two-factor authentication for superadmins. Auth flows are hookable, and reset or verification endpoints always return `200` to prevent account enumeration.
+Paprika handles the full auth lifecycle: Argon2 password hashing, JWT access and refresh tokens, opt-in password reset and email verification per tenant, and TOTP two-factor authentication for superadmins. Superadmins can also have Paprika email them when their account is signed in from a device it has not been used from before. Auth flows are hookable, and reset or verification endpoints always return `200` to prevent account enumeration.
 
 ### Control access per operation
 
@@ -94,7 +94,7 @@ Full variable reference is in the [documentation](https://svenkubiak.github.io/p
 | Deployment | Docker Compose or standalone `.deb` |
 | Admin UI | Vue 3, Vite, Nuxt UI 4 |
 | API auth | JWT (tenant users) |
-| Admin auth | Session cookie + optional TOTP 2FA |
+| Admin auth | Session cookie + optional TOTP 2FA and sign-in alerts |
 
 ## 💻 Local Development
 

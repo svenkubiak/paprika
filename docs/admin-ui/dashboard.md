@@ -19,7 +19,7 @@ Four cards summarize instance health at a glance:
 
 Two contextual banners can appear above the stat cards:
 
-- **"Two-factor authentication is not enabled"** — shown if the superadmin account doesn't have TOTP 2FA configured yet. Links to [Settings](/admin-ui/settings) to enable it.
+- **"Two-factor authentication is not enabled"** — shown if the superadmin account doesn't have TOTP 2FA configured yet. Links to [Profile](/admin-ui/profile) to enable it.
 - **"No tenant selected"** — shown if no tenant is currently active. Links to the [Tenants page](/admin-ui/tenants) to create or select one. Collection data, users, and logs are all tenant-scoped, so this is usually the first thing to resolve on a fresh instance.
 
 ## Version
