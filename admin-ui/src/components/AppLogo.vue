@@ -36,10 +36,16 @@ const titleClass = {
 
 <template>
   <div class="flex items-center gap-3">
-    <img
-      :src="imageSrc[size]"
-      alt="Paprika"
-      :class="['shrink-0 object-contain', imageClass[size]]"
+    <!-- The artwork is a single-colour silhouette (black pixels plus an alpha channel), so it
+         is drawn as a mask filled with the current text colour rather than as an image. A black
+         <img> is invisible on a dark background, and a second, inverted file would be a copy to
+         keep in sync for a logo that has no colours of its own. -->
+    <span
+      class="app-logo shrink-0 text-default"
+      :class="imageClass[size]"
+      :style="{ '--app-logo-src': `url(${imageSrc[size]})` }"
+      role="img"
+      aria-label="Paprika"
     />
     <div v-if="showText" class="min-w-0">
       <div :class="titleClass[size]">Paprika</div>
@@ -49,3 +55,18 @@ const titleClass = {
     </div>
   </div>
 </template>
+
+<style scoped>
+.app-logo {
+  display: block;
+  background-color: currentColor;
+  mask-image: var(--app-logo-src);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: var(--app-logo-src);
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+}
+</style>
