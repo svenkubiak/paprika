@@ -360,7 +360,12 @@ class ApiKeyBypassIntegrationTest {
     void listExposesTheClassificationForTheAdminUi() {
         UserService userService = Application.getInstance(UserService.class);
         String boundId = userId(userService.createUser("bypass-list-user", null, "secret-password-123"));
+
+        // Both classifications are created here on purpose: the assertions below would otherwise
+        // be satisfied by a key some other test left in the tenant, which makes this test pass or
+        // fail depending on the order Surefire happens to pick.
         createKey("bypass-list-privileged", boundId, true);
+        createKey("bypass-list-ordinary", boundId, false);
 
         TestResponse list = AdminTestUtils.getWithAdminCookies(
                 "/api/meta/tenants/" + TenantTestUtils.defaultTenant().id() + "/api-keys",
