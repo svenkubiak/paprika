@@ -13,6 +13,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.TokenPair;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import utils.ApiKeys;
 
 import java.nio.charset.StandardCharsets;
@@ -99,7 +100,7 @@ public class AuthService {
      */
     private String bearerToken(Request request) {
         String authorization = request.getHeader("Authorization");
-        if (StringUtils.isBlank(authorization) || !StringUtils.startsWithIgnoreCase(authorization, BEARER_PREFIX)) {
+        if (StringUtils.isBlank(authorization) || !Strings.CI.startsWith(authorization, BEARER_PREFIX)) {
             return null;
         }
 
