@@ -34,6 +34,7 @@ public class TenantService {
     private static final Logger LOG = LogManager.getLogger(TenantService.class);
     private static final String SLUG_INDEX = "slug_unique";
     private static final String COLLECTION_NAME_INDEX = "name_unique";
+    private static final String COLLECTION_ID_INDEX = "id_unique";
     private static final String DATABASE_NAME_INDEX = "databaseName_unique";
     private static final String STATUS_INDEX = "status";
     private static final String USERNAME_INDEX = "username_unique";
@@ -306,7 +307,7 @@ public class TenantService {
         for (TenantDefinition tenant : listAll()) {
             reconcileUsersDefinition(tenant);
             // Also covers tenants created before the index existed
-            ensureCollectionNameIndex(resolver.tenantDatabase(tenant.databaseName()));
+            ensureMetaCollectionIndexes(resolver.tenantDatabase(tenant.databaseName()));
         }
     }
 
@@ -333,7 +334,7 @@ public class TenantService {
 
         var usersCollection = database.getCollection(CollectionName.tenantData(SystemCollections.USERS));
         ensureUsernameIndex(usersCollection);
-        ensureCollectionNameIndex(database);
+        ensureMetaCollectionIndexes(database);
 
         var metaCollections = database.getCollection(CollectionName.META_COLLECTIONS, CollectionDefinition.class);
         CollectionDefinition existing = metaCollections.find(eq("name", SystemCollections.USERS)).first();
@@ -370,30 +371,46 @@ public class TenantService {
     }
 
     /**
-     * A collection name identifies a collection for every request, so it has to be unique in the
-     * database as well and not only in the check the API performs before inserting.
+     * The two identities of a collection definition, both unique in the database and not only in
+     * the checks the API performs before it writes.
      * <p>
-     * Two requests creating the same collection at the same time both pass that check and both
-     * insert, leaving two definitions under one name. Which of them a request then resolves is
-     * whatever Mongo returns first, so an admin editing the rules would change one definition while
-     * the other may keep serving requests. The index turns the second insert into a write error,
-     * which the API answers with a conflict.
+     * The <b>name</b> is what every request resolves its rules through. Two requests creating the
+     * same collection at the same time both pass the existence check and both insert, leaving two
+     * definitions under one name; which of them a request then resolves is whatever Mongo returns
+     * first, so an admin editing the rules would change one definition while the other may keep
+     * serving requests. The index turns the second insert into a write error, which the API
+     * answers with a conflict.
      * <p>
-     * Creating the index is best effort: a database that already holds duplicates from before this
-     * existed must still start. The duplicates stay visible in the admin UI and can be removed
-     * there.
+     * The <b>id</b> is what every write addresses: {@code replaceDefinition} and
+     * {@code deleteDefinition} match on it, and a schema import replaces an existing definition by
+     * the id it found. Two definitions sharing an id therefore means an edit lands on whichever of
+     * them Mongo picks - a collection changing its schema because a different one was saved. The
+     * API cannot produce that state, since it generates every id, but a restored archive can:
+     * a backup is restored verbatim, hand-edited files included.
+     * <p>
+     * Creating either index is best effort: a database that already holds duplicates from before
+     * this existed must still start, and a restore must not fail at the very end over an archive
+     * that was already broken. The duplicates stay visible in the admin UI and can be removed
+     * there; the warning below says which index is missing until they are.
      */
-    private void ensureCollectionNameIndex(MongoDatabase database) {
+    private void ensureMetaCollectionIndexes(MongoDatabase database) {
+        var metaCollections = database.getCollection(CollectionName.META_COLLECTIONS);
+        ensureBestEffort(database, metaCollections, COLLECTION_NAME_INDEX, Indexes.ascending("name"));
+        ensureBestEffort(database, metaCollections, COLLECTION_ID_INDEX, Indexes.ascending("id"));
+    }
+
+    private void ensureBestEffort(
+            MongoDatabase database,
+            com.mongodb.client.MongoCollection<Document> collection,
+            String name,
+            org.bson.conversions.Bson keys) {
+
         try {
-            ensureIndex(
-                    database.getCollection(CollectionName.META_COLLECTIONS),
-                    COLLECTION_NAME_INDEX,
-                    Indexes.ascending("name"),
-                    true);
+            ensureIndex(collection, name, keys, true);
         } catch (RuntimeException e) {
-            LOG.warn("Could not create the unique index on collection names for database {}: {}. "
-                    + "Remove duplicate collection definitions and restart to enforce uniqueness.",
-                    database.getName(), e.getMessage());
+            LOG.warn("Could not create the index {} on {}.{}: {}. Remove the duplicate collection "
+                    + "definitions and restart to enforce uniqueness.",
+                    name, database.getName(), CollectionName.META_COLLECTIONS, e.getMessage());
         }
     }
 

@@ -200,6 +200,36 @@ class TenantCollectionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
     }
 
+    /**
+     * Every write to a definition addresses it by id - replace, delete, and the schema import
+     * replacing what it found. Two definitions sharing an id means such a write lands on
+     * whichever of them Mongo picks, so a collection can change its schema because a different
+     * one was saved. The API never produces that state; a restored archive can, which is why the
+     * database says no rather than the code that happens to write.
+     */
+    @Test
+    void twoDefinitionsCannotShareAnId() {
+        TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+
+        String id = utils.DbUtils.id();
+        String suffix = id.substring(0, 8);
+        service.insertDefinition(ctx, definitionWith(id, "dup_id_first_" + suffix));
+
+        assertThrows(com.mongodb.MongoWriteException.class,
+                () -> service.insertDefinition(ctx, definitionWith(id, "dup_id_second_" + suffix)));
+    }
+
+    private static CollectionDefinition definitionWith(String id, String name) {
+        return new CollectionDefinition(
+                id,
+                name,
+                List.of(new FieldDefinition("title", FieldType.STRING, true, false, null, null)),
+                List.of(),
+                CollectionRules.locked(),
+                false);
+    }
+
     @Test
     void findDefinitionByIdReturnsSeededCollection() {
         TenantCollectionService service = Application.getInstance(TenantCollectionService.class);

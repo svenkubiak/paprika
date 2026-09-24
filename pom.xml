@@ -285,6 +285,20 @@
 				<version>3.6.0</version>
 				<configuration>
 					<forkedProcessExitTimeoutInSeconds>120</forkedProcessExitTimeoutInSeconds>
+					<!--
+					  The test classes share one application and one database, so a class can leave
+					  state behind that another one depends on without anybody meaning it to. The
+					  default order (filesystem) hides that: it differs between a developer machine
+					  and the build server, so such a coupling shows up as a build that fails on
+					  Jenkins and passes locally - which is how the missing unique index after a
+					  backup restore was found, by accident and late.
+
+					  Random order surfaces it instead, early and everywhere. Surefire prints the
+					  seed it used at the start of the run; a failing order is reproduced with
+					  -Dsurefire.runOrder.random.seed=<seed>. Pinning the order to alphabetical
+					  would make the build quiet again without making it true.
+					-->
+					<runOrder>random</runOrder>
 				</configuration>
 			</plugin>
 			<plugin>

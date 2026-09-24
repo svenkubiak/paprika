@@ -193,7 +193,8 @@ class BackupImportSafetyTest {
         MongoDatabase tenant = Application.getInstance(TenantDatabaseResolver.class)
                 .tenantDatabase(TenantTestUtils.defaultTenant().databaseName());
         assertThat("without this two admins can create the same collection at the same time",
-                indexNames(tenant.getCollection(CollectionName.META_COLLECTIONS)), hasItem("name_unique"));
+                indexNames(tenant.getCollection(CollectionName.META_COLLECTIONS)),
+                hasItems("name_unique", "id_unique"));
         assertThat(indexNames(tenant.getCollection(
                 CollectionName.tenantData(constants.SystemCollections.USERS))), hasItem("username_unique"));
         assertThat(indexNames(tenant.getCollection(
