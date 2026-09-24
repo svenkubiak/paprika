@@ -1,3 +1,5 @@
+import { useToast } from '@nuxt/ui/composables/useToast'
+
 const DEFAULT_DURATION = 4000
 
 type ToastInput = {

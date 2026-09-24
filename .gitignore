@@ -8,6 +8,7 @@
 /admin-ui/node_modules
 /admin-ui/auto-imports.d.ts
 /admin-ui/components.d.ts
+/admin-ui/tsconfig.tsbuildinfo
 /docs/node_modules
 /docs/.vitepress/dist
 /docs/.vitepress/cache
