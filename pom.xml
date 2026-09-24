@@ -546,6 +546,20 @@
 										<argument>paprika.jar</argument>
 										<argument>--main-class</argument>
 										<argument>io.mangoo.core.Application</argument>
+										<argument>--java-options</argument>
+										<argument>-Dapplication.mode=prod</argument>
+										<argument>--java-options</argument>
+										<argument>-Dfile.encoding=UTF-8</argument>
+										<argument>--java-options</argument>
+										<argument>-XX:MaxRAMPercentage=70</argument>
+										<argument>--java-options</argument>
+										<argument>-XX:+ExitOnOutOfMemoryError</argument>
+										<argument>--java-options</argument>
+										<argument>-XX:+HeapDumpOnOutOfMemoryError</argument>
+										<argument>--java-options</argument>
+										<argument>-XX:HeapDumpPath=/var/lib/paprika/dumps</argument>
+										<argument>--java-options</argument>
+										<argument>-XX:+UseCompactObjectHeaders</argument>
 										<argument>--app-version</argument>
 										<argument>${project.version}</argument>
 										<argument>--dest</argument>
