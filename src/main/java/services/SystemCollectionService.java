@@ -43,14 +43,29 @@ public class SystemCollectionService {
     }
 
     public void ensureSystemCollections() {
-        ensureSuperadminUsersCollection();
-        ensureSettingsCollection();
-        apiKeyService.ensureApiKeysCollection();
-        tenantService.ensureTenantsCollection();
+        ensureSystemStructure();
         bootstrapSuperadmin();
         tenantService.ensureDefaultTenant();
         tenantService.ensureRequestLogsForAllTenants();
         tenantService.ensureUsersDefinitionForAllTenants();
+    }
+
+    /**
+     * The collections of the system database and the indexes they carry - without the
+     * bootstrapping that surrounds them at startup.
+     * <p>
+     * Separate because a backup restore needs exactly this half and none of the other: dropping
+     * a collection drops its indexes, and the restore replaces the system collections wholesale,
+     * so it has to put the indexes back or the uniqueness of a superadmin username and of a
+     * tenant slug quietly stops being enforced until the next restart. Calling
+     * {@link #ensureSystemCollections()} there would be wrong - it would bootstrap a superadmin
+     * and a default tenant into a state the archive defines deliberately.
+     */
+    public void ensureSystemStructure() {
+        ensureSuperadminUsersCollection();
+        ensureSettingsCollection();
+        apiKeyService.ensureApiKeysCollection();
+        tenantService.ensureTenantsCollection();
     }
 
     private void ensureSuperadminUsersCollection() {

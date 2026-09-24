@@ -6,7 +6,6 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import constants.CollectionName;
-import constants.SystemCollections;
 import enums.Role;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
@@ -45,15 +44,21 @@ public class ImportService {
     private final TenantDatabaseResolver resolver;
     private final FileStorageService fileStorageService;
     private final ExportService exportService;
+    private final SystemCollectionService systemCollections;
+    private final TenantService tenantService;
 
     @Inject
     public ImportService(
             TenantDatabaseResolver resolver,
             FileStorageService fileStorageService,
-            ExportService exportService) {
+            ExportService exportService,
+            SystemCollectionService systemCollections,
+            TenantService tenantService) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.fileStorageService = Objects.requireNonNull(fileStorageService, "fileStorageService must not be null");
         this.exportService = Objects.requireNonNull(exportService, "exportService must not be null");
+        this.systemCollections = Objects.requireNonNull(systemCollections, "systemCollections must not be null");
+        this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
     }
 
     /**
@@ -311,10 +316,11 @@ public class ImportService {
         restoreCollection(db, CollectionName.USERS, plan.users());
         restoreCollection(db, CollectionName.SETTINGS, plan.settings());
 
-        MongoCollection<Document> tenants = db.getCollection(TenantDefinition.COLLECTION);
-        ensureIndex(tenants, "slug_unique", Indexes.ascending("slug"), true);
-        ensureIndex(tenants, "databaseName_unique", Indexes.ascending("databaseName"), true);
-        ensureIndex(tenants, "status", Indexes.ascending("status"), false);
+        // Every collection above was dropped and rebuilt, and a dropped collection takes its
+        // indexes with it. Rebuilding them here through the service that owns them, rather than
+        // from a second list kept in this class: the two lists drift, and the way that shows is
+        // a uniqueness rule that is simply not enforced any more - silently, until a restart.
+        systemCollections.ensureSystemStructure();
     }
 
     private TenantRestoreResult restoreTenant(Map<String, byte[]> entries, TenantPlan plan) throws IOException {
@@ -337,12 +343,12 @@ public class ImportService {
 
         dropCollectionsNotIn(db, plan);
 
-        ensureIndex(
-                db.getCollection(CollectionName.tenantData(SystemCollections.USERS)),
-                "username_unique", Indexes.ascending("username"), true);
-        ensureIndex(
-                db.getCollection(CollectionName.meta(SystemCollections.REQUEST_LOGS)),
-                "timestamp_desc", Indexes.descending("timestamp"), false);
+        // Same reason as in the system database, and the same fix: this is the method that says
+        // what a healthy tenant database contains, so the restored one is handed to it instead
+        // of getting a hand-maintained subset of its indexes. It brings back the unique index on
+        // usernames, the one on collection names - whose absence lets two admins create the same
+        // collection at once - and the request log infrastructure the archive does not carry.
+        tenantService.initializeTenantDatabase(tenant);
 
         restoreUserDefinedIndexes(db, plan.metaCollectionsJson());
 
@@ -455,13 +461,6 @@ public class ImportService {
             count++;
         }
         return count;
-    }
-
-    private void ensureIndex(MongoCollection<Document> collection, String name, Bson keys, boolean unique) {
-        for (Document index : collection.listIndexes()) {
-            if (name.equals(index.getString("name"))) return;
-        }
-        collection.createIndex(keys, new IndexOptions().name(name).unique(unique));
     }
 
     /**
