@@ -2,6 +2,7 @@ package services;
 
 import auth.TenantContext;
 import constants.CollectionName;
+import com.mongodb.client.MongoDatabase;
 import io.mangoo.core.Application;
 import io.mangoo.test.TestRunner;
 import models.CollectionRules;
@@ -27,6 +28,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -165,6 +168,63 @@ class BackupImportSafetyTest {
         assertThat(result.snapshot(), notNullValue());
         assertThat(java.nio.file.Files.isRegularFile(java.nio.file.Path.of(result.snapshot())), is(true));
         assertThat(java.nio.file.Files.size(java.nio.file.Path.of(result.snapshot())), greaterThan(0L));
+    }
+
+    /**
+     * Dropping a collection drops its indexes, and a restore replaces every collection there is.
+     * The indexes have to come back with them, and the one that hurts most when it does not is
+     * the unique index on collection names: without it the check in the meta API is a plain read
+     * before an insert, so two admins creating the same collection at the same moment both
+     * succeed and the tenant ends up with two definitions under one name. Nothing tells anybody -
+     * until the next restart, which then cannot build the index either, because by then the
+     * duplicates are in the way.
+     */
+    @Test
+    void aRestoreLeavesTheDatabasesWithTheIndexesAFreshInstallHas() throws Exception {
+        importService().importAll(export());
+
+        MongoDatabase system = Application.getInstance(TenantDatabaseResolver.class).system();
+        assertThat("a superadmin username has to stay unique after a restore",
+                indexNames(system.getCollection(CollectionName.USERS)), hasItem("username_unique"));
+        assertThat(indexNames(system.getCollection(CollectionName.SETTINGS)), hasItem("key_unique"));
+        assertThat(indexNames(system.getCollection(models.TenantDefinition.COLLECTION)),
+                hasItems("slug_unique", "databaseName_unique"));
+
+        MongoDatabase tenant = Application.getInstance(TenantDatabaseResolver.class)
+                .tenantDatabase(TenantTestUtils.defaultTenant().databaseName());
+        assertThat("without this two admins can create the same collection at the same time",
+                indexNames(tenant.getCollection(CollectionName.META_COLLECTIONS)), hasItem("name_unique"));
+        assertThat(indexNames(tenant.getCollection(
+                CollectionName.tenantData(constants.SystemCollections.USERS))), hasItem("username_unique"));
+        assertThat(indexNames(tenant.getCollection(
+                CollectionName.meta(constants.SystemCollections.REQUEST_LOGS))), hasItem("timestamp_desc"));
+    }
+
+    /** What the unique index above is for, seen from the API rather than from the index list. */
+    @Test
+    void aCollectionNameStaysUniqueAfterARestore() throws Exception {
+        importService().importAll(export());
+
+        var metaCollections = Application.getInstance(TenantCollectionService.class)
+                .metaCollections(TenantTestUtils.defaultTenantContext());
+        String name = "restore_unique_" + DbUtils.id().substring(0, 8);
+
+        metaCollections.insertOne(new models.CollectionDefinition(
+                DbUtils.id(), name, java.util.List.of(), java.util.List.of(),
+                CollectionRules.locked(), false));
+
+        assertThrows(com.mongodb.MongoWriteException.class, () -> metaCollections.insertOne(
+                new models.CollectionDefinition(
+                        DbUtils.id(), name, java.util.List.of(), java.util.List.of(),
+                        CollectionRules.locked(), false)));
+    }
+
+    private static Set<String> indexNames(com.mongodb.client.MongoCollection<Document> collection) {
+        Set<String> names = new java.util.LinkedHashSet<>();
+        for (Document index : collection.listIndexes()) {
+            names.add(index.getString("name"));
+        }
+        return names;
     }
 
     private static ImportService importService() {

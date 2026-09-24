@@ -232,8 +232,11 @@ class ValidationServiceTest {
 
     @Test
     void rejectsRelationWhenTargetRecordDoesNotExist() throws Exception {
+        // Ids are unique per definition, and these two tests both store one: sharing an id would
+        // leave the tenant with two collections under one id, which every write that resolves a
+        // definition by id (a schema import replacing it, for one) then applies to the wrong one.
         CollectionDefinition authors = new CollectionDefinition(
-                "authors-id",
+                "relation-missing-authors-id",
                 "relation_missing_authors",
                 List.of(new FieldDefinition("name", FieldType.STRING, true, false, null)),
                 List.of(),
@@ -245,7 +248,7 @@ class ValidationServiceTest {
                 .insertDefinition(TenantTestUtils.defaultTenantContext(), authors);
 
         CollectionDefinition posts = new CollectionDefinition(
-                "posts-id",
+                "relation-missing-posts-id",
                 "relation_missing_posts",
                 List.of(new FieldDefinition(
                         "author",
@@ -272,7 +275,7 @@ class ValidationServiceTest {
                 .insertDefinition(
                         TenantTestUtils.defaultTenantContext(),
                         new CollectionDefinition(
-                                "authors-id",
+                                "relation-authors-id",
                                 "relation_authors",
                                 List.of(new FieldDefinition("name", FieldType.STRING, true, false, null)),
                                 List.of(),
@@ -282,7 +285,7 @@ class ValidationServiceTest {
         String authorId = TenantTestUtils.seedRecord("relation_authors", "Ada");
 
         CollectionDefinition posts = new CollectionDefinition(
-                "posts-id",
+                "relation-posts-id",
                 "relation_posts",
                 List.of(new FieldDefinition(
                         "author",
