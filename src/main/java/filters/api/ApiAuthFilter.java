@@ -15,6 +15,8 @@ import io.undertow.util.Methods;
 import jakarta.inject.Inject;
 import models.CollectionDefinition;
 import models.CollectionRules;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import rules.RuleMode;
@@ -39,9 +41,11 @@ import static com.mongodb.client.model.Filters.eq;
  * downstream either finds one - and can trust that a rule was evaluated - or refuses.
  */
 public class ApiAuthFilter implements PerRequestFilter {
+    private static final Logger LOG = LogManager.getLogger(ApiAuthFilter.class);
     private static final Map<String, String> FORBIDDEN_BODY = Map.of("error", "Forbidden");
     private static final Map<String, String> UNAUTHORIZED_BODY = Map.of("error", "Unauthorized");
     private static final Map<String, String> NOT_FOUND_BODY = Map.of("error", "Collection not found");
+    private static final Map<String, String> SERVER_ERROR_BODY = Map.of("error", "Internal Server Error");
 
     private final TenantCollectionService tenantCollections;
     private final AuthService authService;
@@ -194,6 +198,10 @@ public class ApiAuthFilter implements PerRequestFilter {
             String collection,
             TenantContext tenantContext) {
         Map<String, Object> body = parseBodyMap(request);
+        if (body == null) {
+            return unreadableBody(request);
+        }
+
         if (!ruleService.canAccess(rule, rules, auth, null, body, collection, tenantContext)) {
             if (!auth.isAuthenticated()) {
                 return Response.unauthorized()
@@ -227,7 +235,14 @@ public class ApiAuthFilter implements PerRequestFilter {
             return Response.notFound().end();
         }
 
-        Map<String, Object> body = operation == RuleOperation.UPDATE ? parseBodyMap(request) : null;
+        Map<String, Object> body = null;
+        if (operation == RuleOperation.UPDATE) {
+            body = parseBodyMap(request);
+            if (body == null) {
+                return unreadableBody(request);
+            }
+        }
+
         if (!ruleService.canAccess(rule, rules, auth, record, body, collection, tenantContext)) {
             return Response.notFound().end();
         }
@@ -263,10 +278,38 @@ public class ApiAuthFilter implements PerRequestFilter {
         return RuleOperation.VIEW;
     }
 
+    /**
+     * Refuses a write whose body the rules cannot see. This is a wiring error, not a client
+     * error, so it is answered with 500 and logged - answering 403 would hide a broken filter
+     * chain behind what looks like a permission problem.
+     */
+    private Response unreadableBody(Request request) {
+        LOG.error("Multipart body was not parsed before the rules were evaluated for collection '{}' - "
+                + "ApiMultipartFilter must run before ApiAuthFilter", request.getPathParameter("collection"));
+        return Response.internalServerError().bodyJson(SERVER_ERROR_BODY).end();
+    }
+
+    /**
+     * The request body as a flat map, or {@code null} when the body cannot be read at all.
+     * <p>
+     * That second case is a multipart request whose parts have not been turned into a JSON body
+     * yet. mangoo answers {@link Request#getBody()} with an empty string for every multipart
+     * request, so falling back to it would hand the rules an empty body - indistinguishable from
+     * a write that touches nothing, and therefore a silent bypass of every body-dependent check.
+     * A body that is genuinely empty or unparseable still yields an empty map: that is a client
+     * error the rules are allowed to decide on.
+     */
     private Map<String, Object> parseBodyMap(Request request) {
-        String body = MultipartSupport.isMultipart(request)
-                ? MultipartSupport.effectiveJsonBody(request)
-                : request.getBody();
+        String body;
+        if (MultipartSupport.isMultipart(request)) {
+            if (!MultipartSupport.isPrepared(request)) {
+                return null;
+            }
+            body = MultipartSupport.effectiveJsonBody(request);
+        } else {
+            body = request.getBody();
+        }
+
         if (body == null || body.isBlank()) {
             return Map.of();
         }

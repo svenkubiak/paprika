@@ -44,6 +44,18 @@ public final class MultipartSupport {
         request.addAttribute(JSON_BODY_ATTRIBUTE, buildJsonBody(definition, parsed).toString());
     }
 
+    /**
+     * Whether the parts of a multipart request have already been turned into a JSON body.
+     * <p>
+     * Callers that decide something on the body - the rule evaluation above all - must not treat
+     * an unprepared multipart request as "no body": mangoo answers {@code request.getBody()} with
+     * an empty string for every multipart request, so an unprepared one looks exactly like a
+     * write that changes nothing.
+     */
+    public static boolean isPrepared(Request request) {
+        return request.getAttribute(JSON_BODY_ATTRIBUTE) instanceof String body && !body.isBlank();
+    }
+
     public static String effectiveJsonBody(Request request) {
         Object attribute = request.getAttribute(JSON_BODY_ATTRIBUTE);
         if (attribute instanceof String body && !body.isBlank()) {

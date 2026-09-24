@@ -19,6 +19,7 @@ import utils.TenantTestUtils;
 
 import java.util.List;
 
+import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
@@ -36,6 +37,7 @@ import static org.hamcrest.Matchers.not;
 @ExtendWith({TestRunner.class})
 class CollectionSelfMembershipRulesIntegrationTest {
     private static final String MEMBERSHIPS = "selfmem_members";
+    private static final String WRITABLE_MEMBERSHIPS = "selfmem_writable";
     private static final String CREW_A = "selfmem-crew-a";
     private static final String CREW_B = "selfmem-crew-b";
     private static final String PASSWORD = "secret-password-123";
@@ -43,6 +45,7 @@ class CollectionSelfMembershipRulesIntegrationTest {
     private static String membershipA;
     private static String membershipB;
     private static String membershipPeer;
+    private static String writableMembershipA;
     private static String tokenA;
     private static String tokenB;
     private static String tokenC;
@@ -50,6 +53,7 @@ class CollectionSelfMembershipRulesIntegrationTest {
     @BeforeAll
     static void seed() {
         TenantTestUtils.seedCollection(MEMBERSHIPS, selfMembershipRules(), membershipFields());
+        TenantTestUtils.seedCollection(WRITABLE_MEMBERSHIPS, writableSelfMembershipRules(), membershipFields());
 
         UserService userService = Application.getInstance(UserService.class);
         String userA = CollectionGroupRulesIntegrationTest.id(
@@ -67,6 +71,9 @@ class CollectionSelfMembershipRulesIntegrationTest {
         membershipA = addMembership(userA, CREW_A, "membership of a");
         membershipB = addMembership(userB, CREW_B, "membership of b");
         membershipPeer = addMembership(peer, CREW_A, "membership of the peer");
+
+        writableMembershipA = addMembership(WRITABLE_MEMBERSHIPS, userA, CREW_A, "writable membership of a");
+        addMembership(WRITABLE_MEMBERSHIPS, userB, CREW_B, "writable membership of b");
     }
 
     /** The point of the setup: the member list of the caller's own group, not only their own row. */
@@ -109,6 +116,96 @@ class CollectionSelfMembershipRulesIntegrationTest {
         assertThat(view(tokenC, membershipA).getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
     }
 
+    /**
+     * Writes are locked here, and a locked rule stays locked whatever the caller encodes the body
+     * as. A multipart request must not walk past the rule just because mangoo reports its body as
+     * empty.
+     */
+    @Test
+    void aLockedUpdateIsRefusedForJsonAndMultipartAlike() {
+        TestResponse json = TestRequest.patch("/api/collections/" + MEMBERSHIPS + "/" + membershipA)
+                .withHeader("Authorization", "Bearer " + tokenA)
+                .withStringBody("{\"crew\":\"" + CREW_B + "\"}")
+                .withContentType("application/json")
+                .execute();
+        assertThat(json.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
+        assertThat(stored(membershipA).getString("crew"), equalTo(CREW_A));
+
+        String boundary = "----paprika-selfmem-test";
+        String body = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"crew\"\r\n\r\n"
+                + CREW_B + "\r\n"
+                + "--" + boundary + "--\r\n";
+
+        TestResponse multipart = TestRequest.patch("/api/collections/" + MEMBERSHIPS + "/" + membershipA)
+                .withHeader("Authorization", "Bearer " + tokenA)
+                .withHeader("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .withStringBody(body)
+                .execute();
+        assertThat(multipart.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
+        assertThat(stored(membershipA).getString("crew"), equalTo(CREW_A));
+    }
+
+    /**
+     * Where the collection does allow updates, the group of a membership is the very field the
+     * resolver reads - so moving a record into a foreign crew hands the caller a group they were
+     * never a member of. It has to be refused through both encodings; a multipart body that the
+     * rules never see would make the check decorative.
+     */
+    @Test
+    void aMembershipCannotBeMovedIntoAForeignCrewThroughEitherEncoding() {
+        TestResponse json = TestRequest.patch(url(WRITABLE_MEMBERSHIPS, writableMembershipA))
+                .withHeader("Authorization", "Bearer " + tokenA)
+                .withStringBody("{\"crew\":\"" + CREW_B + "\"}")
+                .withContentType("application/json")
+                .execute();
+        assertThat(json.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+        assertThat(stored(WRITABLE_MEMBERSHIPS, writableMembershipA).getString("crew"), equalTo(CREW_A));
+
+        TestResponse multipart = patchMultipart(
+                WRITABLE_MEMBERSHIPS, writableMembershipA, tokenA, "crew", CREW_B);
+        assertThat(multipart.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+        assertThat(stored(WRITABLE_MEMBERSHIPS, writableMembershipA).getString("crew"), equalTo(CREW_A));
+
+        // A write that stays inside the own crew still goes through on both paths
+        TestResponse allowed = patchMultipart(
+                WRITABLE_MEMBERSHIPS, writableMembershipA, tokenA, "note", "renamed via multipart");
+        assertThat(allowed.getContent(), allowed.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(stored(WRITABLE_MEMBERSHIPS, writableMembershipA).getString("note"),
+                equalTo("renamed via multipart"));
+        assertThat(stored(WRITABLE_MEMBERSHIPS, writableMembershipA).getString("crew"), equalTo(CREW_A));
+    }
+
+    private static TestResponse patchMultipart(
+            String collection, String recordId, String token, String field, String value) {
+        String boundary = "----paprika-selfmem-test";
+        String body = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + field + "\"\r\n\r\n"
+                + value + "\r\n"
+                + "--" + boundary + "--\r\n";
+
+        return TestRequest.patch(url(collection, recordId))
+                .withHeader("Authorization", "Bearer " + token)
+                .withHeader("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .withStringBody(body)
+                .execute();
+    }
+
+    private static String url(String collection, String recordId) {
+        return "/api/collections/" + collection + "/" + recordId;
+    }
+
+    private static Document stored(String recordId) {
+        return stored(MEMBERSHIPS, recordId);
+    }
+
+    private static Document stored(String collection, String recordId) {
+        return Application.getInstance(TenantCollectionService.class)
+                .dataCollection(TenantTestUtils.defaultTenantContext(), collection)
+                .find(eq("id", recordId))
+                .first();
+    }
+
     private static TestResponse list(String token) {
         return TestRequest.get("/api/collections/" + MEMBERSHIPS + "?offset=0&limit=50")
                 .withHeader("Authorization", "Bearer " + token)
@@ -132,6 +229,13 @@ class CollectionSelfMembershipRulesIntegrationTest {
                 "owner", MEMBERSHIPS, "user", "crew", "crew");
     }
 
+    /** The same self-scoping collection, but with updates allowed for members of the crew. */
+    static CollectionRules writableSelfMembershipRules() {
+        return new CollectionRules(
+                "group", "group", null, "group", null,
+                "owner", WRITABLE_MEMBERSHIPS, "user", "crew", "crew");
+    }
+
     static List<FieldDefinition> membershipFields() {
         return List.of(
                 new FieldDefinition("user", FieldType.STRING, true, false, null),
@@ -140,9 +244,13 @@ class CollectionSelfMembershipRulesIntegrationTest {
     }
 
     private static String addMembership(String userId, String group, String note) {
+        return addMembership(MEMBERSHIPS, userId, group, note);
+    }
+
+    private static String addMembership(String collection, String userId, String group, String note) {
         String id = DbUtils.id();
         Application.getInstance(TenantCollectionService.class)
-                .dataCollection(TenantTestUtils.defaultTenantContext(), MEMBERSHIPS)
+                .dataCollection(TenantTestUtils.defaultTenantContext(), collection)
                 .insertOne(new Document()
                         .append("id", id)
                         .append("user", userId)

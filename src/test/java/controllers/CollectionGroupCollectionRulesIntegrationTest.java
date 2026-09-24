@@ -159,6 +159,51 @@ class CollectionGroupCollectionRulesIntegrationTest {
         assertThat(stored(teamB).getString("id"), equalTo(teamB));
     }
 
+    /**
+     * The same write as {@link #aGroupRecordCannotBeRelabelledAsAnotherGroup}, sent as multipart.
+     * The content type must not decide whether the membership check sees the body - otherwise the
+     * whole preset is bypassed by switching the encoding.
+     */
+    @Test
+    void aGroupRecordCannotBeRelabelledAsAnotherGroupWithAMultipartBody() {
+        TestResponse moved = patchMultipart(teamA, tokenA, "id", teamB);
+
+        assertThat(moved.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+        assertThat(stored(teamA).getString("id"), equalTo(teamA));
+        assertThat(stored(teamB).getString("id"), equalTo(teamB));
+    }
+
+    /** Multipart reaches the own group and stops at a foreign one, exactly like JSON does. */
+    @Test
+    void aMultipartUpdateReachesTheOwnGroupOnly() {
+        TestResponse own = patchMultipart(teamA, tokenMember, "name", "Team A via multipart");
+        assertThat(own.getContent(), own.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(stored(teamA).getString("name"), equalTo("Team A via multipart"));
+
+        TestResponse foreign = patchMultipart(teamB, tokenMember, "name", "Hijacked");
+        assertThat(foreign.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+        assertThat(stored(teamB).getString("name"), equalTo("Team B"));
+
+        // Put the fixture back for the tests that assert on the name.
+        Application.getInstance(TenantCollectionService.class)
+                .dataCollection(TenantTestUtils.defaultTenantContext(), TEAMS)
+                .updateOne(eq("id", teamA), new Document("$set", new Document("name", "Team A")));
+    }
+
+    private static TestResponse patchMultipart(String recordId, String token, String field, String value) {
+        String boundary = "----paprika-grpself-test";
+        String body = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + field + "\"\r\n\r\n"
+                + value + "\r\n"
+                + "--" + boundary + "--\r\n";
+
+        return TestRequest.patch("/api/collections/" + TEAMS + "/" + recordId)
+                .withHeader("Authorization", "Bearer " + token)
+                .withHeader("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .withStringBody(body)
+                .execute();
+    }
+
     private static TestResponse list(String token) {
         return TestRequest.get("/api/collections/" + TEAMS + "?offset=0&limit=50")
                 .withHeader("Authorization", "Bearer " + token)

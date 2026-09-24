@@ -2,6 +2,7 @@ package utils;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import enums.FieldType;
+import io.mangoo.routing.bindings.Request;
 import models.CollectionDefinition;
 import models.CollectionRules;
 import models.FieldDefinition;
@@ -83,5 +84,32 @@ class MultipartSupportTest {
         assertThat(body.get("published").asBoolean(), is(true));
         assertThat(body.get("tags").isArray(), is(true));
         assertThat(body.get("relations").isArray(), is(true));
+    }
+
+    /**
+     * Everything that decides on the body of a multipart request depends on this flag: a request
+     * whose parts have not been parsed yet must be distinguishable from one with an empty body,
+     * because mangoo reports both as an empty body.
+     */
+    @Test
+    void aRequestWithoutTheParsedBodyAttributeIsNotPrepared() {
+        assertThat(MultipartSupport.isPrepared(new Request()), is(false));
+    }
+
+    @Test
+    void aBlankParsedBodyDoesNotCountAsPrepared() {
+        Request request = new Request();
+        request.addAttribute(MultipartSupport.JSON_BODY_ATTRIBUTE, "   ");
+
+        assertThat(MultipartSupport.isPrepared(request), is(false));
+    }
+
+    @Test
+    void aRequestWithTheParsedBodyAttributeIsPrepared() {
+        Request request = new Request();
+        request.addAttribute(MultipartSupport.JSON_BODY_ATTRIBUTE, "{\"crew\":\"crew-a\"}");
+
+        assertThat(MultipartSupport.isPrepared(request), is(true));
+        assertThat(MultipartSupport.effectiveJsonBody(request), is("{\"crew\":\"crew-a\"}"));
     }
 }

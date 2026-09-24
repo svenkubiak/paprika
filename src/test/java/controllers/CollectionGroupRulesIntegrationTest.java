@@ -180,6 +180,67 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(renamed.getStatusCode(), equalTo(StatusCodes.OK));
     }
 
+    /**
+     * The same move through a multipart body. The content type of a request must never decide
+     * whether a body-dependent rule runs - if the rules only see the JSON body, every write can
+     * be laundered through {@code multipart/form-data}.
+     */
+    @Test
+    void aRecordCannotBeMovedIntoAForeignGroupWithAMultipartBody() {
+        String record = insertPost("Movable multipart", CREW_A);
+
+        TestResponse moved = patchMultipart(record, tokenA, "crew", CREW_B);
+        assertThat(moved.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+        assertThat(stored(record).getString("crew"), equalTo(CREW_A));
+
+        // The caller may still write inside their own group through the same content type
+        TestResponse renamed = patchMultipart(record, tokenA, "title", "Renamed multipart");
+        assertThat(renamed.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(stored(record).getString("crew"), equalTo(CREW_A));
+        assertThat(stored(record).getString("title"), equalTo("Renamed multipart"));
+    }
+
+    /** Create is decided by the body as well, so it has to see the multipart parts too. */
+    @Test
+    void createWithAMultipartBodyIsAllowedIntoTheOwnGroupOnly() {
+        TestResponse own = createMultipart(tokenA, "Multipart A", CREW_A);
+        assertThat(own.getStatusCode(), equalTo(StatusCodes.CREATED));
+
+        TestResponse foreign = createMultipart(tokenA, "Multipart B", CREW_B);
+        assertThat(foreign.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
+    }
+
+    private static TestResponse patchMultipart(String recordId, String token, String field, String value) {
+        String boundary = "----paprika-group-test";
+        String body = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + field + "\"\r\n\r\n"
+                + value + "\r\n"
+                + "--" + boundary + "--\r\n";
+
+        return TestRequest.patch("/api/collections/" + POSTS + "/" + recordId)
+                .withHeader("Authorization", "Bearer " + token)
+                .withHeader("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .withStringBody(body)
+                .execute();
+    }
+
+    private static TestResponse createMultipart(String token, String title, String group) {
+        String boundary = "----paprika-group-test";
+        String body = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"title\"\r\n\r\n"
+                + title + "\r\n"
+                + "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"crew\"\r\n\r\n"
+                + group + "\r\n"
+                + "--" + boundary + "--\r\n";
+
+        return TestRequest.post("/api/collections/" + POSTS)
+                .withHeader("Authorization", "Bearer " + token)
+                .withHeader("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .withStringBody(body)
+                .execute();
+    }
+
     @Test
     void anUnauthenticatedCallerNeverSeesData() {
         TestResponse list = TestRequest.get("/api/collections/" + POSTS).execute();
