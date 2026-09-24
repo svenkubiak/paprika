@@ -26,6 +26,9 @@ async function confirmImport() {
     importFile.value = null
     toast.add({
       title: `Backup restored: ${result.tenants} tenant(s), ${result.documents} document(s), ${result.files} file(s)`,
+      description: result.snapshot
+        ? `The state from before the restore was saved to ${result.snapshot}`
+        : undefined,
       color: 'success',
       icon: 'i-lucide-circle-check'
     })
@@ -101,8 +104,15 @@ async function confirmImport() {
             color="error"
             variant="soft"
             icon="i-lucide-triangle-alert"
-            title="This action cannot be undone"
-            description="All existing tenants, collections, data, and files will be permanently overwritten with the backup contents."
+            title="Everything is replaced by the backup"
+            description="All existing tenants, collections, data, and files are overwritten with the backup contents. The state from before the restore is saved to the server's storage directory first, so a wrong restore can be undone."
+          />
+          <UAlert
+            color="warning"
+            variant="soft"
+            icon="i-lucide-shield-alert"
+            title="Only restore archives you produced yourself"
+            description="A backup carries the superadmin accounts. Restoring an archive from somebody else hands whoever created it a way into this instance."
           />
           <p class="text-sm text-muted">
             File: <span class="font-medium">{{ importFile?.name }}</span>

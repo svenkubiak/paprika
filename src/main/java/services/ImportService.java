@@ -7,10 +7,12 @@ import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import constants.CollectionName;
 import constants.SystemCollections;
+import enums.Role;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.TenantDefinition;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -22,6 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -33,25 +36,68 @@ public class ImportService {
     private static final long MAX_UNCOMPRESSED_BYTES = 512L * 1024 * 1024; // 512 MB
     private static final int MAX_ENTRY_COUNT = 10_000;
     private static final int READ_BUFFER_SIZE = 8192;
+    private static final String MANIFEST = "manifest.json";
+    private static final String SYSTEM_TENANTS = "system/tenants.json";
+    private static final String SYSTEM_USERS = "system/users.json";
+    private static final String SYSTEM_SETTINGS = "system/settings.json";
+    static final String SNAPSHOT_DIRECTORY = "pre-import-snapshots";
 
     private final TenantDatabaseResolver resolver;
     private final FileStorageService fileStorageService;
+    private final ExportService exportService;
 
     @Inject
-    public ImportService(TenantDatabaseResolver resolver, FileStorageService fileStorageService) {
+    public ImportService(
+            TenantDatabaseResolver resolver,
+            FileStorageService fileStorageService,
+            ExportService exportService) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.fileStorageService = Objects.requireNonNull(fileStorageService, "fileStorageService must not be null");
+        this.exportService = Objects.requireNonNull(exportService, "exportService must not be null");
     }
 
+    /**
+     * Restores a backup archive in two phases.
+     * <p>
+     * Phase one reads and parses everything the archive is supposed to contain and rejects it as
+     * a whole if anything is missing or unreadable - without touching the databases. This is the
+     * difference between a bad archive and a destroyed instance: the restore used to drop the
+     * system database and every tenant database first and find out about the missing entry
+     * afterwards, which left the instance without superadmins and therefore without a way into
+     * the admin UI.
+     * <p>
+     * Phase two takes a snapshot of the current state, writes it next to the file storage, and
+     * only then applies the parsed archive. Whatever fails from there on - a lost connection, a
+     * half-written tenant - the state from before the import is on disk and its path is part of
+     * the answer.
+     *
+     * @throws IllegalArgumentException when the archive is incomplete or unreadable; nothing has
+     *                                  been written in that case
+     */
     public ImportResult importAll(byte[] zipData) throws IOException {
         Map<String, byte[]> entries = readZipEntries(zipData);
+        BackupPlan plan = parseAndValidate(entries);
 
-        byte[] manifestBytes = entries.get("manifest.json");
-        if (manifestBytes == null) {
-            throw new IllegalArgumentException("Invalid backup: missing manifest.json");
+        String snapshot = writeSafetySnapshot();
+
+        try {
+            return apply(plan, entries, snapshot);
+        } catch (RuntimeException | IOException e) {
+            throw new IOException("Import failed after the restore had started; the state from before "
+                    + "the import was saved to " + snapshot + " - restore that archive to get back. "
+                    + "Cause: " + e.getMessage(), e);
         }
+    }
 
-        Map<String, Object> manifest = JsonUtils.getMapper().readValue(manifestBytes, new TypeReference<>() {});
+    // ---------------------------------------------------------------- phase one: read and check
+
+    /**
+     * Everything the archive promises, parsed. Runs before the first write, and reports the
+     * first problem it finds by name - an archive is either applied completely or not at all.
+     */
+    private BackupPlan parseAndValidate(Map<String, byte[]> entries) {
+        Map<String, Object> manifest = readManifest(entries);
+
         String version = (String) manifest.get("version");
         if (!SUPPORTED_VERSION.equals(version)) {
             throw new IllegalArgumentException("Unsupported backup version: " + version);
@@ -60,27 +106,143 @@ public class ImportService {
         @SuppressWarnings("unchecked")
         List<String> tenantIds = (List<String>) manifest.getOrDefault("tenants", List.of());
 
-        List<TenantDefinition> tenants = parseTenantDefinitions(entries.get("system/tenants.json"));
-        restoreSystemDatabase(entries);
+        List<Document> users = requiredDocuments(entries, SYSTEM_USERS);
+        requireUsableSuperadmin(users);
+
+        List<Document> tenantDocuments = requiredDocuments(entries, SYSTEM_TENANTS);
+        List<Document> settings = requiredDocuments(entries, SYSTEM_SETTINGS);
+
+        Map<String, TenantDefinition> definitions = new LinkedHashMap<>();
+        for (TenantDefinition tenant : parseTenantDefinitions(tenantDocuments)) {
+            definitions.put(tenant.id(), tenant);
+        }
+
+        List<TenantPlan> tenants = new ArrayList<>();
+        for (String tenantId : tenantIds) {
+            TenantDefinition tenant = definitions.get(tenantId);
+            if (tenant == null) {
+                throw new IllegalArgumentException("Incomplete backup: the manifest lists tenant " + tenantId
+                        + ", but " + SYSTEM_TENANTS + " does not describe it");
+            }
+            tenants.add(parseTenant(entries, tenant));
+        }
+
+        return new BackupPlan(tenantDocuments, users, settings, tenants);
+    }
+
+    private Map<String, Object> readManifest(Map<String, byte[]> entries) {
+        byte[] manifestBytes = entries.get(MANIFEST);
+        if (manifestBytes == null) {
+            throw new IllegalArgumentException("Invalid backup: missing " + MANIFEST);
+        }
+
+        try {
+            return JsonUtils.getMapper().readValue(manifestBytes, new TypeReference<>() {});
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Invalid backup: " + MANIFEST + " could not be read: " + e.getMessage());
+        }
+    }
+
+    private TenantPlan parseTenant(Map<String, byte[]> entries, TenantDefinition tenant) {
+        if (StringUtils.isBlank(tenant.id()) || StringUtils.isBlank(tenant.databaseName())) {
+            throw new IllegalArgumentException("Invalid backup: a tenant in " + SYSTEM_TENANTS
+                    + " has no id or no database name");
+        }
+
+        String prefix = "tenants/" + tenant.id() + "/";
+        List<Document> metaCollections = requiredDocuments(entries, prefix + "meta/collections.json");
+        List<Document> metaHooks = requiredDocuments(entries, prefix + "meta/hooks.json");
+
+        Map<String, List<Document>> data = new LinkedHashMap<>();
+        String dataPrefix = prefix + "data/";
+        for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+            String key = entry.getKey();
+            if (!key.startsWith(dataPrefix) || !key.endsWith(".json")) {
+                continue;
+            }
+            String physicalName = key.substring(dataPrefix.length(), key.length() - ".json".length());
+            data.put(physicalName, documents(key, entry.getValue()));
+        }
+
+        return new TenantPlan(tenant, metaCollections, metaHooks, data, entries.get(prefix + "meta/collections.json"));
+    }
+
+    /**
+     * A backup that cannot put a superadmin back is the one that locks the instance out: the
+     * admin UI would be unreachable, and the only way back is restarting the process to get a
+     * fresh setup token out of the log.
+     */
+    private static void requireUsableSuperadmin(List<Document> users) {
+        boolean usable = users.stream().anyMatch(user ->
+                Role.SUPERADMIN.equals(user.getString("role"))
+                        && StringUtils.isNotBlank(user.getString("passwordHash")));
+
+        if (!usable) {
+            throw new IllegalArgumentException("Refusing to restore: " + SYSTEM_USERS + " contains no superadmin "
+                    + "with a password, so the import would leave the instance without a way to sign in");
+        }
+    }
+
+    private static List<Document> requiredDocuments(Map<String, byte[]> entries, String name) {
+        byte[] data = entries.get(name);
+        if (data == null) {
+            throw new IllegalArgumentException("Incomplete backup: missing " + name
+                    + ". Nothing was imported - a missing entry is a broken archive, not an empty collection");
+        }
+        return documents(name, data);
+    }
+
+    private static List<Document> documents(String name, byte[] data) {
+        try {
+            return parseDocuments(data);
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalArgumentException("Invalid backup: " + name + " could not be read: " + e.getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------------- phase two: the writes
+
+    /**
+     * The state of the instance as it is right now, written next to the file storage. Taking it
+     * is not optional: a restore is run in an incident, and it must not be the operation that
+     * destroys the last copy of what is currently there.
+     */
+    private String writeSafetySnapshot() throws IOException {
+        Path directory = fileStorageService.root().resolve(SNAPSHOT_DIRECTORY);
+        Path target = directory.resolve("pre-import-" + Instant.now().toString().replace(':', '-') + ".zip");
+
+        try {
+            Files.createDirectories(directory);
+            Files.write(target, exportService.exportAll());
+        } catch (IOException | RuntimeException e) {
+            throw new IOException("Refusing to restore: the current state could not be saved to " + target
+                    + " first (" + e.getMessage() + "). Nothing was imported.", e);
+        }
+
+        LOG.info("Saved the state from before the import to {}", target);
+        return target.toString();
+    }
+
+    private ImportResult apply(BackupPlan plan, Map<String, byte[]> entries, String snapshot) throws IOException {
+        restoreSystemDatabase(plan);
 
         int totalCollections = 0;
         int totalDocuments = 0;
         int totalFiles = 0;
 
-        for (TenantDefinition tenant : tenants) {
-            if (!tenantIds.contains(tenant.id())) continue;
+        for (TenantPlan tenantPlan : plan.tenants()) {
             try {
-                TenantRestoreResult result = restoreTenant(entries, tenant);
+                TenantRestoreResult result = restoreTenant(entries, tenantPlan);
                 totalCollections += result.collections();
                 totalDocuments += result.documents();
                 totalFiles += result.files();
             } catch (Exception e) {
-                LOG.error("Failed to restore tenant {}: {}", tenant.id(), e.getMessage(), e);
-                throw new IOException("Failed to restore tenant " + tenant.slug() + ": " + e.getMessage(), e);
+                LOG.error("Failed to restore tenant {}: {}", tenantPlan.tenant().id(), e.getMessage(), e);
+                throw new IOException("Failed to restore tenant " + tenantPlan.tenant().slug() + ": " + e.getMessage(), e);
             }
         }
 
-        return new ImportResult(tenants.size(), totalCollections, totalDocuments, totalFiles);
+        return new ImportResult(plan.tenants().size(), totalCollections, totalDocuments, totalFiles, snapshot);
     }
 
     private Map<String, byte[]> readZipEntries(byte[] zipData) throws IOException {
@@ -116,23 +278,21 @@ public class ImportService {
         return entries;
     }
 
-    private List<TenantDefinition> parseTenantDefinitions(byte[] bytes) throws IOException {
-        if (bytes == null) return List.of();
-        List<Map<String, Object>> docs = JsonUtils.getMapper().readValue(bytes, new TypeReference<>() {});
-        return docs.stream()
+    private List<TenantDefinition> parseTenantDefinitions(List<Document> documents) {
+        return documents.stream()
                 .map(doc -> new TenantDefinition(
-                        (String) doc.get("id"),
-                        (String) doc.get("name"),
-                        (String) doc.get("slug"),
-                        (String) doc.get("databaseName"),
-                        (String) doc.get("status"),
-                        (String) doc.get("createdAt"),
+                        doc.getString("id"),
+                        doc.getString("name"),
+                        doc.getString("slug"),
+                        doc.getString("databaseName"),
+                        doc.getString("status"),
+                        doc.getString("createdAt"),
                         Boolean.TRUE.equals(doc.get("registrationEnabled")),
                         Boolean.TRUE.equals(doc.get("passwordResetEnabled")),
                         Boolean.TRUE.equals(doc.get("emailVerificationEnabled")),
                         Boolean.TRUE.equals(doc.get("emailVerificationRequired")),
-                        (String) doc.get("passwordResetUrl"),
-                        (String) doc.get("emailVerificationUrl"),
+                        doc.getString("passwordResetUrl"),
+                        doc.getString("emailVerificationUrl"),
                         parseStringList(doc.get("webhookAllowlist")),
                         parseStringList(doc.get("tokenIssuers"))))
                 .toList();
@@ -145,11 +305,11 @@ public class ImportService {
         return list.stream().map(String::valueOf).toList();
     }
 
-    private void restoreSystemDatabase(Map<String, byte[]> entries) throws IOException {
+    private void restoreSystemDatabase(BackupPlan plan) {
         MongoDatabase db = resolver.system();
-        restoreCollection(db, TenantDefinition.COLLECTION, entries.get("system/tenants.json"));
-        restoreCollection(db, CollectionName.USERS, entries.get("system/users.json"));
-        restoreCollection(db, CollectionName.SETTINGS, entries.get("system/settings.json"));
+        restoreCollection(db, TenantDefinition.COLLECTION, plan.tenantDocuments());
+        restoreCollection(db, CollectionName.USERS, plan.users());
+        restoreCollection(db, CollectionName.SETTINGS, plan.settings());
 
         MongoCollection<Document> tenants = db.getCollection(TenantDefinition.COLLECTION);
         ensureIndex(tenants, "slug_unique", Indexes.ascending("slug"), true);
@@ -157,25 +317,25 @@ public class ImportService {
         ensureIndex(tenants, "status", Indexes.ascending("status"), false);
     }
 
-    private TenantRestoreResult restoreTenant(Map<String, byte[]> entries, TenantDefinition tenant) throws IOException {
-        String prefix = "tenants/" + tenant.id() + "/";
+    private TenantRestoreResult restoreTenant(Map<String, byte[]> entries, TenantPlan plan) throws IOException {
+        TenantDefinition tenant = plan.tenant();
         MongoDatabase db = resolver.tenantDatabase(tenant.databaseName());
-        db.drop();
 
-        restoreCollection(db, CollectionName.META_COLLECTIONS, entries.get(prefix + "meta/collections.json"));
-        restoreCollection(db, CollectionName.META_HOOKS, entries.get(prefix + "meta/hooks.json"));
+        // Not db.drop(): the database stays in place and every collection is replaced from the
+        // parsed archive, so there is no window in which the tenant exists but holds nothing.
+        // Collections the backup does not know are removed afterwards, which is what dropping
+        // the database was there for.
+        restoreCollection(db, CollectionName.META_COLLECTIONS, plan.metaCollections());
+        restoreCollection(db, CollectionName.META_HOOKS, plan.metaHooks());
 
         int collections = 0;
         int documents = 0;
-        String dataPrefix = prefix + "data/";
-
-        for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
-            String key = entry.getKey();
-            if (!key.startsWith(dataPrefix) || !key.endsWith(".json")) continue;
-            String physicalName = key.substring(dataPrefix.length(), key.length() - ".json".length());
-            documents += restoreCollection(db, physicalName, entry.getValue());
+        for (Map.Entry<String, List<Document>> entry : plan.data().entrySet()) {
+            documents += restoreCollection(db, entry.getKey(), entry.getValue());
             collections++;
         }
+
+        dropCollectionsNotIn(db, plan);
 
         ensureIndex(
                 db.getCollection(CollectionName.tenantData(SystemCollections.USERS)),
@@ -184,32 +344,46 @@ public class ImportService {
                 db.getCollection(CollectionName.meta(SystemCollections.REQUEST_LOGS)),
                 "timestamp_desc", Indexes.descending("timestamp"), false);
 
-        restoreUserDefinedIndexes(db, entries.get(prefix + "meta/collections.json"));
+        restoreUserDefinedIndexes(db, plan.metaCollectionsJson());
 
-        int files = restoreTenantFiles(entries, tenant, prefix + "files/");
+        int files = restoreTenantFiles(entries, tenant, "tenants/" + tenant.id() + "/files/");
 
         return new TenantRestoreResult(collections, documents, files);
     }
 
-    private int restoreCollection(MongoDatabase db, String collectionName, byte[] data) throws IOException {
+    /** What a {@code db.drop()} used to take care of, without the window of an empty tenant. */
+    private static void dropCollectionsNotIn(MongoDatabase db, TenantPlan plan) {
+        Set<String> restored = new HashSet<>(plan.data().keySet());
+        restored.add(CollectionName.META_COLLECTIONS);
+        restored.add(CollectionName.META_HOOKS);
+
+        for (String name : db.listCollectionNames()) {
+            if (!restored.contains(name)) {
+                db.getCollection(name).drop();
+            }
+        }
+    }
+
+    private int restoreCollection(MongoDatabase db, String collectionName, List<Document> docs) {
+        Objects.requireNonNull(docs, "docs must not be null - a collection is never restored from a missing entry");
+
         db.getCollection(collectionName).drop();
         db.createCollection(collectionName);
 
-        if (data == null || data.length == 0) return 0;
-
-        List<Document> docs = parseDocuments(data);
         if (!docs.isEmpty()) {
             db.getCollection(collectionName).insertMany(docs);
         }
         return docs.size();
     }
 
-    private List<Document> parseDocuments(byte[] data) throws IOException {
+    private static List<Document> parseDocuments(byte[] data) throws IOException {
         String json = new String(data, StandardCharsets.UTF_8).trim();
         if (json.isEmpty() || "[]".equals(json)) return List.of();
 
         var nodes = JsonUtils.getMapper().readTree(json);
-        if (!nodes.isArray()) return List.of();
+        if (!nodes.isArray()) {
+            throw new IllegalArgumentException("expected an array of documents");
+        }
 
         List<Document> docs = new ArrayList<>();
         for (var node : nodes) {
@@ -290,7 +464,29 @@ public class ImportService {
         collection.createIndex(keys, new IndexOptions().name(name).unique(unique));
     }
 
-    public record ImportResult(int tenants, int collections, int documents, int files) {}
+    /**
+     * @param snapshot Where the state from before the import was saved. Reported rather than only
+     *                 logged: it is what an operator needs when the restored backup turns out to
+     *                 have been the wrong one.
+     */
+    public record ImportResult(int tenants, int collections, int documents, int files, String snapshot) {}
+
+    /**
+     * @param tenantDocuments the raw rows of the system tenants collection, restored as they are
+     * @param tenants         the tenants the manifest asks for, with their parsed databases
+     */
+    private record BackupPlan(
+            List<Document> tenantDocuments,
+            List<Document> users,
+            List<Document> settings,
+            List<TenantPlan> tenants) {}
+
+    private record TenantPlan(
+            TenantDefinition tenant,
+            List<Document> metaCollections,
+            List<Document> metaHooks,
+            Map<String, List<Document>> data,
+            byte[] metaCollectionsJson) {}
 
     private record TenantRestoreResult(int collections, int documents, int files) {}
 }

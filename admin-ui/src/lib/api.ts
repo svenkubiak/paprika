@@ -677,7 +677,14 @@ export const api = {
     window.location.href = '/api/admin/backup/export'
   },
 
-  async importBackup(file: File): Promise<{ tenants: number; collections: number; documents: number; files: number }> {
+  async importBackup(file: File): Promise<{
+    tenants: number
+    collections: number
+    documents: number
+    files: number
+    // Where the server saved the state from before the import, so a wrong restore can be undone
+    snapshot: string
+  }> {
     const formData = new FormData()
     formData.append('file', file)
     const response = await fetch('/api/admin/backup/import', {
