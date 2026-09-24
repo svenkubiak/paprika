@@ -127,7 +127,11 @@ class RequestLogTelemetryIntegrationTest {
             assertThat(createRecord(collection).getStatusCode(), equalTo(StatusCodes.CREATED));
 
             Document request = awaitEntry(eq("url", "/api/collections/" + collection));
-            Document hookEntry = awaitEntry(eq("type", "hook"));
+            // Bound to this request's id, not just to "a hook entry": an after-hook is written
+            // past the response, so an entry another test left behind would satisfy the poll
+            // immediately and be compared against this request.
+            Document hookEntry = awaitEntry(
+                    and(eq("type", "hook"), eq("requestId", request.getString("requestId"))));
 
             // An after-hook finishes past the response, so it cannot be a field of the request.
             assertThat(hookEntry.getString("requestId"), equalTo(request.getString("requestId")));

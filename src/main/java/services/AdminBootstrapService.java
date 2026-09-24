@@ -9,6 +9,7 @@ import io.mangoo.core.Config;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import models.InstanceWarnings;
 import models.Stats;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
@@ -23,6 +24,7 @@ public class AdminBootstrapService {
     private final TenantService tenantService;
     private final AuthService authService;
     private final SystemUserService systemUserService;
+    private final RequestLogService requestLogService;
     private final Config config;
 
     @Inject
@@ -31,11 +33,13 @@ public class AdminBootstrapService {
             TenantService tenantService,
             AuthService authService,
             SystemUserService systemUserService,
+            RequestLogService requestLogService,
             Config config) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
+        this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
         this.config = Objects.requireNonNull(config, "config must not be null");
     }
 
@@ -53,6 +57,10 @@ public class AdminBootstrapService {
         boolean defaultTenantApplied = applyDefaultTenantIfMissing(request, auth);
         TenantContext ctx = resolveContext(request, auth);
         boolean hasActiveTenant = ctx.hasTenantContext();
+        boolean smtpConfigured = StringUtils.isNotBlank(config.getSmtpHost());
+        // Loaded once and passed on: the payload lists them, the stats count them and the
+        // warnings read their settings, and that used to be two round trips for one answer.
+        List<TenantDefinition> tenants = auth.isSuperAdmin() ? tenantService.listAll() : List.of();
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("version", AppVersion.get());
@@ -64,14 +72,15 @@ public class AdminBootstrapService {
         // from. It carries a version instead of the bytes: the picture is cacheable, the payload
         // is fetched on every navigation.
         payload.put("adminAvatarUrl", profile.map(SuperadminProfileService::avatarUrl).orElse(null));
-        payload.put("smtpConfigured", StringUtils.isNotBlank(config.getSmtpHost()));
+        payload.put("smtpConfigured", smtpConfigured);
         payload.put("hasActiveTenant", hasActiveTenant);
         payload.put("activeTenant", resolveActiveTenant(ctx));
         payload.put("defaultTenantApplied", defaultTenantApplied);
-        payload.put("tenants", auth.isSuperAdmin() ? tenantService.listAll() : List.of());
+        payload.put("tenants", tenants);
         payload.put("collections", visibleCollections(ctx));
         payload.put("relationCollections", relationCollections(ctx));
-        payload.put("stats", buildStats(ctx, auth));
+        payload.put("stats", buildStats(ctx, tenants));
+        payload.put("warnings", buildWarnings(auth, tenants, smtpConfigured));
 
         return payload;
     }
@@ -91,7 +100,8 @@ public class AdminBootstrapService {
         payload.put("tenants", List.of());
         payload.put("collections", List.of());
         payload.put("relationCollections", List.of());
-        payload.put("stats", new Stats(true, true, 0, 0, 0, Application.getUptime().toSeconds()));
+        payload.put("stats", new Stats(0, 0, 0, 0, Application.getUptime().toSeconds()));
+        payload.put("warnings", InstanceWarnings.none());
 
         return payload;
     }
@@ -104,12 +114,11 @@ public class AdminBootstrapService {
         return tenantService.findById(ctx.activeTenantId()).orElse(null);
     }
 
-    private Stats buildStats(TenantContext ctx, AuthContext auth) {
-        long tenants = auth.isSuperAdmin() ? tenantService.listAll().size() : 0;
+    private Stats buildStats(TenantContext ctx, List<TenantDefinition> tenants) {
         long uptimeSeconds = Application.getUptime().toSeconds();
 
         if (!ctx.hasTenantContext()) {
-            return new Stats(true, true, 0, 0, tenants, uptimeSeconds);
+            return new Stats(0, 0, tenants.size(), 0, uptimeSeconds);
         }
 
         List<String> collections = visibleCollections(ctx);
@@ -117,7 +126,29 @@ public class AdminBootstrapService {
                 .mapToLong(name -> tenantCollections.dataCollection(ctx, name).estimatedDocumentCount())
                 .sum();
 
-        return new Stats(true, true, collections.size(), records, tenants, uptimeSeconds);
+        return new Stats(
+                collections.size(),
+                records,
+                tenants.size(),
+                requestLogService.countServerErrors24h(ctx),
+                uptimeSeconds);
+    }
+
+    /**
+     * The problems that are worth interrupting a superadmin for, because nothing else in the UI
+     * shows them: a running instance looks exactly the same with or without them. Instance-wide,
+     * so nobody but a superadmin is told about them.
+     */
+    private InstanceWarnings buildWarnings(
+            AuthContext auth,
+            List<TenantDefinition> tenants,
+            boolean smtpConfigured) {
+
+        if (!auth.isSuperAdmin()) {
+            return InstanceWarnings.none();
+        }
+
+        return InstanceWarnings.from(tenants, smtpConfigured, tenantService.degradedIndexDatabaseNames());
     }
 
     private List<String> visibleCollections(TenantContext ctx) {

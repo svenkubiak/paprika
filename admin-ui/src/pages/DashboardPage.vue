@@ -18,6 +18,17 @@ onMounted(async () => {
 })
 
 const stats = computed(() => bootstrap.value?.stats)
+const serverErrors = computed(() => stats.value?.serverErrors24h ?? 0)
+const mailDependentTenants = computed(() => bootstrap.value?.warnings?.mailDependentTenants ?? [])
+const degradedIndexTenants = computed(() => bootstrap.value?.warnings?.degradedIndexTenants ?? [])
+
+/** Keeps a warning readable on an instance with many tenants. */
+function tenantList(names: readonly string[]): string {
+  if (names.length <= 3) {
+    return names.join(', ')
+  }
+  return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`
+}
 
 function formatUptime(seconds: number | undefined): string {
   if (seconds === undefined || seconds < 0) return '—'
@@ -32,18 +43,6 @@ function formatUptime(seconds: number | undefined): string {
 }
 
 const statCards = computed(() => [
-  {
-    label: 'Database',
-    value: stats.value?.connected ? 'Connected' : 'Disconnected',
-    icon: 'i-lucide-database',
-    color: stats.value?.connected ? 'success' : 'error'
-  },
-  {
-    label: 'API',
-    value: stats.value?.healthy ? 'Healthy' : 'Unhealthy',
-    icon: 'i-lucide-activity',
-    color: stats.value?.healthy ? 'success' : 'error'
-  },
   {
     label: 'Uptime',
     value: formatUptime(stats.value?.uptimeSeconds),
@@ -67,6 +66,12 @@ const statCards = computed(() => [
     value: String(stats.value?.records ?? 0),
     icon: 'i-lucide-file-text',
     color: 'primary'
+  },
+  {
+    label: 'Errors (24h)',
+    value: String(serverErrors.value),
+    icon: 'i-lucide-triangle-alert',
+    color: serverErrors.value > 0 ? 'error' : 'primary'
   }
 ])
 </script>
@@ -103,6 +108,33 @@ const statCards = computed(() => [
     >
       <template #actions>
         <UButton color="warning" variant="soft" to="/admin/tenants">Manage tenants</UButton>
+      </template>
+    </UAlert>
+
+    <!-- Uniqueness that is not enforced is invisible until two definitions share a name and an
+         edit lands on whichever one MongoDB returns first. Only a restored archive gets an
+         instance into this state, and only the startup log said so until now. -->
+    <UAlert
+      v-if="degradedIndexTenants.length"
+      color="error"
+      variant="soft"
+      icon="i-lucide-database-zap"
+      title="Collection definitions are not protected by a unique index"
+      :description="`${tenantList(degradedIndexTenants)} had duplicate collection definitions when the index was created, so duplicate names and ids are no longer rejected. Remove the duplicates and restart to enforce uniqueness.`"
+    />
+
+    <!-- The feature is switched on, the API accepts the request, and the mail is dropped. There
+         is nothing in the UI that would otherwise tell an admin about it. -->
+    <UAlert
+      v-if="mailDependentTenants.length"
+      color="warning"
+      variant="soft"
+      icon="i-lucide-mail-warning"
+      title="Emails cannot be delivered"
+      :description="`Password reset or email verification is enabled for ${tenantList(mailDependentTenants)}, but the instance has no SMTP host configured. Those emails are never sent.`"
+    >
+      <template #actions>
+        <UButton color="warning" variant="soft" to="/admin/user-settings">User settings</UButton>
       </template>
     </UAlert>
 

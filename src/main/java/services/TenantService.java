@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -42,6 +43,15 @@ public class TenantService {
     private final Config config;
     private final SettingsService settingsService;
     private final FileStorageService fileStorageService;
+
+    /**
+     * Tenant databases whose collection definitions are missing a unique index, by database name.
+     * <p>
+     * Kept here rather than queried on demand because the answer is only ever produced where the
+     * index is created - at startup and after a restore - and asking MongoDB for the indexes of
+     * every tenant each time the admin UI loads would pay for that answer over and over.
+     */
+    private final Set<String> degradedIndexDatabases = ConcurrentHashMap.newKeySet();
 
     @Inject
     public TenantService(
@@ -318,6 +328,7 @@ public class TenantService {
 
         resolver.tenantDatabase(tenant.databaseName()).drop();
         fileStorageService.deleteTenantDirectory(tenant.id());
+        degradedIndexDatabases.remove(tenant.databaseName());
 
         boolean wasDefault = id.equals(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null));
 
@@ -454,11 +465,29 @@ public class TenantService {
      */
     private void ensureMetaCollectionIndexes(MongoDatabase database) {
         var metaCollections = database.getCollection(CollectionName.META_COLLECTIONS);
-        ensureBestEffort(database, metaCollections, COLLECTION_NAME_INDEX, Indexes.ascending("name"));
-        ensureBestEffort(database, metaCollections, COLLECTION_ID_INDEX, Indexes.ascending("id"));
+        boolean byName = ensureBestEffort(database, metaCollections, COLLECTION_NAME_INDEX, Indexes.ascending("name"));
+        boolean byId = ensureBestEffort(database, metaCollections, COLLECTION_ID_INDEX, Indexes.ascending("id"));
+
+        // Recorded per database and not per index: either both are in place or this tenant is
+        // unprotected, and the admin UI has nothing to do with which of the two is missing. Both
+        // are evaluated before the decision, so a second index that succeeds cannot clear the
+        // mark a first one that failed just set.
+        if (byName && byId) {
+            degradedIndexDatabases.remove(database.getName());
+        } else {
+            degradedIndexDatabases.add(database.getName());
+        }
     }
 
-    private void ensureBestEffort(
+    /**
+     * The tenant databases that are currently missing one of those indexes, as last seen by
+     * {@link #ensureMetaCollectionIndexes(MongoDatabase)}.
+     */
+    public Set<String> degradedIndexDatabaseNames() {
+        return Set.copyOf(degradedIndexDatabases);
+    }
+
+    private boolean ensureBestEffort(
             MongoDatabase database,
             com.mongodb.client.MongoCollection<Document> collection,
             String name,
@@ -466,10 +495,12 @@ public class TenantService {
 
         try {
             ensureIndex(collection, name, keys, true);
+            return true;
         } catch (RuntimeException e) {
             LOG.warn("Could not create the index {} on {}.{}: {}. Remove the duplicate collection "
                     + "definitions and restart to enforce uniqueness.",
                     name, database.getName(), CollectionName.META_COLLECTIONS, e.getMessage());
+            return false;
         }
     }
 

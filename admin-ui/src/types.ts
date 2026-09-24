@@ -182,12 +182,26 @@ export interface CreatedApiKey extends ApiKey {
 }
 
 export interface Stats {
-  connected: boolean
-  healthy: boolean
   collections: number
   records: number
   tenants: number
+  /**
+   * Responses of 500 and above in the active tenant's request log over the last 24 hours. The
+   * one stat that is supposed to be zero, so the dashboard shows it as a problem when it is not.
+   */
+  serverErrors24h: number
   uptimeSeconds: number
+}
+
+/**
+ * Instance-wide problems that do not stop Paprika from running. Each list holds the names of the
+ * affected tenants and is empty when there is nothing to report.
+ */
+export interface InstanceWarnings {
+  /** Tenants relying on password reset or email verification while no SMTP host is configured. */
+  mailDependentTenants: string[]
+  /** Tenants whose collection definitions are not covered by the unique indexes. */
+  degradedIndexTenants: string[]
 }
 
 export interface SuperadminSummary {
@@ -220,6 +234,7 @@ export interface BootstrapData {
   collections: string[]
   relationCollections?: string[]
   stats: Stats | null
+  warnings?: InstanceWarnings | null
 }
 
 export interface SchemaImportResult {

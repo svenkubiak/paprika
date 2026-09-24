@@ -112,17 +112,6 @@ function toggleColorMode() {
       </div>
 
       <div class="flex items-center gap-2">
-        <div class="hidden items-center gap-4 text-sm text-muted lg:flex">
-          <div class="flex items-center gap-2">
-            <span class="size-2 rounded-full bg-success" />
-            DB Connected
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="size-2 rounded-full bg-success" />
-            API Healthy
-          </div>
-        </div>
-
         <!-- Instance-wide navigation used to sit in the sidebar, which is otherwise entirely
              tenant-scoped. It is the only way to reach these pages, so it needs real menu
              semantics: keyboard navigation, Esc, and focus returning to the trigger. -->

@@ -1,12 +1,7 @@
 package utils;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
-import io.mangoo.core.Application;
-import io.mangoo.persistence.interfaces.Datastore;
 import io.mangoo.utils.CommonUtils;
-import models.Stats;
 import org.bson.Document;
 
 import java.util.ArrayList;
@@ -55,22 +50,5 @@ public final class DbUtils {
 
     public static String id() {
         return CommonUtils.uuidV7();
-    }
-
-    public static Stats getStats() {
-        Datastore datastore = Application.getInstance(Datastore.class);
-        MongoDatabase mongoDatabase = datastore.getMongoDatabase();
-        long collections = 0;
-        for (String ignored : mongoDatabase.listCollectionNames()) {
-            collections++;
-        }
-
-        long records = 0;
-        for (String collectionName : mongoDatabase.listCollectionNames()) {
-            MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
-            records += collection.estimatedDocumentCount();
-        }
-
-        return new Stats(datastore.isHealthy(), true, collections, records, 0, Application.getUptime().toSeconds());
     }
 }

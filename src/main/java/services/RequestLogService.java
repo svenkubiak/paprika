@@ -323,6 +323,27 @@ public class RequestLogService {
         }
     }
 
+    /**
+     * How many server errors this tenant's log holds for the last 24 hours.
+     * <p>
+     * Only 500 and above: a 401 or a 404 is a client being a client, while a 5xx is Paprika or a
+     * hook target failing, and that is the number a dashboard should be able to show as a
+     * problem. Hook entries count too - a hook whose target answers 500 breaks the write it was
+     * attached to just as visibly.
+     * <p>
+     * Answered from the {@code timestamp_desc} index as a range scan over one day, not over the
+     * whole log, so the retention setting does not decide what this costs.
+     */
+    public long countServerErrors24h(TenantContext ctx) {
+        if (ctx == null || !ctx.hasTenantContext()) {
+            return 0;
+        }
+
+        String cutoff = Instant.now().minus(24, ChronoUnit.HOURS).toString();
+        return resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS)
+                .countDocuments(and(gte("timestamp", cutoff), gte("statusCode", 500)));
+    }
+
     public Map<String, Object> list(
             TenantContext ctx,
             int offset,
