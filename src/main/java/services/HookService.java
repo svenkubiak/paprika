@@ -144,8 +144,7 @@ public class HookService {
         }
         validateNoSsrf(uri, resolveTenant(ctx));
 
-        int timeout = hook.timeoutOrDefault();
-        if (timeout > MAX_TIMEOUT_MS) {
+        if (hook.timeoutOrDefault() > MAX_TIMEOUT_MS) {
             throw new IllegalArgumentException("Hook timeout must not exceed " + MAX_TIMEOUT_MS + " ms");
         }
 
@@ -657,12 +656,22 @@ public class HookService {
         return tenantService.findById(ctx.effectiveTenantId()).orElse(null);
     }
 
+    /**
+     * The cap is enforced again at dispatch, not only on save: a blocking hook holds the request
+     * thread for as long as its timeout allows, so a record that reached the database by another
+     * route - a direct write, a restored backup, a future import path - must not be able to pin
+     * a worker indefinitely.
+     */
+    static int effectiveTimeoutMs(HookDefinition hook) {
+        return Math.min(hook.timeoutOrDefault(), MAX_TIMEOUT_MS);
+    }
+
     private Result sendRequest(
             TenantContext ctx, HookDefinition hook, HookEnvelope envelope, String signature) {
         validateNoSsrf(URI.create(hook.url().trim()), resolveTenant(ctx));
 
         Http request = httpFor(hook.methodOrDefault(), hook.url().trim())
-                .withTimeout(Duration.ofMillis(hook.timeoutOrDefault()))
+                .withTimeout(Duration.ofMillis(effectiveTimeoutMs(hook)))
                 .withHeader("Content-Type", "application/json")
                 .withHeader("X-Paprika-Event", hook.event().name())
                 .withHeader("X-Paprika-Collection", hook.collection())

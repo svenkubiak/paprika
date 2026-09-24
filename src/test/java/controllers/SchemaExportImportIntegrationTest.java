@@ -176,8 +176,11 @@ class SchemaExportImportIntegrationTest {
                 "group", "group", "group", "group", "group",
                 "owner", memberships, "user", "crew", "crew");
 
-        TenantTestUtils.seedCollection(memberships, CollectionRules.locked());
-        TenantTestUtils.seedCollection(collection, rules);
+        // The membership fields have to exist: the import validates the file the same way the
+        // meta API validates a save, and a rule pointing at a field nobody declared is refused
+        // there too.
+        TenantTestUtils.seedCollection(memberships, CollectionRules.locked(), membershipFields("crew"));
+        TenantTestUtils.seedCollection(collection, rules, groupFields("crew"));
 
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
 
@@ -191,7 +194,7 @@ class SchemaExportImportIntegrationTest {
 
         TestResponse importResponse = AdminTestUtils.postWithAdminCookies(
                 IMPORT_URI, cookies, export.getContent(), "application/json");
-        assertThat(importResponse.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(importResponse.getContent(), importResponse.getStatusCode(), equalTo(StatusCodes.OK));
 
         CollectionRules restored = collections.findDefinition(ctx, collection).rules();
         assertThat(restored, equalTo(rules));
@@ -210,7 +213,8 @@ class SchemaExportImportIntegrationTest {
                 "group", "group", "auth", "group", "group",
                 "owner", memberships, "user", "team", "id");
 
-        TenantTestUtils.seedCollection(memberships, CollectionRules.locked());
+        // groupRecordField is "id" here, so only the membership collection needs declared fields.
+        TenantTestUtils.seedCollection(memberships, CollectionRules.locked(), membershipFields("team"));
         TenantTestUtils.seedCollection(collection, rules);
 
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
@@ -230,6 +234,18 @@ class SchemaExportImportIntegrationTest {
         CollectionRules restored = collections.findDefinition(ctx, collection).rules();
         assertThat(restored, equalTo(rules));
         assertThat(restored.groupRecordField(), equalTo("id"));
+    }
+
+    private static java.util.List<models.FieldDefinition> membershipFields(String groupField) {
+        return java.util.List.of(
+                new models.FieldDefinition("user", enums.FieldType.STRING, true, false, null),
+                new models.FieldDefinition(groupField, enums.FieldType.STRING, true, false, null));
+    }
+
+    private static java.util.List<models.FieldDefinition> groupFields(String groupRecordField) {
+        return java.util.List.of(
+                new models.FieldDefinition("title", enums.FieldType.STRING, true, false, null),
+                new models.FieldDefinition(groupRecordField, enums.FieldType.STRING, true, false, null));
     }
 
     /**

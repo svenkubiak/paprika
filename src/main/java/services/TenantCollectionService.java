@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -119,8 +120,21 @@ public class TenantCollectionService {
      * {@code group} and {@code peers} presets.
      */
     public void validateDefinition(TenantContext ctx, CollectionDefinition definition) throws RuleParseException {
+        validateDefinition(definition, name -> findDefinition(ctx, name));
+    }
+
+    /**
+     * The same check against a caller-supplied view of the tenant's collections. A schema import
+     * validates a whole file before it writes anything, so the collection a membership rule
+     * points at may well be another entry of that same file - one that is not in the database
+     * yet and, if the file is rejected, never will be.
+     *
+     * @param lookup resolves a collection name to its definition, or to {@code null}
+     */
+    public void validateDefinition(CollectionDefinition definition, Function<String, CollectionDefinition> lookup)
+            throws RuleParseException {
         validateDefinition(definition);
-        validateMembershipTargets(ctx, definition);
+        validateMembershipTargets(definition, lookup);
     }
 
     /**
@@ -129,15 +143,18 @@ public class TenantCollectionService {
      * rules. It is rejected while the collection is being saved, where the message can still say
      * what is wrong.
      */
-    private void validateMembershipTargets(TenantContext ctx, CollectionDefinition definition)
-            throws RuleParseException {
+    private static void validateMembershipTargets(
+            CollectionDefinition definition,
+            Function<String, CollectionDefinition> lookup) throws RuleParseException {
 
         CollectionRules rules = definition.rules();
         if (rules == null || !usesMembershipRule(rules)) {
             return;
         }
 
-        CollectionDefinition membershipCollection = findDefinition(ctx, rules.groupCollection());
+        CollectionDefinition membershipCollection = rules.groupCollection() == null
+                ? null
+                : lookup.apply(rules.groupCollection());
         if (membershipCollection == null) {
             throw new RuleParseException(
                     "Unknown membership collection: " + rules.groupCollection()
