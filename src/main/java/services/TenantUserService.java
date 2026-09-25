@@ -77,6 +77,7 @@ public class TenantUserService {
     private final RealtimeService realtimeService;
     private final TenantCollectionService tenantCollections;
     private final ValidationService validationService;
+    private final PasswordHashGate passwordHashGate;
 
     @Inject
     public TenantUserService(
@@ -84,12 +85,14 @@ public class TenantUserService {
             TenantService tenantService,
             RealtimeService realtimeService,
             TenantCollectionService tenantCollections,
-            ValidationService validationService) {
+            ValidationService validationService,
+            PasswordHashGate passwordHashGate) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.validationService = Objects.requireNonNull(validationService, "validationService must not be null");
+        this.passwordHashGate = Objects.requireNonNull(passwordHashGate, "passwordHashGate must not be null");
     }
 
     public TenantLoginResult authenticateForLogin(String username, String password, String tenantSlug) {
@@ -119,14 +122,12 @@ public class TenantUserService {
                 LOG.info("Login without a tenant slug for a username that exists in {} tenants - "
                         + "answered as invalid credentials; the client has to name the tenant", matches.size());
             }
-            burnPasswordHashTime(password);
-            return TenantLoginResult.invalidCredentials();
+            return burnedOrAtCapacity(password);
         }
 
         TenantDefinition tenant = tenantService.findById(matches.getFirst().id()).orElse(null);
         if (tenant == null || !tenant.isActive()) {
-            burnPasswordHashTime(password);
-            return TenantLoginResult.invalidCredentials();
+            return burnedOrAtCapacity(password);
         }
 
         return loginResult(tenant, normalizedUsername, password);
@@ -134,15 +135,14 @@ public class TenantUserService {
 
     private TenantLoginResult loginResult(TenantDefinition tenant, String username, String password) {
         Document user = findByUsername(tenant, username);
-        if (user == null) {
-            // Without this, an unknown username comes back before Argon2 would have run and a
-            // known one comes back after - which is the same user enumeration the status codes
-            // are careful not to give away, only measured with a stopwatch.
-            burnPasswordHashTime(password);
-            return TenantLoginResult.invalidCredentials();
-        }
 
-        if (!matchesPassword(password, user)) {
+        // Both outcomes go through the same gate and the same hash, so neither the response time
+        // nor a refusal under load tells a known username from an unknown one.
+        PasswordCheck check = checkPassword(password, user);
+        if (check == PasswordCheck.AT_CAPACITY) {
+            return TenantLoginResult.atCapacity();
+        }
+        if (check == PasswordCheck.NO_MATCH) {
             return TenantLoginResult.invalidCredentials();
         }
 
@@ -161,6 +161,25 @@ public class TenantUserService {
      */
     public Map<String, Object> createUser(TenantDefinition tenant, String username, String email, String password) {
         return createUser(tenant, username, email, password, null);
+    }
+
+    /**
+     * Self-registration through {@code POST /api/auth/register}. This is the unauthenticated way
+     * into {@link #createUser}, and hashing a new password costs the same as verifying one, so it
+     * goes through {@link PasswordHashGate} for the same reason the login does. The internal
+     * callers - the admin UI and the bootstrap helpers - keep using {@code createUser} directly:
+     * they are authenticated, low volume, and must not fail because someone is flooding the
+     * public endpoint.
+     *
+     * @return the created user, or empty when the instance is at its hashing capacity
+     */
+    public Optional<Map<String, Object>> registerUser(
+            TenantDefinition tenant,
+            String username,
+            String email,
+            String password) {
+
+        return passwordHashGate.withPermit(() -> createUser(tenant, username, email, password));
     }
 
     /**
@@ -575,6 +594,43 @@ public class TenantUserService {
      */
     List<TenantService.TenantLookup> activeTenantsForLookup() {
         return tenantService.findActiveForLookup(MAX_SCANNED_TENANTS + 1);
+    }
+
+    /**
+     * The outcome of a password verification, including the case where the instance had no
+     * capacity left to run one.
+     */
+    private enum PasswordCheck {
+        MATCH,
+        NO_MATCH,
+        AT_CAPACITY
+    }
+
+    /**
+     * Verifies the password against the user, or burns the equivalent time when there is no user -
+     * both under {@link PasswordHashGate}, which is what bounds the memory an unauthenticated
+     * caller can make this instance allocate.
+     * <p>
+     * The gate is taken before the two cases part ways on purpose: a refusal that only happened
+     * for missing users would hand out exactly the account existence this path is built to hide.
+     *
+     * @param user the user to verify against, or {@code null} when the username is unknown
+     */
+    private PasswordCheck checkPassword(String password, Document user) {
+        return passwordHashGate.withPermit(() -> {
+            if (user == null) {
+                burnPasswordHashTime(password);
+                return PasswordCheck.NO_MATCH;
+            }
+            return matchesPassword(password, user) ? PasswordCheck.MATCH : PasswordCheck.NO_MATCH;
+        }).orElse(PasswordCheck.AT_CAPACITY);
+    }
+
+    /** The answer for a login that failed before a user was found, with the hash still spent. */
+    private TenantLoginResult burnedOrAtCapacity(String password) {
+        return checkPassword(password, null) == PasswordCheck.AT_CAPACITY
+                ? TenantLoginResult.atCapacity()
+                : TenantLoginResult.invalidCredentials();
     }
 
     /**

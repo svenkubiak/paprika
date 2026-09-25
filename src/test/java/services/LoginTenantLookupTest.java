@@ -135,7 +135,8 @@ class LoginTenantLookupTest {
                 Application.getInstance(TenantService.class),
                 Application.getInstance(RealtimeService.class),
                 Application.getInstance(TenantCollectionService.class),
-                Application.getInstance(ValidationService.class)) {
+                Application.getInstance(ValidationService.class),
+                Application.getInstance(PasswordHashGate.class)) {
             @Override
             List<TenantService.TenantLookup> activeTenantsForLookup() {
                 return candidates;

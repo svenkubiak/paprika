@@ -48,6 +48,32 @@ public class SystemUserService {
     private static final String LOGIN_ALERT_ENABLED = "loginAlertEnabled";
     private static final String AUTH_ORIGINS = "authOrigins";
     private static final String FINGERPRINT = "fingerprint";
+    private static final String TWO_FACTOR_FAILURES = "twoFactorFailures";
+    private static final String TWO_FACTOR_LOCKED_UNTIL = "twoFactorLockedUntil";
+
+    /**
+     * How many wrong TOTP codes are tolerated before the second factor is locked for a while.
+     * <p>
+     * A six digit code is one in a million per 30 second window, which sounds like plenty until
+     * nothing limits how often it may be guessed: at a handful of attempts per second the odds of
+     * hitting it pass 50% inside two days of sustained guessing, and behind that code sits the one
+     * identity that can do everything. A budget per user is what turns "eventually" back into
+     * "never" - the proxy's rate limit cannot, because it counts requests per address and an
+     * attacker can bring more addresses.
+     */
+    private static final int MAX_TWO_FACTOR_FAILURES = 5;
+
+    /**
+     * Absolute, not sliding: the lock is stamped once when the budget runs out and is not pushed
+     * further by later attempts. A lock that renewed itself on every try would let an attacker who
+     * cannot guess the code keep the rightful superadmin out for as long as they keep guessing.
+     */
+    private static final Duration TWO_FACTOR_LOCK_TTL = Duration.ofMinutes(15);
+
+    /** How long a locked second factor stays locked, for the {@code Retry-After} header. */
+    public static long twoFactorLockSeconds() {
+        return TWO_FACTOR_LOCK_TTL.toSeconds();
+    }
 
     /**
      * How many devices a superadmin is remembered on. The list only exists to tell a login from a
@@ -570,6 +596,102 @@ public class SystemUserService {
                 new FindOneAndUpdateOptions().returnDocument(ReturnDocument.BEFORE));
 
         return claimed != null;
+    }
+
+    /**
+     * Whether the second factor of this user is currently locked out. Read before a code is
+     * checked, so that a locked account costs an attacker a refused request instead of a guess.
+     */
+    public boolean isTwoFactorLocked(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return false;
+        }
+
+        Document user = findById(userId);
+        if (user == null) {
+            return false;
+        }
+
+        return lockedUntil(user).isAfter(Instant.now());
+    }
+
+    /**
+     * Counts one wrong code and stamps the lock once the budget is used up.
+     * <p>
+     * Counting and locking are one atomic operation: several guesses arriving together would
+     * otherwise each read the same counter, and a budget that only counts every n-th attempt is
+     * not a budget. The counter is reset at the same time as the lock is set, so the next window
+     * starts from a clean slate rather than locking again on the first attempt after it expires.
+     *
+     * @return the instant the lock runs out, or empty when there is still budget left
+     */
+    public Optional<Instant> recordTwoFactorFailure(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return Optional.empty();
+        }
+
+        Document updated = resolver.systemCollection(CollectionName.USERS).findOneAndUpdate(
+                eq("id", userId),
+                inc(TWO_FACTOR_FAILURES, 1),
+                new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER));
+
+        if (updated == null) {
+            return Optional.empty();
+        }
+
+        // An existing lock is not extended - see TWO_FACTOR_LOCK_TTL
+        Instant existing = lockedUntil(updated);
+        if (existing.isAfter(Instant.now())) {
+            return Optional.of(existing);
+        }
+
+        if (failureCount(updated) < MAX_TWO_FACTOR_FAILURES) {
+            return Optional.empty();
+        }
+
+        Instant until = Instant.now().plus(TWO_FACTOR_LOCK_TTL);
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                combine(
+                        set(TWO_FACTOR_LOCKED_UNTIL, until.toString()),
+                        set(TWO_FACTOR_FAILURES, 0)));
+
+        LOG.warn("Locked the second factor of superadmin {} until {} after {} wrong codes",
+                userId, until, MAX_TWO_FACTOR_FAILURES);
+
+        return Optional.of(until);
+    }
+
+    /** Clears budget and lock after a code was accepted. */
+    public void clearTwoFactorFailures(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return;
+        }
+
+        resolver.systemCollection(CollectionName.USERS).updateOne(
+                eq("id", userId),
+                combine(unset(TWO_FACTOR_FAILURES), unset(TWO_FACTOR_LOCKED_UNTIL)));
+    }
+
+    private static int failureCount(Document user) {
+        Object value = user.get(TWO_FACTOR_FAILURES);
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    /** {@link Instant#EPOCH} when there is no lock, so callers can compare without a null check. */
+    private static Instant lockedUntil(Document user) {
+        String value = user.getString(TWO_FACTOR_LOCKED_UNTIL);
+        if (StringUtils.isBlank(value)) {
+            return Instant.EPOCH;
+        }
+
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException e) {
+            // An unreadable stamp must not lock the account out for good
+            LOG.warn("Ignoring an unparseable {} on superadmin {}: {}", TWO_FACTOR_LOCKED_UNTIL, user.getString("id"), value);
+            return Instant.EPOCH;
+        }
     }
 
     public Optional<AuthContext> verifyPassword(String username, String password) {

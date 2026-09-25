@@ -85,6 +85,41 @@ The examples below throttle all of `/api/auth/` in one go, which covers every ro
 
 A handful of requests per second per IP with a small burst is plenty for real users and cuts brute force down hard. Tune to taste; the numbers in the examples are a sane starting point, not a law.
 
+::: warning Keep the burst small on the auth routes, and skip `nodelay` there
+A login is not a cheap request. Verifying a password is a full Argon2id computation that really
+allocates about 90 MiB of heap and holds it for roughly a quarter of a second — and it runs even
+when the username does not exist, because a hash that always happens is what stops the response
+time from revealing which accounts are real.
+
+`nodelay` tells nginx to forward a whole burst immediately instead of spacing it out at the zone
+rate. On the auth routes that means the burst size *is* the number of expensive computations that
+start at the same moment: `burst=20 nodelay` lets one address trigger about 1.8 GiB of allocation
+in under a second. Use a small burst without `nodelay` here (`burst=5`), and keep `nodelay` for
+routes where a request is cheap.
+
+Paprika caps the concurrent password verifications on its own as well — see below — so an
+over-burst answers with `429` rather than an `OutOfMemoryError`. The proxy setting is what keeps
+it from getting that far.
+:::
+
+## Password hashing has its own ceiling
+
+A rate limit counts requests; it cannot see that one of them costs 90 MiB. Paprika therefore
+bounds the expensive part itself: the number of Argon2id verifications running at the same time is
+capped, derived from the heap the JVM was given (a quarter of it, at least two and at most eight
+concurrent verifications). The cap is logged at startup:
+
+```
+Password hashing is capped at 5 concurrent verifications (~480 MiB peak) for a heap of 2048 MiB
+```
+
+Requests over that cap are refused with **429 Too Many Requests** and a `Retry-After` header, not
+queued — queueing would turn a memory problem into a pile of open connections. The refusal is
+identical for a known and an unknown username, so it cannot be used to probe for accounts.
+
+If you see those 429s in normal operation, the instance is too small for its login volume: give
+it more heap. The cap follows the heap automatically.
+
 ::: warning Never throttle the admin UI as a whole
 Throttle the credential endpoints, not `location /`. Opening the admin UI is not one request: the
 document, `boot.js`, the entry chunk, a dozen preloaded chunks, the stylesheet, the favicon, the
@@ -337,13 +372,19 @@ server {
     #     allow 203.0.113.20/32;
     #     deny  all;
     #
-    #     limit_req zone=paprika_auth burst=10 nodelay;
+    #     limit_req zone=paprika_auth burst=5;
     #     proxy_pass http://paprika;
     # }
 
     # Public tenant API, open to the world but rate limited on auth.
     location /api/auth/ {
-        limit_req zone=paprika_auth burst=20 nodelay;
+        # Deliberately a small burst and no "nodelay": every login costs a full Argon2id
+        # verification, which holds ~90 MiB of heap for a quarter of a second - even for a
+        # username that does not exist, because the hash is what keeps the response time from
+        # giving account existence away. "nodelay" forwards the whole burst at once, so
+        # burst=20 nodelay means twenty of those start together, about 1.8 GiB at one go from a
+        # single address. Without nodelay nginx spaces them out at the zone rate instead.
+        limit_req zone=paprika_auth burst=5;
         proxy_pass http://paprika;
     }
 
@@ -376,7 +417,8 @@ server {
     # the prefix locations, so this has to stay narrow - it must not catch the UI's own assets.
     location ~ ^/(authenticate|api/admin/(login(/2fa)?|setup|token(/2fa)?))$ {
         if ($paprika_admin_allowed = 0) { return 403; }
-        limit_req zone=paprika_auth burst=10 nodelay;
+        # Same reasoning as /api/auth/ above: the password step is an Argon2id verification.
+        limit_req zone=paprika_auth burst=5;
         proxy_pass http://paprika;
     }
 

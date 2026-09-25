@@ -67,7 +67,11 @@ public class AdminLoginService {
             return AdminLoginResult.noPendingLogin();
         }
 
-        if (!verifyTwoFactorCode(userId.orElseThrow(), dto.code())) {
+        TwoFactorOutcome outcome = checkTwoFactorCode(userId.orElseThrow(), dto.code());
+        if (outcome == TwoFactorOutcome.LOCKED) {
+            return AdminLoginResult.twoFactorLocked();
+        }
+        if (outcome == TwoFactorOutcome.INVALID) {
             return AdminLoginResult.invalidCode();
         }
 
@@ -85,7 +89,11 @@ public class AdminLoginService {
             return AdminLoginResult.noPendingLogin();
         }
 
-        if (!verifyTwoFactorCode(userId.orElseThrow(), dto.code())) {
+        TwoFactorOutcome outcome = checkTwoFactorCode(userId.orElseThrow(), dto.code());
+        if (outcome == TwoFactorOutcome.LOCKED) {
+            return AdminLoginResult.twoFactorLocked();
+        }
+        if (outcome == TwoFactorOutcome.INVALID) {
             return AdminLoginResult.invalidCode();
         }
 
@@ -137,15 +145,46 @@ public class AdminLoginService {
         return systemUserService.findTotpSecret(auth.id()).isPresent();
     }
 
+    /** The outcome of a second-factor check, including the locked-out case. */
+    private enum TwoFactorOutcome {
+        VALID,
+        INVALID,
+        LOCKED
+    }
+
     /**
-     * Accepts either the current TOTP code or the user's one-time fallback code.
-     * The fallback code is consumed on successful use and cannot be reused.
+     * Accepts either the current TOTP code or the user's one-time fallback code, against a budget
+     * of wrong attempts.
+     * <p>
+     * The fallback code is checked first and deliberately stays usable while the second factor is
+     * locked: it is 32 random characters and cannot be guessed, so letting it through costs
+     * nothing - and it is what keeps a guessing campaign from locking the rightful superadmin out
+     * of their own instance. Only the six-digit TOTP path, the one that can actually be brute
+     * forced, is behind the lock.
      */
-    private boolean verifyTwoFactorCode(String userId, String code) {
+    private TwoFactorOutcome checkTwoFactorCode(String userId, String code) {
+        if (systemUserService.consumeTotpFallbackCode(userId, code)) {
+            systemUserService.clearTwoFactorFailures(userId);
+            return TwoFactorOutcome.VALID;
+        }
+
+        if (systemUserService.isTwoFactorLocked(userId)) {
+            return TwoFactorOutcome.LOCKED;
+        }
+
         boolean matchesTotp = systemUserService.findTotpSecret(userId)
                 .filter(secret -> twoFactorService.verifyCode(secret, code))
                 .isPresent();
 
-        return matchesTotp || systemUserService.consumeTotpFallbackCode(userId, code);
+        if (matchesTotp) {
+            systemUserService.clearTwoFactorFailures(userId);
+            return TwoFactorOutcome.VALID;
+        }
+
+        // A wrong code that trips the budget is answered as locked right away, so the attempt
+        // after the last one of the budget does not still look like an ordinary wrong code.
+        return systemUserService.recordTwoFactorFailure(userId).isPresent()
+                ? TwoFactorOutcome.LOCKED
+                : TwoFactorOutcome.INVALID;
     }
 }

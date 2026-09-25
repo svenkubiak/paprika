@@ -8,7 +8,13 @@ public record AdminLoginResult(AdminLoginResult.Status status, TokenPair tokens)
         REQUIRES_TWO_FACTOR,
         INVALID_CREDENTIALS,
         NO_PENDING_LOGIN,
-        INVALID_CODE
+        INVALID_CODE,
+
+        /**
+         * Too many wrong second-factor codes; the TOTP step is locked for a while. The one-time
+         * fallback code still works, so this cannot shut the rightful superadmin out for good.
+         */
+        TWO_FACTOR_LOCKED
     }
 
     public static AdminLoginResult success() {
@@ -33,5 +39,9 @@ public record AdminLoginResult(AdminLoginResult.Status status, TokenPair tokens)
 
     public static AdminLoginResult invalidCode() {
         return new AdminLoginResult(Status.INVALID_CODE, null);
+    }
+
+    public static AdminLoginResult twoFactorLocked() {
+        return new AdminLoginResult(Status.TWO_FACTOR_LOCKED, null);
     }
 }

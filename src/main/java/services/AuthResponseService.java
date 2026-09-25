@@ -1,6 +1,7 @@
 package services;
 
 import io.mangoo.routing.Response;
+import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import models.TokenPair;
 import results.TenantLoginResult;
@@ -31,6 +32,12 @@ public class AuthResponseService {
                     .end();
             case EMAIL_NOT_VERIFIED -> Response.forbidden()
                     .bodyJson(Map.of("error", "Email address is not verified"))
+                    .end();
+            // Deliberately the same answer for every caller: the instance is busy, which is a
+            // statement about the server and not about the account that was named.
+            case AT_CAPACITY -> Response.status(StatusCodes.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "1")
+                    .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"))
                     .end();
         };
     }

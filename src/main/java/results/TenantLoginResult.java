@@ -14,7 +14,14 @@ public record TenantLoginResult(TenantLoginResult.Status status, Optional<AuthCo
         SUCCESS,
         INVALID_CREDENTIALS,
         TENANT_NOT_FOUND,
-        EMAIL_NOT_VERIFIED
+        EMAIL_NOT_VERIFIED,
+
+        /**
+         * The instance is already running as many password verifications as it has memory for.
+         * Says nothing about the credentials - it is answered before they are looked at, so it
+         * cannot be used to tell an existing account from a missing one.
+         */
+        AT_CAPACITY
     }
 
     public static TenantLoginResult success(AuthContext auth) {
@@ -31,5 +38,9 @@ public record TenantLoginResult(TenantLoginResult.Status status, Optional<AuthCo
 
     public static TenantLoginResult emailNotVerified() {
         return new TenantLoginResult(Status.EMAIL_NOT_VERIFIED, Optional.empty());
+    }
+
+    public static TenantLoginResult atCapacity() {
+        return new TenantLoginResult(Status.AT_CAPACITY, Optional.empty());
     }
 }

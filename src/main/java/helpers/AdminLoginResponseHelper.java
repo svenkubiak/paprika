@@ -2,8 +2,10 @@ package helpers;
 
 import io.mangoo.core.Application;
 import io.mangoo.routing.Response;
+import io.undertow.util.StatusCodes;
 import results.AdminLoginResult;
 import services.AuthResponseService;
+import services.SystemUserService;
 
 import java.util.Map;
 
@@ -22,6 +24,7 @@ public final class AdminLoginResponseHelper {
             case SUCCESS -> Response.redirect("/");
             case REQUIRES_TWO_FACTOR -> Response.redirect("/login?2fa=1");
             case INVALID_CREDENTIALS, NO_PENDING_LOGIN, INVALID_CODE -> Response.redirect("/login?error=1");
+            case TWO_FACTOR_LOCKED -> Response.redirect("/login?locked=1");
         };
     }
 
@@ -53,6 +56,12 @@ public final class AdminLoginResponseHelper {
                     .bodyJson(Map.of("error", "Invalid username or password"))
                     .end();
             case NO_PENDING_LOGIN -> Response.badRequest().bodyJson(Map.of("error", "No pending sign-in")).end();
+            // 429 rather than 403: the code was not rejected on its merits, the account is out of
+            // attempts for now. Retry-After is in seconds, as the header requires.
+            case TWO_FACTOR_LOCKED -> Response.status(StatusCodes.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(SystemUserService.twoFactorLockSeconds()))
+                    .bodyJson(Map.of("error", "Too many incorrect codes, the second factor is locked temporarily"))
+                    .end();
             case INVALID_CODE -> Response.badRequest()
                     .bodyJson(Map.of("error", "Invalid verification code"))
                     .end();

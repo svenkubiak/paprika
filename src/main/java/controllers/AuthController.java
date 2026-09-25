@@ -14,6 +14,7 @@ import io.mangoo.annotations.FilterWith;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
+import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -104,11 +105,19 @@ public class AuthController {
         }
 
         try {
-            Map<String, Object> user = tenantUserService.createUser(
+            Map<String, Object> user = tenantUserService.registerUser(
                     tenant,
                     username,
                     email,
-                    registerDto.password());
+                    registerDto.password()).orElse(null);
+
+            if (user == null) {
+                // Hashing the new password would have cost as much memory as verifying one, and
+                // the instance has none of that budget left. Same answer as an over-capacity login.
+                return Response.status(StatusCodes.TOO_MANY_REQUESTS)
+                        .header("Retry-After", "1")
+                        .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"));
+            }
 
             if (hasTenant(ctx)) {
                 hookService.fireAuthAfter(
