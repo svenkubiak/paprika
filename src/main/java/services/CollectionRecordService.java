@@ -102,6 +102,12 @@ public class CollectionRecordService {
         } catch (IOException e) {
             fileFieldService.rollbackUploads(ctx, uploadChanges);
             return RecordResult.error();
+        } catch (RuntimeException | Error e) {
+            // Anything else that escapes this block leaves the request without a record, so the
+            // uploads it already stored belong to nobody. Rethrown unchanged - the rollback is the
+            // only thing happening here.
+            fileFieldService.rollbackUploads(ctx, uploadChanges);
+            throw e;
         }
 
         String now = SystemFields.timestamp();
@@ -121,7 +127,7 @@ public class CollectionRecordService {
                 return RecordResult.conflict();
             }
             throw e;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
             fileFieldService.rollbackUploads(ctx, uploadChanges);
             throw e;
         }
@@ -350,7 +356,7 @@ public class CollectionRecordService {
         } catch (IOException e) {
             rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
             return RecordResult.error();
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | Error e) {
             rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
             throw e;
         }

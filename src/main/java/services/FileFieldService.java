@@ -64,15 +64,23 @@ public class FileFieldService {
                     if (references.size() >= field.optionsOrDefault().maxSelectOrDefault()) {
                         break;
                     }
-                    FileReference reference = storeUpload(ctx, field, upload);
-                    storedIds.add(reference.id());
-                    references.add(reference);
+                    // The id is recorded before the first byte is written, not after the upload
+                    // succeeded: storeUpload can fail once the original is already in storage,
+                    // and the cleanup below can only delete what it was told about.
+                    String fileId = DbUtils.id();
+                    storedIds.add(fileId);
+                    references.add(storeUpload(ctx, field, fileId, upload));
                 }
 
                 record.put(field.name(), FileFieldUtils.toStoredValue(references, field));
             }
             return new UploadChanges(List.copyOf(storedIds), List.copyOf(replacedIds));
-        } catch (RuntimeException | IOException e) {
+        } catch (RuntimeException | IOException | Error e) {
+            // Error is in the list deliberately. A decode large enough to exhaust the heap fails
+            // between storing the original and its variants, and the bytes already written have no
+            // record pointing at them - the pixel budget makes that unlikely, it does not make it
+            // impossible. The throwable is rethrown untouched: this cleans up after a hard failure,
+            // it does not pretend to recover from one.
             storage.deleteAll(ctx, storedIds);
             throw e;
         }
@@ -216,9 +224,11 @@ public class FileFieldService {
         storage.deleteAll(ctx, fileIds);
     }
 
-    private FileReference storeUpload(TenantContext ctx, FieldDefinition field, MultipartSupport.UploadedFile upload)
-            throws IOException {
-        String fileId = DbUtils.id();
+    private FileReference storeUpload(
+            TenantContext ctx,
+            FieldDefinition field,
+            String fileId,
+            MultipartSupport.UploadedFile upload) throws IOException {
         storage.store(ctx, fileId, upload.bytes());
         storeImageVariants(ctx, field, fileId, upload);
         return new FileReference(fileId, upload.fileName(), upload.mimeType(), upload.bytes().length);

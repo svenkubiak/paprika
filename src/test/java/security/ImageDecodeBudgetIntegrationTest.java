@@ -3,6 +3,7 @@ package security;
 import auth.TenantContext;
 import enums.FieldType;
 import io.mangoo.core.Application;
+import io.mangoo.core.Config;
 import io.mangoo.test.TestRunner;
 import models.CollectionDefinition;
 import models.FieldDefinition;
@@ -22,6 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -136,6 +138,31 @@ class ImageDecodeBudgetIntegrationTest {
         assertThat(record.get("attachment"), notNullValue());
     }
 
+    @Test
+    void aHardFailureWhileScalingLeavesNothingBehind() throws IOException {
+        // The budget refuses the images that would exhaust the heap, but it cannot promise the
+        // decode never fails hard for another reason - a smaller heap, a format the budget cannot
+        // read a size from, memory pressure from elsewhere. When it does, the original is already
+        // in storage and no record will ever point at it. The cleanup has to cover Error too.
+        FileFieldService files = new FileFieldService(
+                new HeapExhaustedOnVariant(Application.getInstance(Config.class)));
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+
+        long before = storedFileCount();
+
+        Document record = new Document();
+        assertThrows(OutOfMemoryError.class, () -> files.applyUploads(
+                ctx,
+                definitionWithVariants(),
+                record,
+                Map.of("attachment", List.of(
+                        new MultipartSupport.UploadedFile("ok.png", onePixelPerBitPng(512, 512), "image/png"))),
+                false));
+
+        assertThat("the original must not survive a failure that leaves no record behind",
+                storedFileCount(), equalTo(before));
+    }
+
     // ---------------------------------------------------------------------------------------
     // Fixture
     // ---------------------------------------------------------------------------------------
@@ -185,6 +212,27 @@ class ImageDecodeBudgetIntegrationTest {
         }
         try (var walk = java.nio.file.Files.walk(root)) {
             return walk.filter(java.nio.file.Files::isRegularFile).count();
+        }
+    }
+
+    /**
+     * Stands in for the decode that exhausts the heap: the original is written, every scaled copy
+     * after it fails with an {@code Error} - which is exactly what the variant code's
+     * {@code catch (IOException | RuntimeException)} does not catch.
+     */
+    private static final class HeapExhaustedOnVariant extends FileStorageService {
+        private final AtomicInteger stores = new AtomicInteger();
+
+        HeapExhaustedOnVariant(Config config) {
+            super(config);
+        }
+
+        @Override
+        public void store(TenantContext ctx, String fileId, byte[] data) throws IOException {
+            if (stores.incrementAndGet() > 1) {
+                throw new OutOfMemoryError("Java heap space");
+            }
+            super.store(ctx, fileId, data);
         }
     }
 }
