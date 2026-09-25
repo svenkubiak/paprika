@@ -4,6 +4,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
@@ -11,6 +13,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
@@ -35,7 +38,67 @@ public final class ImageVariants {
     /** Formats that carry no alpha channel and therefore need an opaque target raster. */
     private static final Set<String> OPAQUE_FORMATS = Set.of("jpg");
 
+    /**
+     * The largest image that will be decoded, in pixels.
+     * <p>
+     * {@code maxSize} bounds the <em>compressed</em> bytes, which is precisely what a decompression
+     * bomb gets around: the dimensions a file declares in its header cost nothing to write down,
+     * but {@code ImageIO.read} allocates the full raster for them - four bytes per pixel - before
+     * anything gets a chance to look at how big it turned out. A PNG of uniform colour compresses
+     * by a factor in the thousands, so a file well inside the 4 MB transport limit can declare a
+     * raster larger than the heap of any ordinary instance.
+     * <p>
+     * 30 megapixels is ~120 MiB of raster and far above anything that legitimately arrives inside
+     * that 4 MB limit: even a well-compressed JPEG needs roughly a byte per three pixels, which
+     * puts a real photograph that fits through the upload at well under half this budget.
+     */
+    public static final long MAX_PIXELS = 30_000_000L;
+
     private ImageVariants() {
+    }
+
+    /**
+     * The number of pixels an image declares in its header, without decoding it.
+     * <p>
+     * {@code ImageReader#getWidth}/{@code #getHeight} read the header only - for PNG that is the
+     * 13 byte IHDR chunk - so this answers what a decode would cost before paying it.
+     *
+     * @return the declared pixel count, or {@code -1} when it cannot be determined (an unsupported
+     *         type, or a file no reader will touch - both end up rejected elsewhere)
+     */
+    public static long declaredPixels(byte[] source, String mimeType) throws IOException {
+        if (source == null || !isSupported(mimeType)) {
+            return -1;
+        }
+
+        try (ImageInputStream stream = ImageIO.createImageInputStream(new ByteArrayInputStream(source))) {
+            if (stream == null) {
+                return -1;
+            }
+
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(stream);
+            if (!readers.hasNext()) {
+                return -1;
+            }
+
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(stream, true, true);
+                return (long) reader.getWidth(0) * reader.getHeight(0);
+            } finally {
+                reader.dispose();
+            }
+        }
+    }
+
+    /**
+     * Whether this image is small enough to decode. An image whose size cannot be read is treated
+     * as acceptable here - it fails later in the decode, which costs nothing, rather than turning
+     * every unreadable file into a rejected upload.
+     */
+    public static boolean withinPixelBudget(byte[] source, String mimeType) throws IOException {
+        long pixels = declaredPixels(source, mimeType);
+        return pixels < 0 || pixels <= MAX_PIXELS;
     }
 
     public static boolean isSupported(String mimeType) {
@@ -55,6 +118,15 @@ public final class ImageVariants {
         }
 
         String format = WRITABLE_FORMATS.get(mimeType.toLowerCase());
+
+        // Checked again here, not only in the caller that validates the upload: this is the line
+        // that allocates, and a future caller that forgets the check must not be able to get past
+        // it. Reading the header a second time costs a few dozen bytes.
+        if (!withinPixelBudget(source, mimeType)) {
+            throw new IOException("Refusing to decode an image of " + declaredPixels(source, mimeType)
+                    + " pixels, the budget is " + MAX_PIXELS);
+        }
+
         BufferedImage image = ImageIO.read(new ByteArrayInputStream(source));
         if (image == null) {
             return null;

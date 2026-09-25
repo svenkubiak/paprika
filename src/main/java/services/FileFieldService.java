@@ -266,6 +266,7 @@ public class FileFieldService {
     private void validateUploads(FieldDefinition field, List<MultipartSupport.UploadedFile> files) {
         FieldOptions options = field.optionsOrDefault();
         long maxSize = options.maxSizeOrDefault();
+        boolean scales = !options.imageWidthsOrEmpty().isEmpty();
         for (MultipartSupport.UploadedFile upload : files) {
             if (upload.bytes().length > maxSize) {
                 throw new IllegalArgumentException("File exceeds max size for field " + field.name());
@@ -273,9 +274,42 @@ public class FileFieldService {
             if (!MimeTypes.matches(upload.mimeType(), options.mimeTypesOrEmpty())) {
                 throw new IllegalArgumentException("File mime type not allowed for field " + field.name());
             }
+            if (scales) {
+                rejectOversizedImage(field, upload);
+            }
         }
         if (files.size() > options.maxSelectOrDefault()) {
             throw new IllegalArgumentException("Too many files for field " + field.name());
+        }
+    }
+
+    /**
+     * Refuses an image whose declared dimensions are larger than what may be decoded.
+     * <p>
+     * Deliberately here rather than next to the decode: this runs before the first byte is written
+     * to storage. {@code applyUploads} can only roll back the files it has already recorded, so a
+     * rejection that happened during {@code storeUpload} would leave the original behind - and the
+     * whole point is to refuse before anything expensive or persistent happens.
+     * <p>
+     * Only checked when the field actually produces variants. Without {@code imageWidths} nothing
+     * decodes the upload, and an image is then just bytes like any other file.
+     */
+    private void rejectOversizedImage(FieldDefinition field, MultipartSupport.UploadedFile upload) {
+        if (!ImageVariants.isSupported(upload.mimeType())) {
+            return;
+        }
+
+        try {
+            if (!ImageVariants.withinPixelBudget(upload.bytes(), upload.mimeType())) {
+                LOG.warn("Refused an upload to field {}: the image declares {} pixels, the budget is {}",
+                        field.name(), ImageVariants.declaredPixels(upload.bytes(), upload.mimeType()),
+                        ImageVariants.MAX_PIXELS);
+                throw new IllegalArgumentException("Image is too large to process for field " + field.name());
+            }
+        } catch (IOException e) {
+            // Header unreadable: not a reason to refuse. The decode fails harmlessly later, and a
+            // file that no reader will open never reaches the allocation this guards.
+            LOG.debug("Could not read the image header for field {}: {}", field.name(), e.getMessage());
         }
     }
 

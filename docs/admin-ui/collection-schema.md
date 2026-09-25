@@ -38,6 +38,13 @@ The limits, enforced both in this editor and by the API:
 - **At most 4 widths per field.** Four cover list, preview, detail and retina; every further width multiplies the storage each upload costs.
 - **At most 4096 px per width.** Beyond that a "variant" is no longer a smaller copy.
 - Widths are normalized: duplicates are dropped and the list is sorted ascending.
+- **At most 30 megapixels per uploaded image.** This one applies to the *input*, not the variants,
+  and only once widths are configured — a file field without widths never decodes what it stores
+  and accepts any image. The reason is that `maxSize` limits the compressed bytes, while decoding
+  allocates four bytes per pixel: a small, heavily compressed file can declare a huge canvas and
+  cost hundreds of megabytes to open. An image past the budget is rejected with `400` before
+  anything is stored. Anything that fits through the 4 MB upload limit as a real photograph stays
+  far below it.
 
 What gets scaled:
 
