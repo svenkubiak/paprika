@@ -11,6 +11,11 @@ set -euo pipefail
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
 #         | sudo bash
 #
+#  Install / update to a specific version (non-interactive):
+#    cd /opt/paprika
+#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
+#         | sudo bash -s -- --version 0.44.0
+#
 #  Uninstall:
 #    cd /opt/paprika
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
@@ -32,9 +37,63 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# ── Arguments ─────────────────────────────────────────────────────────────────
+
+UNINSTALL=false
+REQUESTED_VERSION=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --uninstall)
+            UNINSTALL=true
+            shift
+            ;;
+        --version)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --version requires a version, e.g. --version 0.44.0" >&2
+                exit 1
+            fi
+            REQUESTED_VERSION="$2"
+            shift 2
+            ;;
+        --version=*)
+            REQUESTED_VERSION="${1#*=}"
+            shift
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            echo "       Usage: $0 [--uninstall] [--version <x.y.z>]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ -n "$REQUESTED_VERSION" ] && ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: '${REQUESTED_VERSION}' is not a valid version (expected x.y.z)." >&2
+    exit 1
+fi
+
+# ── Interactive input ─────────────────────────────────────────────────────────
+# This script is usually run as "curl ... | sudo bash", so stdin is the script
+# itself - reading a prompt from stdin would swallow the rest of the script.
+# Always talk to the controlling terminal instead.
+
+INTERACTIVE=false
+if { true > /dev/tty; } 2>/dev/null; then
+    INTERACTIVE=true
+fi
+
+# ask <variable-name> <prompt>
+ask() {
+    local __reply=""
+    printf '%s' "$2" > /dev/tty
+    IFS= read -r __reply < /dev/tty || true
+    printf -v "$1" '%s' "$__reply"
+}
+
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 
-if [ "${1:-}" = "--uninstall" ]; then
+if [ "$UNINSTALL" = true ]; then
 
     if [ ! -f "$VERSION_FILE" ] && [ ! -d "${INSTALL_DIR}/bin" ]; then
         echo "Error: No Paprika installation found in ${INSTALL_DIR}." >&2
@@ -69,13 +128,13 @@ if [ "${1:-}" = "--uninstall" ]; then
 
     if [ -d "${INSTALL_DIR}/storage" ]; then
         DELETE_STORAGE=false
-        if [ ! -t 0 ]; then
+        if [ "$INTERACTIVE" = false ]; then
             echo ""
             echo "  Storage directory not removed (non-interactive mode)."
             echo "  Delete manually if no longer needed: rm -rf ${INSTALL_DIR}/storage"
         else
             echo ""
-            read -r -p "  Delete storage directory? All application data will be lost. [y/N] " confirm
+            ask confirm "  Delete storage directory? All application data will be lost. [y/N] "
             case "$confirm" in
                 [yY]*) DELETE_STORAGE=true ;;
             esac
@@ -134,17 +193,142 @@ if [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION=$(cat "$VERSION_FILE")
 fi
 
-# ── Download latest release ───────────────────────────────────────────────────
+# ── Determine which version to install ────────────────────────────────────────
 
 echo ""
-echo "🔍 Fetching latest release information from GitHub..."
+echo "🔍 Fetching release information from GitHub..."
 
-RELEASE_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
+LATEST_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
 
-if echo "$RELEASE_JSON" | grep -q '"message".*"Not Found"'; then
+if echo "$LATEST_JSON" | grep -q '"message".*"Not Found"'; then
     echo "Error: No releases found for ${GITHUB_REPO}." >&2
     echo "       Check https://github.com/${GITHUB_REPO}/releases for available releases." >&2
     exit 1
+fi
+
+LATEST_VERSION=$(echo "$LATEST_JSON" | grep -m1 '"tag_name"' | cut -d '"' -f 4)
+
+if [ -z "$LATEST_VERSION" ]; then
+    echo "Error: Could not determine the latest release version." >&2
+    exit 1
+fi
+
+# Prints all released versions, newest first.
+list_versions() {
+    curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100" \
+        | grep '"tag_name"' \
+        | cut -d '"' -f 4
+}
+
+# Lets the user pick from all released versions. Sets SELECTED_VERSION.
+select_version() {
+    local versions=() marker choice index version
+    while IFS= read -r version; do
+        [ -n "$version" ] && versions+=("$version")
+    done < <(list_versions)
+
+    if [ "${#versions[@]}" -eq 0 ]; then
+        echo "Error: Could not fetch the list of available versions." >&2
+        exit 1
+    fi
+
+    echo ""
+    echo "Available versions:"
+    index=1
+    for version in "${versions[@]}"; do
+        marker=""
+        [ "$version" = "$LATEST_VERSION" ]  && marker="${marker}  (latest)"
+        [ "$version" = "$CURRENT_VERSION" ] && marker="${marker}  (installed)"
+        printf "  %2d) %s%s\n" "$index" "$version" "$marker"
+        index=$((index + 1))
+    done
+    echo ""
+
+    while true; do
+        ask choice "Select a version by number (Enter to abort): "
+        if [ -z "$choice" ]; then
+            echo "Aborted."
+            exit 0
+        fi
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#versions[@]}" ]; then
+            SELECTED_VERSION="${versions[$((choice - 1))]}"
+            return
+        fi
+        echo "  Invalid selection: ${choice}"
+    done
+}
+
+SELECTED_VERSION=""
+
+if [ -n "$REQUESTED_VERSION" ]; then
+
+    SELECTED_VERSION="$REQUESTED_VERSION"
+    [ "$IS_UPDATE" = true ] && echo "  Installed version : ${CURRENT_VERSION}"
+    echo "  Requested version : ${SELECTED_VERSION}"
+
+elif [ "$IS_UPDATE" = false ]; then
+
+    SELECTED_VERSION="$LATEST_VERSION"
+    echo "  No existing installation found – installing the latest version (${LATEST_VERSION})."
+
+else
+
+    echo "  Installed version : ${CURRENT_VERSION}"
+    echo "  Latest version    : ${LATEST_VERSION}"
+    echo ""
+
+    if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+        echo "✅ Paprika is already on the latest version – nothing to do."
+        echo "   To reinstall or switch to another version, run with --version <x.y.z>."
+        exit 0
+    fi
+
+    if [ "$INTERACTIVE" = false ]; then
+        echo "Error: A newer version is available, but this script is running non-interactively." >&2
+        echo "       Re-run it from a terminal, or pick a version explicitly:" >&2
+        echo "         --version ${LATEST_VERSION}" >&2
+        exit 1
+    fi
+
+    ask confirm "Install the latest version (${LATEST_VERSION})? [Y/n] "
+    case "$confirm" in
+        [nN]*) select_version ;;
+        *)     SELECTED_VERSION="$LATEST_VERSION" ;;
+    esac
+
+fi
+
+# ── Downgrade guard ───────────────────────────────────────────────────────────
+
+if [ "$IS_UPDATE" = true ] && [ "$SELECTED_VERSION" != "$CURRENT_VERSION" ]; then
+    OLDER=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$SELECTED_VERSION" | sort -V | head -n1)
+    if [ "$OLDER" = "$SELECTED_VERSION" ]; then
+        echo ""
+        echo "⚠️  ${SELECTED_VERSION} is older than the installed version ${CURRENT_VERSION}."
+        echo "    Downgrades are not supported – data written by a newer version may"
+        echo "    be unreadable for an older one. Back up your database first."
+        if [ "$INTERACTIVE" = true ]; then
+            ask confirm "Continue anyway? [y/N] "
+            case "$confirm" in
+                [yY]*) ;;
+                *) echo "Aborted."; exit 0 ;;
+            esac
+        fi
+    fi
+fi
+
+# ── Download selected release ─────────────────────────────────────────────────
+
+if [ "$SELECTED_VERSION" = "$LATEST_VERSION" ]; then
+    RELEASE_JSON="$LATEST_JSON"
+else
+    RELEASE_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${SELECTED_VERSION}")
+
+    if echo "$RELEASE_JSON" | grep -q '"message".*"Not Found"'; then
+        echo "Error: No release found for version ${SELECTED_VERSION}." >&2
+        echo "       Check https://github.com/${GITHUB_REPO}/releases for available releases." >&2
+        exit 1
+    fi
 fi
 
 DOWNLOAD_URL=$(echo "$RELEASE_JSON" \
@@ -162,7 +346,7 @@ CHECKSUM_URL=$(echo "$RELEASE_JSON" \
     || true)
 
 if [ -z "$DOWNLOAD_URL" ]; then
-    echo "Error: Could not find a .deb release asset for architecture ${DEB_ARCH}." >&2
+    echo "Error: Release ${SELECTED_VERSION} has no .deb asset for architecture ${DEB_ARCH}." >&2
     echo "       Check https://github.com/${GITHUB_REPO}/releases for available assets." >&2
     exit 1
 fi
@@ -212,28 +396,16 @@ if [ "$IS_UPDATE" = true ]; then
     # ── Update ────────────────────────────────────────────────────────────────
 
     echo ""
-    echo "  Installed version : ${CURRENT_VERSION}"
-    echo "  Available version : ${NEW_VERSION}"
-    echo ""
-
-    if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
-        echo "Already on the latest version (${CURRENT_VERSION})."
-        read -r -p "Reinstall anyway? [y/N] " confirm
-        case "$confirm" in
-            [yY]*) ;;
-            *) echo "Aborted."; exit 0 ;;
-        esac
-    else
-        read -r -p "Update from ${CURRENT_VERSION} to ${NEW_VERSION}? [Y/n] " confirm
-        case "$confirm" in
-            [nN]*) echo "Aborted."; exit 0 ;;
-        esac
-    fi
+    echo "📦 Installing version ${NEW_VERSION} over ${CURRENT_VERSION} ..."
 
     if [ ! -f "$ENV_FILE" ]; then
         echo ""
         echo "Warning: ${ENV_FILE} not found. The service may not start correctly after update." >&2
-        read -r -p "Continue anyway? [y/N] " confirm
+        if [ "$INTERACTIVE" = false ]; then
+            echo "Error: Aborting – create the .env file first." >&2
+            exit 1
+        fi
+        ask confirm "Continue anyway? [y/N] "
         case "$confirm" in
             [yY]*) ;;
             *) echo "Aborted."; exit 0 ;;
@@ -256,7 +428,6 @@ else
     # ── Fresh install ─────────────────────────────────────────────────────────
 
     echo ""
-    echo "No existing installation found."
     echo "📦 Installing version ${NEW_VERSION} to ${INSTALL_DIR} ..."
     echo ""
 
@@ -494,7 +665,11 @@ systemctl enable "$APP_NAME"
 if [ "$IS_UPDATE" = true ]; then
     echo ""
     echo "────────────────────────────────────────────"
-    echo " 🫑  Update complete: ${CURRENT_VERSION} → ${NEW_VERSION}"
+    if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+        echo " 🫑  Reinstall complete: ${NEW_VERSION}"
+    else
+        echo " 🫑  Update complete: ${CURRENT_VERSION} → ${NEW_VERSION}"
+    fi
     echo ""
     echo " ▶️  Start the service when ready:"
     echo "   systemctl start ${APP_NAME}"

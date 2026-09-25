@@ -84,12 +84,27 @@ By default the generated `.env` sets `CONNECTOR_HTTP_HOST=127.0.0.1`, so Paprika
 
 ## Update
 
-Running the same command again from the install directory detects the currently installed version via `.version`, shows you what's available, and asks for confirmation before replacing the application binaries. `.env`, `.version`, and `storage/` are never touched by an update. After the script finishes, start the service manually:
+Running the same command again from the install directory detects the currently installed version via `.version` and compares it with the latest release:
+
+- Already on the latest version: the script reports it and exits without changing anything.
+- A newer version is available: it asks whether to install it. Declining opens a list of all released versions to pick from, so you can install an older one instead.
+
+`.env`, `.version`, and `storage/` are never touched by an update. After the script finishes, start the service manually:
 
 ```bash
+cd /opt/paprika
 curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh | sudo bash
 systemctl start paprika
 ```
+
+To install a specific version without any prompts — for example to reinstall the current one — pass `--version`:
+
+```bash
+cd /opt/paprika
+curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh | sudo bash -s -- --version 0.44.0
+```
+
+Installing a version older than the installed one is possible, but not supported: data written by a newer version may be unreadable for an older one. Back up your database first.
 
 ## Service management
 
