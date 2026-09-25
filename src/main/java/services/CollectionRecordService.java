@@ -50,23 +50,25 @@ public class CollectionRecordService {
     private static final Bson DEFAULT_SORT = Sorts.ascending("_id");
 
     private static Bson recordProjection(String collection) {
-        return UserRecordUtils.isUsers(collection)
-                ? UserRecordUtils.recordProjection()
-                : Projections.excludeId();
+        return RecordProjections.forCollection(collection);
     }
 
     private final TenantCollectionService tenantCollections;
     private final HookService hookService;
     private final FileFieldService fileFieldService;
+    private final RelationCascadeService relationCascadeService;
 
     @Inject
     public CollectionRecordService(
             TenantCollectionService tenantCollections,
             HookService hookService,
-            FileFieldService fileFieldService) {
+            FileFieldService fileFieldService,
+            RelationCascadeService relationCascadeService) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.hookService = Objects.requireNonNull(hookService, "hookService must not be null");
         this.fileFieldService = Objects.requireNonNull(fileFieldService, "fileFieldService must not be null");
+        this.relationCascadeService =
+                Objects.requireNonNull(relationCascadeService, "relationCascadeService must not be null");
     }
 
     public RecordResult create(TenantContext ctx, String collection, Request request) {
@@ -387,7 +389,12 @@ public class CollectionRecordService {
 
         try {
             fileFieldService.deleteRecordFiles(ctx, definition, deleted);
-            RelationFieldUtils.cascadeDeleteRelatedRecords(ctx, tenantCollections, definition, deleted);
+            relationCascadeService.cascadeDelete(
+                    ctx,
+                    definition,
+                    deleted,
+                    TenantContextHolder.auth(request),
+                    AuthorizationDecision.isAdminBypass(request));
         } catch (RuntimeException e) {
             LOG.warn("Post-delete cleanup failed for {}/{}: {}", collection, id, e.getMessage());
         }

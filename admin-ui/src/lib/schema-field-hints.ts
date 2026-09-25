@@ -16,7 +16,7 @@ export const schemaFieldHints = {
   selectMaxSelect: 'How many options may be selected. Use 1 for a single-select dropdown.',
   relationMaxSelect: 'Maximum number of related record IDs. Use 1 for a single relation.',
   relationCascadeDelete:
-    'When this record is deleted, linked records in the related collection are deleted too.',
+    'When this record is deleted, linked records in the related collection are deleted too — but only those the caller may delete: the delete rule of the related collection is checked for each of them.',
   minLength: 'Minimum number of characters required in the text value.',
   maxLength: 'Maximum number of characters allowed in the text value.',
   pattern: 'Regular expression the value must match. Example: ^[a-z-]+$',

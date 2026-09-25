@@ -210,12 +210,13 @@
 									<include name="TenantIsolationIntegrationTest.java" />
 									<include name="OutboundSecretLeakIntegrationTest.java" />
 									<include name="SuperadminTokenRevalidationIntegrationTest.java" />
+									<include name="CascadeDeleteAuthorizationIntegrationTest.java" />
 								</fileset>
 								<resourcecount property="security.suites.count" refid="security.suites" />
 								<fail message="A suite in src/test/java/security is missing. These are the executable specification of the access rules, the tenant isolation and the outbound secret handling - they must not be removed or renamed without replacement.">
 									<condition>
 										<not>
-											<equals arg1="${security.suites.count}" arg2="4" />
+											<equals arg1="${security.suites.count}" arg2="5" />
 										</not>
 									</condition>
 								</fail>
