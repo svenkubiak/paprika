@@ -14,7 +14,13 @@ public record AdminLoginResult(AdminLoginResult.Status status, TokenPair tokens)
          * Too many wrong second-factor codes; the TOTP step is locked for a while. The one-time
          * fallback code still works, so this cannot shut the rightful superadmin out for good.
          */
-        TWO_FACTOR_LOCKED
+        TWO_FACTOR_LOCKED,
+
+        /**
+         * The instance had no capacity left to run the Argon2 verification. Says nothing about
+         * the credentials - they were never looked at.
+         */
+        AT_CAPACITY
     }
 
     public static AdminLoginResult success() {
@@ -43,5 +49,9 @@ public record AdminLoginResult(AdminLoginResult.Status status, TokenPair tokens)
 
     public static AdminLoginResult twoFactorLocked() {
         return new AdminLoginResult(Status.TWO_FACTOR_LOCKED, null);
+    }
+
+    public static AdminLoginResult atCapacity() {
+        return new AdminLoginResult(Status.AT_CAPACITY, null);
     }
 }

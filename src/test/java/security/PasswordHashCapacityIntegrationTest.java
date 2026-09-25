@@ -8,8 +8,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.PasswordHashGate;
 import services.UserService;
+import utils.AdminTestUtils;
 import utils.TenantTestUtils;
 
+import java.net.HttpCookie;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -93,6 +95,73 @@ class PasswordHashCapacityIntegrationTest {
                 peak, lessThan(Runtime.getRuntime().maxMemory()));
     }
 
+    @Test
+    void refusesSuperadminLoginsWithoutHashingWhenAtCapacity() throws Exception {
+        // The superadmin login runs the same Argon2id verification as the tenant login and holds
+        // the same ~90 MiB while it does. It sits behind the admin IP gate, which makes it harder
+        // to reach but no cheaper to serve - the ceiling is on what this instance allocates, not
+        // on who asked for it.
+        String password = AdminTestUtils.prepareAdminPassword();
+
+        try (HeldPermits held = HeldPermits.acquireAll()) {
+            TestResponse response = adminLogin(password);
+
+            assertThat("a superadmin login that cannot get a permit must be refused, not queued",
+                    response.getStatusCode(), equalTo(429));
+            assertThat(response.getContent(), containsString("Too many authentication requests"));
+            assertThat("a refusal has to tell the client when to come back",
+                    response.getHeader("Retry-After"), notNullValue());
+            assertThat("and it is not a sign-in",
+                    response.getCookie("paprika-authentication"), nullValue());
+        }
+
+        assertThat("the gate must open again for the superadmin too",
+                adminLogin(password).getStatusCode(), equalTo(200));
+    }
+
+    @Test
+    void refusalIsNotReportedAsAWrongPassword() throws Exception {
+        // The distinction the result type exists for: at capacity the password was never looked
+        // at, so answering 401 would tell the rightful owner their password is wrong and would
+        // tell an attacker their guess failed when it was never checked.
+        String password = AdminTestUtils.prepareAdminPassword();
+
+        try (HeldPermits held = HeldPermits.acquireAll()) {
+            TestResponse right = adminLogin(password);
+            TestResponse wrong = adminLogin("the-wrong-password-entirely");
+
+            assertThat(right.getStatusCode(), equalTo(429));
+            assertThat("right and wrong are indistinguishable while the instance is full",
+                    wrong.getStatusCode(), equalTo(right.getStatusCode()));
+            assertThat(wrong.getContent(), equalTo(right.getContent()));
+        }
+    }
+
+    @Test
+    void theProfilePasswordCheckObeysTheSameCap() throws Exception {
+        // Re-entering the password to change it is authenticated, but it allocates exactly as
+        // much as a login does. A cap that only covered the unauthenticated paths would not be
+        // a cap on what the instance can be made to allocate.
+        String password = AdminTestUtils.prepareAdminPassword();
+        HttpCookie authentication = AdminTestUtils.loginAsAdmin();
+
+        try (HeldPermits held = HeldPermits.acquireAll()) {
+            TestResponse response = TestRequest.post("/api/admin/profile/password")
+                    .withCookie(authentication)
+                    .withStringBody("{\"currentPassword\":\"" + password
+                            + "\",\"newPassword\":\"a-brand-new-password-1\"}")
+                    .withContentType("application/json")
+                    .execute();
+
+            assertThat(response.getStatusCode(), equalTo(429));
+            assertThat("a refusal must not read as a wrong current password",
+                    response.getContent(), containsString("Too many authentication requests"));
+        }
+
+        assertThat("and the password is unchanged, because the check never ran",
+                adminLogin(password).getStatusCode(), equalTo(200));
+    }
+
     // ---------------------------------------------------------------------------------------
     // Fixture
     // ---------------------------------------------------------------------------------------
@@ -154,6 +223,13 @@ class PasswordHashCapacityIntegrationTest {
     private static TestResponse login(String username, String password) {
         return TestRequest.post("/api/auth/login")
                 .withStringBody(TenantTestUtils.loginBody(username, password))
+                .withContentType("application/json")
+                .execute();
+    }
+
+    private static TestResponse adminLogin(String password) {
+        return TestRequest.post("/api/admin/login")
+                .withStringBody("{\"username\":\"admin\",\"password\":\"" + password + "\"}")
                 .withContentType("application/json")
                 .execute();
     }

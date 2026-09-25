@@ -1,6 +1,7 @@
 package helpers;
 
 import io.mangoo.routing.Response;
+import io.undertow.util.StatusCodes;
 import results.AdminSettingsResult;
 
 import java.util.Map;
@@ -15,6 +16,9 @@ public final class AdminSettingsResponseHelper {
             case BAD_REQUEST -> toErrorResponse(Response.badRequest(), result.errorMessage());
             case UNAUTHORIZED -> toErrorResponse(Response.unauthorized(), result.errorMessage());
             case NOT_FOUND -> toErrorResponse(Response.notFound(), result.errorMessage());
+            case AT_CAPACITY -> toErrorResponse(
+                    Response.status(StatusCodes.TOO_MANY_REQUESTS).header("Retry-After", "1"),
+                    result.errorMessage());
         };
     }
 

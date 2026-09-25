@@ -7,7 +7,10 @@ public record AdminSettingsResult(AdminSettingsResult.Status status, Map<String,
         OK,
         BAD_REQUEST,
         UNAUTHORIZED,
-        NOT_FOUND
+        NOT_FOUND,
+
+        /** A password had to be re-entered, but the instance had no capacity to verify it. */
+        AT_CAPACITY
     }
 
     public static AdminSettingsResult ok(Map<String, Object> body) {
@@ -24,5 +27,9 @@ public record AdminSettingsResult(AdminSettingsResult.Status status, Map<String,
 
     public static AdminSettingsResult notFound(String errorMessage) {
         return new AdminSettingsResult(Status.NOT_FOUND, null, errorMessage);
+    }
+
+    public static AdminSettingsResult atCapacity() {
+        return new AdminSettingsResult(Status.AT_CAPACITY, null, "Too many authentication requests, try again shortly");
     }
 }

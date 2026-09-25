@@ -15,6 +15,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import results.AdminSettingsResult;
+import results.SuperadminPasswordResult;
 import services.SystemUserService.SuperadminProfile;
 import session.PendingTwoFactorSession;
 import utils.InstanceLinks;
@@ -225,7 +226,12 @@ public class SuperadminProfileService {
                 return AdminSettingsResult.badRequest("Current password and new password are required");
             }
 
-            if (!systemUserService.matchesPassword(userId, dto.currentPassword())) {
+            SuperadminPasswordResult verified =
+                    systemUserService.verifyPassword(profile.username(), dto.currentPassword());
+            if (verified.isAtCapacity()) {
+                return AdminSettingsResult.atCapacity();
+            }
+            if (verified.auth().isEmpty()) {
                 return AdminSettingsResult.unauthorized("Invalid current password");
             }
 
@@ -245,7 +251,11 @@ public class SuperadminProfileService {
 
     public AdminSettingsResult setupTwoFactor(Request request, TwoFactorSetupDto dto) {
         return withProfile(request, (userId, profile) -> {
-            if (systemUserService.verifyPassword(profile.username(), dto.password()).isEmpty()) {
+            SuperadminPasswordResult verified = systemUserService.verifyPassword(profile.username(), dto.password());
+            if (verified.isAtCapacity()) {
+                return AdminSettingsResult.atCapacity();
+            }
+            if (verified.auth().isEmpty()) {
                 return AdminSettingsResult.unauthorized("Invalid password");
             }
 
@@ -283,7 +293,11 @@ public class SuperadminProfileService {
 
     public AdminSettingsResult disableTwoFactor(Request request, TwoFactorSetupDto dto) {
         return withProfile(request, (userId, profile) -> {
-            if (systemUserService.verifyPassword(profile.username(), dto.password()).isEmpty()) {
+            SuperadminPasswordResult verified = systemUserService.verifyPassword(profile.username(), dto.password());
+            if (verified.isAtCapacity()) {
+                return AdminSettingsResult.atCapacity();
+            }
+            if (verified.auth().isEmpty()) {
                 return AdminSettingsResult.unauthorized("Invalid password");
             }
 

@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
+import results.SuperadminPasswordResult;
 import utils.AuthTokens;
 import utils.DbUtils;
 import utils.DbWrites;
@@ -100,14 +101,17 @@ public class SystemUserService {
     }
 
     private final TenantDatabaseResolver resolver;
+    private final PasswordHashGate passwordHashGate;
 
     @Inject
-    public SystemUserService(TenantDatabaseResolver resolver) {
+    public SystemUserService(TenantDatabaseResolver resolver, PasswordHashGate passwordHashGate) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
+        this.passwordHashGate = Objects.requireNonNull(passwordHashGate, "passwordHashGate must not be null");
     }
 
+    /** For callers that only care whether the credentials were right, not why they were not. */
     public Optional<AuthContext> authenticateSuperadmin(String username, String password) {
-        return verifyPassword(username, password);
+        return verifyPassword(username, password).auth();
     }
 
     public Map<String, Object> createSuperadmin(
@@ -530,11 +534,6 @@ public class SystemUserService {
         );
     }
 
-    public boolean matchesPassword(String userId, String password) {
-        Document user = findById(userId);
-        return user != null && password != null && matchesPassword(password, user);
-    }
-
     public void setTotpSecret(String userId, String secret) {
         resolver.systemCollection(CollectionName.USERS).updateOne(
                 eq("id", userId),
@@ -694,21 +693,29 @@ public class SystemUserService {
         }
     }
 
-    public Optional<AuthContext> verifyPassword(String username, String password) {
+    /**
+     * Verifies a superadmin password under {@link PasswordHashGate}.
+     * <p>
+     * The permit is held around the Argon2 verification alone. The lookups before it cost nothing
+     * worth bounding, and a username that does not belong to a superadmin never reaches a hash on
+     * this path - unlike the tenant login, which hashes anyway so that its response time does not
+     * give account existence away. That difference is intentional: this endpoint sits behind the
+     * admin IP gate, and the single superadmin username is not a secret worth a permit.
+     */
+    public SuperadminPasswordResult verifyPassword(String username, String password) {
         if (StringUtils.isBlank(username) || password == null) {
-            return Optional.empty();
+            return SuperadminPasswordResult.noMatch();
         }
 
         Document user = findByUsername(username.trim());
         if (user == null || !Role.SUPERADMIN.equals(user.getString("role"))) {
-            return Optional.empty();
+            return SuperadminPasswordResult.noMatch();
         }
 
-        if (!matchesPassword(password, user)) {
-            return Optional.empty();
-        }
-
-        return Optional.of(AuthContext.of(user.getString("id"), Role.SUPERADMIN, null));
+        return passwordHashGate.withPermit(() -> matchesPassword(password, user)
+                        ? SuperadminPasswordResult.match(AuthContext.of(user.getString("id"), Role.SUPERADMIN, null))
+                        : SuperadminPasswordResult.noMatch())
+                .orElseGet(SuperadminPasswordResult::atCapacity);
     }
 
     private Document findCompletedSuperadmin() {

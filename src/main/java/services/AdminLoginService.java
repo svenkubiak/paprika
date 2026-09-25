@@ -8,6 +8,7 @@ import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import results.AdminLoginResult;
+import results.SuperadminPasswordResult;
 import session.AdminTenantSession;
 import session.PendingTwoFactorSession;
 
@@ -43,7 +44,12 @@ public class AdminLoginService {
      * Signs the superadmin into the Web UI session, or defers to a pending 2FA challenge.
      */
     public AdminLoginResult login(String username, String password, Authentication authentication, Request request) {
-        return systemUserService.verifyPassword(username, password)
+        SuperadminPasswordResult verified = systemUserService.verifyPassword(username, password);
+        if (verified.isAtCapacity()) {
+            return AdminLoginResult.atCapacity();
+        }
+
+        return verified.auth()
                 .map(auth -> completeOrDeferLogin(auth, authentication, request))
                 .orElseGet(AdminLoginResult::invalidCredentials);
     }
@@ -52,7 +58,12 @@ public class AdminLoginService {
      * Issues an API token pair for the superadmin, or defers to a pending 2FA challenge.
      */
     public AdminLoginResult issueToken(String username, String password, Request request) {
-        return systemUserService.verifyPassword(username, password)
+        SuperadminPasswordResult verified = systemUserService.verifyPassword(username, password);
+        if (verified.isAtCapacity()) {
+            return AdminLoginResult.atCapacity();
+        }
+
+        return verified.auth()
                 .map(auth -> completeOrDeferToken(auth, request))
                 .orElseGet(AdminLoginResult::invalidCredentials);
     }

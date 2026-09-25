@@ -117,6 +117,13 @@ Requests over that cap are refused with **429 Too Many Requests** and a `Retry-A
 queued — queueing would turn a memory problem into a pile of open connections. The refusal is
 identical for a known and an unknown username, so it cannot be used to probe for accounts.
 
+The ceiling covers the superadmin credential paths as well, not only the tenant login: signing in
+at `/api/admin/login`, minting a token at `/api/admin/token`, and the password a superadmin
+re-enters to change it or to switch two-factor authentication on and off. Hashing a *new* password
+is not capped - creating an account, completing the initial setup and finishing a password reset
+all validate a token or a session before they hash, so none of them can be triggered by a caller
+who does not already hold a valid secret.
+
 If you see those 429s in normal operation, the instance is too small for its login volume: give
 it more heap. The cap follows the heap automatically.
 

@@ -25,6 +25,7 @@ public final class AdminLoginResponseHelper {
             case REQUIRES_TWO_FACTOR -> Response.redirect("/login?2fa=1");
             case INVALID_CREDENTIALS, NO_PENDING_LOGIN, INVALID_CODE -> Response.redirect("/login?error=1");
             case TWO_FACTOR_LOCKED -> Response.redirect("/login?locked=1");
+            case AT_CAPACITY -> Response.redirect("/login?busy=1");
         };
     }
 
@@ -64,6 +65,12 @@ public final class AdminLoginResponseHelper {
                     .end();
             case INVALID_CODE -> Response.badRequest()
                     .bodyJson(Map.of("error", "Invalid verification code"))
+                    .end();
+            // The same answer every caller gets from the tenant login: a statement about the
+            // instance, never about the account that was named.
+            case AT_CAPACITY -> Response.status(StatusCodes.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "1")
+                    .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"))
                     .end();
             case SUCCESS, REQUIRES_TWO_FACTOR -> throw new IllegalStateException(
                     "Not an error status: " + result.status());
