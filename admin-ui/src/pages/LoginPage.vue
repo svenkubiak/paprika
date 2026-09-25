@@ -140,10 +140,6 @@ function backToCredentials() {
           />
         </UFormField>
 
-        <p class="text-sm text-muted">
-          Superadmin access only. After sign-in, choose a tenant from the control plane.
-        </p>
-
         <UButton type="submit" block :loading="loading" icon="i-lucide-log-in">
           Sign in
         </UButton>
