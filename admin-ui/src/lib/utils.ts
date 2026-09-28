@@ -123,6 +123,26 @@ export function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text)
 }
 
+/**
+ * A byte count in the unit a person would use for it.
+ *
+ * Sizes are configured and stored in bytes, which is right for the API and unreadable in a form:
+ * nobody sees at a glance that 4000000 is roughly 4 MB. The field keeps the exact number, this
+ * goes next to it.
+ */
+export function formatByteSize(bytes: number | undefined | null): string {
+  if (bytes === undefined || bytes === null || !Number.isFinite(bytes)) return ''
+  if (bytes < 1000) return `${bytes} B`
+  const units = ['kB', 'MB', 'GB']
+  let value = bytes / 1000
+  let unit = 0
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000
+    unit += 1
+  }
+  return `${value >= 10 ? Math.round(value) : Math.round(value * 10) / 10} ${units[unit]}`
+}
+
 export const FIELD_TYPES = [
   'STRING',
   'NUMBER',

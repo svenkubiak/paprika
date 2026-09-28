@@ -5,18 +5,12 @@ html {
   scrollbar-gutter: stable;
 }
 
-/* Ensure form controls stretch inside their container (Nuxt UI 4) */
-[data-slot='root'][data-orientation] {
-  width: 100%;
-  max-width: 100%;
-}
-
-/* Stretch form controls placed directly in a field, not inside nested layouts */
-[data-slot='root'][data-orientation] > div:last-child > [data-slot='root'],
-[data-slot='root'][data-orientation] > div:last-child > button[data-slot='base'] {
-  width: 100%;
-  max-width: 100%;
-}
+/*
+ * Field width used to be pinned here, with a rule per nesting level. It now belongs to PField,
+ * which wraps every control in one of three width steps, and to the `input`/`select`/`textarea`
+ * slot defaults in vite.config.ts. Nothing matched the nested rules any more once the wrapper
+ * sat between the field and its control.
+ */
 
 /* Dialog overlays must sit above the app header (sticky z-10) */
 [data-slot="overlay"] {
