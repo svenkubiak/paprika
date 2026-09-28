@@ -50,20 +50,24 @@ public class FileFieldService {
                     continue;
                 }
 
-                validateUploads(field, files);
                 List<FileReference> existing =
                         FileFieldUtils.referencesFromRecord(record.get(field.name()), field);
+                boolean appends = appendMulti && field.optionsOrDefault().maxSelectOrDefault() > 1;
+
+                // The files that survive this write are what the limit applies to, so an append
+                // has to be checked against what the record already holds. Checking only the
+                // uploaded count let a field that was already full accept more and drop them
+                // without a word - see validateUploads.
+                validateUploads(field, files, appends ? existing.size() : 0);
+
                 List<FileReference> references = new ArrayList<>();
-                if (appendMulti && field.optionsOrDefault().maxSelectOrDefault() > 1) {
+                if (appends) {
                     references.addAll(existing);
                 } else {
                     existing.stream().map(FileReference::id).forEach(replacedIds::add);
                 }
 
                 for (MultipartSupport.UploadedFile upload : files) {
-                    if (references.size() >= field.optionsOrDefault().maxSelectOrDefault()) {
-                        break;
-                    }
                     // The id is recorded before the first byte is written, not after the upload
                     // succeeded: storeUpload can fail once the original is already in storage,
                     // and the cleanup below can only delete what it was told about.
@@ -273,7 +277,19 @@ public class FileFieldService {
         }
     }
 
-    private void validateUploads(FieldDefinition field, List<MultipartSupport.UploadedFile> files) {
+    /**
+     * @param keptCount how many files already on the record this write keeps - the existing ones
+     *                  for an append, zero when the field is replaced. Part of the limit because
+     *                  {@code maxSelect} bounds what the field ends up holding, not what arrived
+     *                  in one request: an append onto a field that is already full used to pass
+     *                  this check and then silently store none of the uploads while answering
+     *                  200, which is the one outcome a caller has no way of noticing.
+     */
+    private void validateUploads(
+            FieldDefinition field,
+            List<MultipartSupport.UploadedFile> files,
+            int keptCount) {
+
         FieldOptions options = field.optionsOrDefault();
         long maxSize = options.maxSizeOrDefault();
         boolean scales = !options.imageWidthsOrEmpty().isEmpty();
@@ -288,8 +304,14 @@ public class FileFieldService {
                 rejectOversizedImage(field, upload);
             }
         }
-        if (files.size() > options.maxSelectOrDefault()) {
-            throw new IllegalArgumentException("Too many files for field " + field.name());
+
+        int maxSelect = options.maxSelectOrDefault();
+        if (keptCount + files.size() > maxSelect) {
+            throw new IllegalArgumentException(keptCount == 0
+                    ? "Too many files for field " + field.name()
+                    : "Too many files for field " + field.name() + ": it already holds " + keptCount
+                            + " of " + maxSelect + ", so " + files.size() + " more would not fit. "
+                            + "Delete a file from the field first.");
         }
     }
 

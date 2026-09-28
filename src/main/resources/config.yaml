@@ -8,6 +8,8 @@
 # Default configuration:
 
 default:
+  undertow:
+    maxentitysize: 67108864
   application:
     name: paprika
     secret: tXbwvKVetgZSi1VSIEGTsPcIWmSwajJuQkYrx7OSwwGdGZ3J5yGi8IFiGhVEuT6T

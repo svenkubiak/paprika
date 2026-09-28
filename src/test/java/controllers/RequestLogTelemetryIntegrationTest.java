@@ -184,6 +184,67 @@ class RequestLogTelemetryIntegrationTest {
     }
 
     @Test
+    void theFullModeKeepsTheAddressTheHeaderNames() {
+        SettingsService settings = Application.getInstance(SettingsService.class);
+        settings.set(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_FULL);
+
+        try {
+            String marker = "/api/collections/full-ip-" + DbUtils.id();
+            TestRequest.get(marker).withHeader("X-Forwarded-For", "203.0.113.7, 10.0.0.1").execute();
+
+            Document entry = awaitEntry(eq("url", marker));
+            assertThat(entry.getString("clientIp"), equalTo("203.0.113.7"));
+        } finally {
+            settings.set(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_OFF);
+        }
+    }
+
+    /**
+     * {@code X-Forwarded-For} is written by the caller, so it can name anything at all. A host
+     * name used to be handed to the resolver and whatever came back was logged as the caller's
+     * address; now nothing is logged, in either mode. {@code localhost} is the case that makes
+     * this deterministic - it resolves without a network, so it is the one name that would
+     * certainly have been stored.
+     */
+    @Test
+    void aHeaderThatNamesNoAddressIsNotLogged() {
+        SettingsService settings = Application.getInstance(SettingsService.class);
+
+        for (String mode : List.of(SettingKeys.CLIENT_IP_TRUNCATED, SettingKeys.CLIENT_IP_FULL)) {
+            settings.set(SettingKeys.REQUEST_LOG_CLIENT_IP, mode);
+
+            try {
+                String marker = "/api/collections/host-header-" + mode + "-" + DbUtils.id();
+                TestRequest.get(marker).withHeader("X-Forwarded-For", "localhost").execute();
+
+                Document entry = awaitEntry(eq("url", marker));
+                assertThat("mode " + mode, entry.get("clientIp"), nullValue());
+            } finally {
+                settings.set(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_OFF);
+            }
+        }
+    }
+
+    /** X-Real-IP is the fallback when there is no forwarded-for, and it is checked the same way. */
+    @Test
+    void theRealIpFallbackIsValidatedToo() {
+        SettingsService settings = Application.getInstance(SettingsService.class);
+        settings.set(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_TRUNCATED);
+
+        try {
+            String accepted = "/api/collections/real-ip-ok-" + DbUtils.id();
+            TestRequest.get(accepted).withHeader("X-Real-IP", "198.51.100.42").execute();
+            assertThat(awaitEntry(eq("url", accepted)).getString("clientIp"), equalTo("198.51.100.0"));
+
+            String refused = "/api/collections/real-ip-bad-" + DbUtils.id();
+            TestRequest.get(refused).withHeader("X-Real-IP", "example.com").execute();
+            assertThat(awaitEntry(eq("url", refused)).get("clientIp"), nullValue());
+        } finally {
+            settings.set(SettingKeys.REQUEST_LOG_CLIENT_IP, SettingKeys.CLIENT_IP_OFF);
+        }
+    }
+
+    @Test
     void truncationKeepsTheNetworkAndDropsTheHost() {
         assertThat(ClientIps.truncate("203.0.113.7"), equalTo("203.0.113.0"));
         assertThat(ClientIps.truncate("2001:db8:1234:5678::1"), equalTo("2001:db8:1234::"));
