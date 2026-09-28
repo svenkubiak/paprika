@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
+import CopyButton from '@/components/CopyButton.vue'
+import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
 import { modalUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
@@ -422,19 +424,14 @@ async function confirmDisable() {
         </div>
 
         <div class="flex-1 space-y-4">
-          <UFormField
+          <PField
             label="Username"
-            class="w-full max-w-md"
+            icon="i-lucide-user"
+            width="md"
             help="The name you sign in with. It is fixed for the lifetime of the account."
           >
-            <UInput
-              :model-value="profile?.username || ''"
-              readonly
-              disabled
-              icon="i-lucide-user"
-              class="w-full"
-            />
-          </UFormField>
+            <UInput :model-value="profile?.username || ''" readonly icon="i-lucide-user" />
+          </PField>
 
           <p class="max-w-2xl text-sm text-muted">
             The picture is scaled to {{ AVATAR_SIZE }}×{{ AVATAR_SIZE }} pixels in your browser and
@@ -479,15 +476,14 @@ async function confirmDisable() {
         />
 
         <form class="flex max-w-xl flex-col gap-4 sm:flex-row sm:items-end" @submit.prevent="saveEmail">
-          <UFormField label="Email" class="w-full flex-1">
+          <PField label="Email" icon="i-lucide-mail" optional class="flex-1">
             <UInput
               v-model="email"
               type="email"
               placeholder="name@example.com"
               icon="i-lucide-mail"
-              class="w-full"
             />
-          </UFormField>
+          </PField>
           <UButton
             type="submit"
             icon="i-lucide-save"
@@ -581,35 +577,43 @@ async function confirmDisable() {
         </div>
 
         <form class="grid max-w-xl gap-4" @submit.prevent="savePassword">
-          <UFormField label="Current password" required class="w-full">
+          <PField label="Current password" icon="i-lucide-lock" orientation="horizontal">
             <UInput
               v-model="currentPassword"
               type="password"
               autocomplete="current-password"
               icon="i-lucide-lock"
-              class="w-full"
             />
-          </UFormField>
-          <UFormField label="New password" required class="w-full">
+          </PField>
+          <PField
+            label="New password"
+            icon="i-lucide-lock-keyhole"
+            orientation="horizontal"
+            help="At least 16 characters."
+            :counter="`${newPassword.length} / 16`"
+          >
             <UInput
               v-model="newPassword"
               type="password"
               autocomplete="new-password"
               minlength="16"
               icon="i-lucide-lock-keyhole"
-              class="w-full"
             />
-          </UFormField>
-          <UFormField label="Confirm new password" required class="w-full">
+          </PField>
+          <PField
+            label="Confirm new password"
+            icon="i-lucide-lock-keyhole"
+            orientation="horizontal"
+            :error="confirmPassword && newPassword !== confirmPassword ? 'The two passwords do not match.' : undefined"
+          >
             <UInput
               v-model="confirmPassword"
               type="password"
               autocomplete="new-password"
               minlength="16"
               icon="i-lucide-lock-keyhole"
-              class="w-full"
             />
-          </UFormField>
+          </PField>
           <UButton
             type="submit"
             class="w-fit"
@@ -675,29 +679,32 @@ async function confirmDisable() {
             description="Store it somewhere safe. It lets you sign in if you lose access to your authenticator app, and can be used only a single time."
           />
 
-          <UFormField label="Fallback code" class="w-full">
+          <PField label="Fallback code" icon="i-lucide-key-round" help="Shown once. Keep it somewhere safe.">
             <UInput
               :model-value="setupFallbackCode"
               readonly
-              class="w-full font-mono text-xs"
+              class="font-mono text-xs"
               icon="i-lucide-key-round"
-            />
-          </UFormField>
+            >
+              <template #trailing>
+                <CopyButton size="xs" :value="setupFallbackCode" label="Copy fallback code" />
+              </template>
+            </UInput>
+          </PField>
         </div>
 
         <div v-else-if="setupStep === 'password'" class="space-y-4">
           <p class="text-sm text-muted">
             Enter your current password to begin two-factor authentication setup.
           </p>
-          <UFormField label="Password" required class="w-full">
+          <PField label="Password" icon="i-lucide-lock">
             <UInput
               v-model="setupPassword"
-              class="w-full"
               type="password"
               autocomplete="current-password"
               icon="i-lucide-lock"
             />
-          </UFormField>
+          </PField>
         </div>
 
         <div v-else class="space-y-4">
@@ -713,20 +720,23 @@ async function confirmDisable() {
             />
           </div>
 
-          <UFormField label="Manual entry key" class="w-full">
-            <UInput :model-value="setupData?.secret || ''" readonly class="w-full font-mono text-xs" />
-          </UFormField>
+          <PField label="Manual entry key" icon="i-lucide-key" help="Use this if the QR code cannot be scanned.">
+            <UInput :model-value="setupData?.secret || ''" readonly class="font-mono text-xs">
+              <template #trailing>
+                <CopyButton size="xs" :value="setupData?.secret || ''" label="Copy manual entry key" />
+              </template>
+            </UInput>
+          </PField>
 
-          <UFormField label="Verification code" required class="w-full">
+          <PField label="Verification code" icon="i-lucide-key-round" :counter="`${setupCode.length} / 6`">
             <UInput
               v-model="setupCode"
-              class="w-full"
               inputmode="numeric"
               autocomplete="one-time-code"
               maxlength="6"
               icon="i-lucide-key-round"
             />
-          </UFormField>
+          </PField>
         </div>
 
         <template #footer>
@@ -775,26 +785,24 @@ async function confirmDisable() {
             description="You will need only your password to sign in after disabling 2FA."
           />
 
-          <UFormField label="Password" required class="w-full">
+          <PField label="Password" icon="i-lucide-lock">
             <UInput
               v-model="disablePassword"
-              class="w-full"
               type="password"
               autocomplete="current-password"
               icon="i-lucide-lock"
             />
-          </UFormField>
+          </PField>
 
-          <UFormField label="Authenticator code" required class="w-full">
+          <PField label="Authenticator code" icon="i-lucide-key-round" :counter="`${disableCode.length} / 6`">
             <UInput
               v-model="disableCode"
-              class="w-full"
               inputmode="numeric"
               autocomplete="one-time-code"
               maxlength="6"
               icon="i-lucide-key-round"
             />
-          </UFormField>
+          </PField>
         </div>
 
         <template #footer>

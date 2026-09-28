@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import CopyButton from '@/components/CopyButton.vue'
 import OverlayDrawer from '@/components/OverlayDrawer.vue'
+import PField from '@/components/PField.vue'
+import PSwitchField from '@/components/PSwitchField.vue'
 import type { GlobalHookEditorMode } from '@/composables/useGlobalHookEditorSheet'
 import { useBootstrap } from '@/composables/useBootstrap'
 import { hookContractExample, hookRequestHeaders } from '@/lib/hook-contract'
@@ -38,6 +41,16 @@ const emit = defineEmits<{
 
 const { bootstrap } = useBootstrap()
 const secretVisible = ref(false)
+
+/**
+ * Kept out of the template because the route contains braces, which the template would read as an
+ * interpolation.
+ */
+const fileRoutesDetails =
+  'The hook then runs on /api/collections/{collection}/{id}/files/{field} as well - one hook ' +
+  'roundtrip per file request. An image list fires many of them at once, so the hook needs its ' +
+  "own cache and a timeout below Paprika's 5-second budget for blocking hooks."
+
 
 const collectionItems = computed(() =>
   (bootstrap.value?.collections || []).map((name) => ({
@@ -99,44 +112,30 @@ watch(
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <div class="space-y-4">
           <UCard variant="subtle" :ui="{ body: 'space-y-4 p-4 sm:p-4' }">
-            <UFormField label="Name" required class="w-full">
-              <UInput
-                v-model="form.name"
-                icon="i-lucide-tag"
-                placeholder="Request gate"
-                class="w-full"
-                autofocus
-              />
-            </UFormField>
+            <PField label="Name" icon="i-lucide-tag">
+              <UInput v-model="form.name" icon="i-lucide-tag" placeholder="Request gate" autofocus />
+            </PField>
 
-            <UFormField label="Description" class="w-full">
-              <UTextarea
-                v-model="form.description"
-                placeholder="What does this hook do?"
-                :rows="2"
-                class="w-full"
-              />
-            </UFormField>
+            <PField label="Description" icon="i-lucide-align-left" optional>
+              <UTextarea v-model="form.description" placeholder="What does this hook do?" :rows="2" class="w-full" />
+            </PField>
 
-            <UFormField
+            <PField
               label="URL"
-              required
-              class="w-full"
-              help="HTTPS endpoint that receives the Paprika envelope"
+              icon="i-lucide-link"
+              help="HTTPS endpoint that receives the Paprika envelope."
             >
               <UInput
                 v-model="form.url"
                 icon="i-lucide-link"
                 placeholder="https://example.com/hooks/before-request"
-                class="w-full"
               />
-            </UFormField>
+            </PField>
 
-            <UFormField
+            <PField
               label="Signing secret"
-              required
-              class="w-full"
-              help="Required. Used for X-Paprika-Signature (HMAC-SHA256 over the raw JSON body)."
+              icon="i-lucide-key-round"
+              help="Used for X-Paprika-Signature: HMAC-SHA256 over the raw JSON body."
             >
               <UInput
                 v-model="form.secret"
@@ -149,56 +148,63 @@ watch(
                 data-form-type="other"
                 icon="i-lucide-key-round"
                 placeholder="Shared secret with your receiver"
-                class="w-full"
                 trailing
               >
                 <template #trailing>
                   <UButton
-                    variant="link"
+                    variant="ghost"
                     color="neutral"
                     size="xs"
                     :icon="secretVisible ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                     :aria-label="secretVisible ? 'Hide secret' : 'Show secret'"
                     @click="secretVisible = !secretVisible"
                   />
+                  <CopyButton size="xs" :value="form.secret" label="Copy signing secret" />
                 </template>
               </UInput>
-            </UFormField>
+            </PField>
 
             <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Priority" class="w-full" help="Lower runs first">
-                <UInput v-model.number="form.priority" type="number" min="1" class="w-full" />
-              </UFormField>
+              <PField label="Priority" icon="i-lucide-list-ordered" help="Lower runs first.">
+                <UInput v-model.number="form.priority" type="number" min="1" class="font-mono" />
+              </PField>
 
-              <UFormField label="Timeout (ms)" class="w-full">
-                <UInput v-model.number="form.timeoutMs" type="number" min="100" class="w-full" />
-              </UFormField>
+              <PField label="Timeout" icon="i-lucide-clock" help="How long the endpoint may take to answer.">
+                <UInput v-model.number="form.timeoutMs" type="number" min="100" class="font-mono">
+                  <template #trailing>
+                    <span class="text-xs text-muted">ms</span>
+                  </template>
+                </UInput>
+              </PField>
             </div>
 
-            <UFormField
+            <PField
               label="Forward request headers"
-              class="w-full"
-              help="Comma-separated, e.g. x-app-key-id, x-signature. These incoming request headers are sent to the configured hook URL on top of the default Content-Type, User-Agent, Accept, Accept-Language and X-Request-Id. Only list what the target actually needs to decide — Authorization, Cookie, Set-Cookie and Proxy-Authorization are never forwarded and are rejected here."
+              icon="i-lucide-list"
+              optional
+              help="Incoming request headers to send along, comma separated."
+              details="They are sent on top of the default Content-Type, User-Agent, Accept, Accept-Language and X-Request-Id. Only list what the target actually needs to decide - Authorization, Cookie, Set-Cookie and Proxy-Authorization are never forwarded and are rejected here."
             >
               <UInput
                 v-model="form.forwardHeaders"
                 icon="i-lucide-list"
                 placeholder="x-app-key-id, x-signature"
-                class="w-full font-mono"
+                class="font-mono"
               />
-            </UFormField>
+            </PField>
 
-            <div class="space-y-3 rounded-lg border border-default bg-muted/20 p-3">
-              <USwitch v-model="form.applyToAllCollections" label="Apply to all collections" />
-              <p v-if="form.applyToAllCollections" class="text-xs text-muted">
-                Also runs on auth flows (login, register, token refresh).
-              </p>
-              <UFormField
-                v-else
+            <div class="space-y-2">
+              <PSwitchField
+                v-model="form.applyToAllCollections"
+                label="Apply to all collections"
+                icon="i-lucide-layers"
+                help="Also runs on auth flows (login, register, token refresh)."
+              />
+              <PField
+                v-if="!form.applyToAllCollections"
                 label="Target collections"
-                required
-                class="w-full"
-                help="Auth flows always include all beforeRequest hooks"
+                icon="i-lucide-database"
+                help="Auth flows always include all beforeRequest hooks."
               >
                 <USelect
                   v-model="form.targetCollections"
@@ -208,19 +214,29 @@ watch(
                   icon="i-lucide-database"
                   :content="selectContentProps"
                   :ui="selectMenuUi"
-                  class="w-full font-mono"
+                  class="font-mono"
                 />
-              </UFormField>
-              <USwitch v-model="form.enabled" label="Enabled" />
-              <USwitch v-model="form.failOpen" label="Fail open on errors" />
-              <USwitch v-model="form.includeFileRoutes" label="Also guard file routes" />
-              <p class="text-xs text-muted">
-                Off by default. When on, this hook also runs before file downloads and file
-                deletions ({{ '/api/collections/{collection}/{id}/files/{field}' }}) — one hook
-                roundtrip per file request. An image list fires many of them at once, so the hook
-                needs its own cache and a timeout below Paprika's 5-second budget for blocking
-                hooks.
-              </p>
+              </PField>
+              <PSwitchField
+                v-model="form.enabled"
+                label="Enabled"
+                icon="i-lucide-radio"
+                help="Off keeps the configuration without calling the endpoint."
+              />
+              <PSwitchField
+                v-model="form.failOpen"
+                label="Fail open on errors"
+                icon="i-lucide-shield-off"
+                help="Carry on with the request when the hook fails or answers with a non-2xx status."
+                details="With this off, a hook that is unreachable, times out or answers with an error rejects the request with 502."
+              />
+              <PSwitchField
+                v-model="form.includeFileRoutes"
+                label="Also guard file routes"
+                icon="i-lucide-paperclip"
+                help="Off by default. When on, the hook also runs before file downloads and deletions."
+                :details="fileRoutesDetails"
+              />
             </div>
           </UCard>
 

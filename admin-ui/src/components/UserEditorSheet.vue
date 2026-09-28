@@ -2,7 +2,9 @@
 import { computed } from 'vue'
 import OverlayDrawer from '@/components/OverlayDrawer.vue'
 import FieldValueInput from '@/components/FieldValueInput.vue'
-import { fieldDisplayName } from '@/lib/utils'
+import PField from '@/components/PField.vue'
+import { fieldConstraintHint, fieldCounter } from '@/lib/field-constraints'
+import { fieldDisplayName, fieldTypeIcon } from '@/lib/utils'
 import type { FieldDefinition, TenantUser } from '@/types'
 import type { RecordFormState } from '@/lib/record-form'
 
@@ -50,6 +52,12 @@ const submitLabel = computed(() => (props.mode === 'add' ? 'Create user' : 'Save
 const submitIcon = computed(() => (props.mode === 'add' ? 'i-lucide-user-plus' : 'i-lucide-save'))
 const passwordRequired = computed(() => props.mode === 'add')
 const fields = computed(() => props.customFields ?? [])
+
+function counterFor(field: FieldDefinition) {
+  const value =
+    field.type === 'JSON' ? props.form.custom.jsonText[field.name] : props.form.custom.values[field.name]
+  return fieldCounter(field, value)
+}
 </script>
 
 <template>
@@ -77,39 +85,41 @@ const fields = computed(() => props.customFields ?? [])
 
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <form id="user-editor-form" class="space-y-4" @submit.prevent="emit('save')">
-          <UFormField label="Username" required class="w-full">
-            <UInput v-model="form.username" icon="i-lucide-user" class="w-full" autofocus />
-          </UFormField>
+          <PField label="Username" icon="i-lucide-user">
+            <UInput v-model="form.username" icon="i-lucide-user" autofocus />
+          </PField>
 
-          <UFormField
+          <PField
             label="Password"
-            :required="passwordRequired"
-            :help="mode === 'edit' ? 'Leave blank to keep the current password' : undefined"
-            class="w-full"
+            icon="i-lucide-lock"
+            :optional="!passwordRequired"
+            :help="mode === 'edit' ? 'Leave blank to keep the current password.' : undefined"
           >
             <UInput
               v-model="form.password"
               type="password"
               icon="i-lucide-lock"
-              class="w-full"
               autocomplete="new-password"
             />
-          </UFormField>
+          </PField>
 
-          <UFormField label="Email" class="w-full">
-            <UInput v-model="form.email" type="email" icon="i-lucide-mail" class="w-full" />
-          </UFormField>
+          <PField label="Email" icon="i-lucide-mail" optional>
+            <UInput v-model="form.email" type="email" icon="i-lucide-mail" />
+          </PField>
 
-          <UFormField v-if="mode === 'edit' && user" label="Role" class="w-full">
-            <UInput :model-value="user.role" icon="i-lucide-shield" class="w-full" disabled />
-          </UFormField>
+          <PField v-if="mode === 'edit' && user" label="Role" icon="i-lucide-shield" width="md">
+            <UInput :model-value="user.role" icon="i-lucide-shield" readonly />
+          </PField>
 
-          <UFormField
+          <PField
             v-for="field in fields"
             :key="field.name"
             :label="fieldDisplayName(field.name)"
-            :required="field.required"
-            class="w-full"
+            :icon="fieldTypeIcon(field.type)"
+            :optional="!field.required"
+            :hint="fieldConstraintHint(field)"
+            :counter="counterFor(field)?.text"
+            :counter-exceeded="counterFor(field)?.exceeded"
           >
             <!--
               A FILE field of the users schema is not editable here: an upload goes through the
@@ -125,7 +135,7 @@ const fields = computed(() => props.customFields ?? [])
               v-model="form.custom.jsonText[field.name]"
             />
             <FieldValueInput v-else :field="field" v-model="form.custom.values[field.name]" />
-          </UFormField>
+          </PField>
         </form>
       </div>
 

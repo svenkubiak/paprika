@@ -242,8 +242,18 @@ function buildDefaultRecord(): Record<string, unknown> {
   return withDefaults
 }
 
+/**
+ * The record editor marks the fields itself; the toast only reports that nothing was saved and
+ * how much there is to fix. It used to carry the first message of the first field, which was the
+ * only place it appeared.
+ */
 function onValidationError(message: string) {
-  toast.add({ title: message, color: 'error', icon: 'i-lucide-circle-x' })
+  toast.add({
+    title: 'Record not saved',
+    description: message,
+    color: 'error',
+    icon: 'i-lucide-circle-x'
+  })
 }
 
 async function saveRecord(payload: RecordSavePayload) {

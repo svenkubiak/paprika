@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import OverlayDrawer from '@/components/OverlayDrawer.vue'
-import FieldLabelHelp from '@/components/FieldLabelHelp.vue'
+import PField from '@/components/PField.vue'
+import PSwitchField from '@/components/PSwitchField.vue'
 import { selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
 import type { IndexDefinition, IndexDirection, IndexField } from '@/types'
 
@@ -167,29 +168,28 @@ function submit() {
         />
 
         <UCard variant="subtle" :ui="{ body: 'space-y-4 p-4 sm:p-4' }">
-          <UFormField required class="w-full">
-            <template #label>
-              <FieldLabelHelp
-                label="Name"
-                hint="Identifies the index on the server. Renaming one drops it and builds it again."
-              />
-            </template>
-            <UInput v-model="name" class="w-full font-mono" autofocus />
-          </UFormField>
+          <PField
+            label="Name"
+            icon="i-lucide-tag"
+            help="Identifies the index on the server."
+            details="Renaming one drops it and builds it again."
+          >
+            <UInput v-model="name" class="font-mono" autofocus />
+          </PField>
 
-          <div class="flex items-center justify-between gap-3">
-            <FieldLabelHelp
-              label="Unique"
-              hint="Rejects records whose indexed values, taken together, already exist. Cannot be enabled while the collection still holds duplicates."
-            />
-            <USwitch v-model="unique" />
-          </div>
+          <PSwitchField
+            v-model="unique"
+            label="Unique"
+            icon="i-lucide-fingerprint"
+            help="Rejects records whose indexed values, taken together, already exist."
+            details="Cannot be enabled while the collection still holds duplicates."
+          />
 
           <div class="space-y-2 border-t border-default pt-4">
-            <FieldLabelHelp
-              label="Fields"
-              hint="Order matters: a compound index only serves queries that start with its leading fields."
-            />
+            <p class="text-sm font-medium text-default">Fields</p>
+            <p class="text-xs text-muted">
+              Order matters: a compound index only serves queries that start with its leading fields.
+            </p>
 
             <div
               v-for="(entry, position) in fields"

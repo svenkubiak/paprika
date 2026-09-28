@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/lib/api'
+import PField from '@/components/PField.vue'
+import PSwitchField from '@/components/PSwitchField.vue'
 import { modalUi, selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
@@ -334,20 +336,19 @@ async function deleteKey() {
           </div>
 
           <form v-else class="space-y-4" @submit.prevent="createKey">
-            <UFormField
+            <PField
               label="Name"
-              help="Who or what uses this key, e.g. middleware-prod. Shown in the list and the request log."
-              required
-              class="w-full"
+              icon="i-lucide-tag"
+              help="Who or what uses this key, e.g. middleware-prod."
+              details="Shown in the list and in the request log."
             >
-              <UInput v-model="form.name" class="w-full" placeholder="middleware-prod" />
-            </UFormField>
+              <UInput v-model="form.name" placeholder="middleware-prod" />
+            </PField>
 
-            <UFormField
+            <PField
               label="Bound user"
+              icon="i-lucide-user"
               help="The key authenticates as this tenant user and inherits exactly that user's permissions."
-              required
-              class="w-full"
             >
               <USelect
                 v-model="form.userId"
@@ -355,21 +356,17 @@ async function deleteKey() {
                 placeholder="Select a user"
                 :content="selectContentProps"
                 :ui="selectMenuUi"
-                class="w-full"
               />
-            </UFormField>
+            </PField>
 
-            <div class="space-y-3 rounded-lg border border-default p-3">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <p class="text-sm font-medium">Bypass collection rules</p>
-                  <p class="mt-1 text-sm text-muted">
-                    For a trusted backend service. Requests with this key are not checked against
-                    the collection rules at all.
-                  </p>
-                </div>
-                <USwitch v-model="form.bypassRules" />
-              </div>
+            <div class="space-y-3">
+              <PSwitchField
+                v-model="form.bypassRules"
+                label="Bypass collection rules"
+                icon="i-lucide-shield-off"
+                help="For a trusted backend service."
+                details="Requests with this key are not checked against the collection rules at all."
+              />
               <UAlert
                 v-if="form.bypassRules"
                 color="error"
@@ -380,13 +377,15 @@ async function deleteKey() {
               />
             </div>
 
-            <UFormField
+            <PField
               label="Expires"
-              help="Optional. Leave empty for a key that never expires on its own; it can always be revoked."
-              class="w-full"
+              icon="i-lucide-calendar"
+              optional
+              width="md"
+              help="Leave empty for a key that never expires on its own; it can always be revoked."
             >
-              <UInput v-model="form.expiresAt" type="date" class="w-full font-mono" />
-            </UFormField>
+              <UInput v-model="form.expiresAt" type="date" class="font-mono" />
+            </PField>
           </form>
 
           <template #footer>

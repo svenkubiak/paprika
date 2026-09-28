@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '@/lib/api'
 import { useBootstrap } from '@/composables/useBootstrap'
 import { useAppToast } from '@/composables/useAppToast'
-import FieldLabelHelp from '@/components/FieldLabelHelp.vue'
+import PField from '@/components/PField.vue'
 import { modalUi } from '@/lib/overlay-ui'
 
 const router = useRouter()
@@ -90,15 +90,14 @@ onUnmounted(() => {
         </p>
 
         <form class="w-full space-y-4" @submit.prevent="createCollection">
-          <UFormField required class="w-full">
-            <template #label>
-              <FieldLabelHelp
-                label="Name"
-                hint="Lowercase letters, numbers, and underscores. Fields are added on the Schema tab after creation."
-              />
-            </template>
-            <UInput v-model="name" icon="i-lucide-database" class="w-full font-mono" autofocus />
-          </UFormField>
+          <PField
+            label="Name"
+            icon="i-lucide-database"
+            help="Lowercase letters, numbers, and underscores."
+            details="Fields are added on the Schema tab after creation."
+          >
+            <UInput v-model="name" icon="i-lucide-database" class="font-mono" autofocus />
+          </PField>
           <div class="flex justify-end gap-2">
             <UButton variant="ghost" color="neutral" @click="open = false">Cancel</UButton>
             <UButton type="submit" :loading="creating" icon="i-lucide-plus">

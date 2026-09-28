@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import CopyButton from '@/components/CopyButton.vue'
 import OverlayDrawer from '@/components/OverlayDrawer.vue'
+import PField from '@/components/PField.vue'
 import { normalizeSlug } from '@/lib/utils'
 import type { TenantDefinition } from '@/types'
 
@@ -89,54 +91,59 @@ function onSlugInput() {
 
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <form id="tenant-editor-form" class="space-y-4" @submit.prevent="emit('save')">
-          <UFormField label="Name" required class="w-full">
-            <UInput
-              v-model="form.name"
-              icon="i-lucide-building-2"
-              class="w-full"
-              autofocus
-            />
-          </UFormField>
+          <PField label="Name" icon="i-lucide-building-2">
+            <UInput v-model="form.name" icon="i-lucide-building-2" autofocus />
+          </PField>
 
-          <UFormField
+          <PField
             label="Slug"
-            required
-            help="Lowercase letters, numbers, and hyphens only"
-            class="w-full"
+            icon="i-lucide-link"
+            width="md"
+            help="Lowercase letters, numbers, and hyphens only."
           >
-            <UInput v-model="form.slug" icon="i-lucide-link" class="w-full" @input="onSlugInput" />
-          </UFormField>
+            <UInput v-model="form.slug" icon="i-lucide-link" class="font-mono" @input="onSlugInput" />
+          </PField>
 
           <template v-if="mode === 'edit' && tenant">
-            <UFormField label="Database" class="w-full">
-              <UInput :model-value="tenant.databaseName" icon="i-lucide-database" class="w-full" disabled />
-            </UFormField>
+            <!-- Read-only rather than disabled: the database name is not editable, but it is
+                 something you copy into a mongo shell. -->
+            <PField label="Database" icon="i-lucide-database" width="md">
+              <UInput :model-value="tenant.databaseName" icon="i-lucide-database" readonly class="font-mono">
+                <template #trailing>
+                  <CopyButton size="xs" :value="tenant.databaseName" label="Copy database name" />
+                </template>
+              </UInput>
+            </PField>
 
-            <UFormField
+            <PField
               label="Webhook allowlist"
-              help="Loopback and private-network addresses are blocked as webhook targets by default. List host:port combinations this tenant's hooks may target, separated by commas."
-              class="w-full"
+              icon="i-lucide-shield-check"
+              optional
+              help="Host:port combinations this tenant's hooks may target, separated by commas."
+              details="Loopback and private-network addresses are blocked as webhook targets by default. Listing one here lifts that block for this tenant only."
             >
               <UInput
                 v-model="form.webhookAllowlist"
                 icon="i-lucide-shield-check"
-                class="w-full font-mono"
+                class="font-mono"
                 placeholder="127.0.0.1:8092, 192.168.1.10:9000"
               />
-            </UFormField>
+            </PField>
 
-            <UFormField
+            <PField
               label="Token issuers"
-              help="User IDs of this tenant that may call POST /api/auth/issue-token and mint a session for ANY other user of this tenant - no password needed. This is the strongest permission below superadmin, intended for a trusted backend that authenticated the user elsewhere. Empty means nobody can. Separate multiple IDs with commas."
-              class="w-full"
+              icon="i-lucide-key-round"
+              optional
+              help="User IDs that may mint a session for any other user of this tenant. Empty means nobody can."
+              details="These users may call POST /api/auth/issue-token without a password. It is the strongest permission below superadmin, intended for a trusted backend that authenticated the user elsewhere. Separate multiple IDs with commas."
             >
               <UInput
                 v-model="form.tokenIssuers"
                 icon="i-lucide-key-round"
-                class="w-full font-mono"
+                class="font-mono"
                 placeholder="user id, user id"
               />
-            </UFormField>
+            </PField>
           </template>
         </form>
       </div>

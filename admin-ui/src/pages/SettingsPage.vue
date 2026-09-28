@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
 import { selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
@@ -179,7 +180,7 @@ async function saveDefaultTenant() {
         </div>
 
         <form class="flex max-w-xl flex-col gap-4 sm:flex-row sm:items-end" @submit.prevent="saveDefaultTenant">
-          <UFormField label="Tenant" class="w-full flex-1">
+          <PField label="Tenant" icon="i-lucide-building-2" class="flex-1">
             <USelect
               v-model="defaultTenantId"
               :items="[{ label: 'Use config fallback', value: SELECT_EMPTY }, ...tenantItems]"
@@ -190,7 +191,7 @@ async function saveDefaultTenant() {
               class="w-full"
               :disabled="!bootstrap?.isSuperAdmin"
             />
-          </UFormField>
+          </PField>
           <UButton
             type="submit"
             :loading="savingDefaultTenant"
@@ -223,17 +224,21 @@ async function saveDefaultTenant() {
         </div>
 
         <form class="flex max-w-md flex-col gap-4 sm:flex-row sm:items-end" @submit.prevent="saveRequestLogRetention">
-          <UFormField label="Retention (days)" required class="w-full flex-1">
+          <PField label="Retention" icon="i-lucide-calendar-clock" class="flex-1">
             <UInput
               v-model.number="requestLogRetentionDays"
               type="number"
               min="0"
               max="3650"
               icon="i-lucide-calendar-clock"
-              class="w-full"
+              class="font-mono"
               :disabled="!bootstrap?.isSuperAdmin"
-            />
-          </UFormField>
+            >
+              <template #trailing>
+                <span class="text-xs text-muted">days</span>
+              </template>
+            </UInput>
+          </PField>
           <UButton
             type="submit"
             :loading="savingLogs"
@@ -298,16 +303,20 @@ async function saveDefaultTenant() {
             :disabled="!bootstrap?.isSuperAdmin"
           />
 
-          <UFormField label="Client IP address" class="w-full sm:max-w-md">
+          <PField
+            label="Client IP address"
+            icon="i-lucide-globe"
+            orientation="horizontal"
+            help="What is written to the request log for the caller's address."
+          >
             <USelect
               v-model="requestLogClientIp"
               :items="clientIpOptions"
               value-key="value"
               label-key="label"
-              class="w-full"
               :disabled="!bootstrap?.isSuperAdmin"
             />
-          </UFormField>
+          </PField>
 
           <div>
             <UButton

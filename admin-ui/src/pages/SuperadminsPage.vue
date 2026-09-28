@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
 import { modalUi } from '@/lib/overlay-ui'
 import { useBootstrap } from '@/composables/useBootstrap'
@@ -215,24 +216,23 @@ async function deleteAdminAction() {
           </template>
 
           <div v-if="!invite" class="space-y-4">
-            <UFormField label="Username" required class="w-full">
+            <PField label="Username" icon="i-lucide-user">
               <UInput
                 v-model="inviteUsername"
-                class="w-full"
                 type="text"
                 icon="i-lucide-user"
                 autofocus
                 @keyup.enter="createInvite"
               />
-            </UFormField>
-            <UFormField
+            </PField>
+            <PField
               label="Email"
-              hint="Optional"
+              icon="i-lucide-mail"
+              optional
               help="Stored with the account. You can email the setup link to this address on the next step."
-              class="w-full"
             >
-              <UInput v-model="inviteEmail" class="w-full" type="email" icon="i-lucide-mail" />
-            </UFormField>
+              <UInput v-model="inviteEmail" type="email" icon="i-lucide-mail" />
+            </PField>
             <UAlert
               color="neutral"
               variant="soft"
@@ -250,7 +250,7 @@ async function deleteAdminAction() {
               :title="`Invite created for ${invite.username}`"
               description="Copy the link below and send it to the new superadmin. It is shown only once."
             />
-            <UFormField label="Setup link" class="w-full">
+            <PField label="Setup link" icon="i-lucide-link" help="Shown once. It expires after 30 minutes.">
               <div class="flex gap-2">
                 <UInput :model-value="inviteLink" readonly class="w-full font-mono text-sm" />
                 <UButton
@@ -263,13 +263,13 @@ async function deleteAdminAction() {
                   Copy
                 </UButton>
               </div>
-            </UFormField>
+            </PField>
 
-            <UFormField
+            <PField
               v-if="smtpConfigured"
               label="Send by email"
+              icon="i-lucide-send"
               help="Paprika emails the setup link over the instance SMTP settings."
-              class="w-full"
             >
               <div class="flex gap-2">
                 <UInput
@@ -291,7 +291,7 @@ async function deleteAdminAction() {
                   {{ inviteEmailed ? 'Sent' : 'Send' }}
                 </UButton>
               </div>
-            </UFormField>
+            </PField>
             <p class="text-sm text-muted">
               The invitee opens this link, chooses a password of at least 16 characters, and is
               signed in as a superadmin. Until then the account shows as a pending invite.

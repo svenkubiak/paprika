@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLogo from '@/components/AppLogo.vue'
+import PField from '@/components/PField.vue'
 import { api, resetSessionExpired } from '@/lib/api'
 import { useBootstrap } from '@/composables/useBootstrap'
 
@@ -118,27 +119,25 @@ function backToCredentials() {
       />
 
       <form v-if="step === 'credentials'" class="w-full space-y-4" @submit.prevent="submitCredentials">
-        <UFormField label="Username" required class="w-full">
+        <PField label="Username" icon="i-lucide-user">
           <UInput
             v-model="username"
-            class="w-full"
             autocomplete="username"
             autocapitalize="none"
             spellcheck="false"
             icon="i-lucide-user"
             autofocus
           />
-        </UFormField>
+        </PField>
 
-        <UFormField label="Password" required class="w-full">
+        <PField label="Password" icon="i-lucide-lock">
           <UInput
             v-model="password"
-            class="w-full"
             type="password"
             autocomplete="current-password"
             icon="i-lucide-lock"
           />
-        </UFormField>
+        </PField>
 
         <UButton type="submit" block :loading="loading" icon="i-lucide-log-in">
           Sign in
@@ -154,16 +153,15 @@ function backToCredentials() {
           description="Open your authenticator app and enter the current 6-digit code, or use your fallback code if you no longer have access to it."
         />
 
-        <UFormField label="Verification or fallback code" required class="w-full">
+        <PField label="Verification or fallback code" icon="i-lucide-key-round">
           <UInput
             v-model="totpCode"
-            class="w-full"
             autocomplete="one-time-code"
             maxlength="32"
             icon="i-lucide-key-round"
             autofocus
           />
-        </UFormField>
+        </PField>
 
         <div class="flex gap-2">
           <UButton variant="ghost" color="neutral" icon="i-lucide-arrow-left" @click="backToCredentials">

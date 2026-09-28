@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import ApiKeysManager from '@/components/ApiKeysManager.vue'
+import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
@@ -12,6 +13,14 @@ const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 const activeTenant = computed(() => bootstrap.value?.activeTenant ?? null)
 
 const saving = ref(false)
+
+/**
+ * Kept in the script because the sentence contains a brace placeholder, which the template would
+ * read as an interpolation.
+ */
+const linkUrlHelp =
+  "Your app's page for this. Paprika appends ?token=… or substitutes a {token} placeholder."
+
 
 const registrationEnabled = ref(false)
 const passwordResetEnabled = ref(false)
@@ -130,19 +139,20 @@ async function save() {
             </div>
             <USwitch v-model="passwordResetEnabled" />
           </div>
-          <UFormField
+          <PField
             v-if="passwordResetEnabled"
             label="Reset link URL"
-            help="Your app's reset page. Paprika appends ?token=…, or substitutes a {token} placeholder."
-            class="mt-3 w-full"
+            icon="i-lucide-link"
+            orientation="horizontal"
+            class="mt-3 border-t border-default pt-3"
+            :help="linkUrlHelp"
           >
             <UInput
               v-model="passwordResetUrl"
               icon="i-lucide-link"
-              class="w-full"
               placeholder="https://app.example.com/reset"
             />
-          </UFormField>
+          </PField>
         </UCard>
 
         <UCard :ui="{ body: 'p-4 sm:p-4' }">
@@ -160,19 +170,20 @@ async function save() {
             </div>
             <USwitch v-model="emailVerificationEnabled" />
           </div>
-          <UFormField
+          <PField
             v-if="emailVerificationEnabled"
             label="Verification link URL"
-            help="Your app's verification page. Paprika appends ?token=…, or substitutes a {token} placeholder."
-            class="mt-3 w-full"
+            icon="i-lucide-link"
+            orientation="horizontal"
+            class="mt-3 border-t border-default pt-3"
+            :help="linkUrlHelp"
           >
             <UInput
               v-model="emailVerificationUrl"
               icon="i-lucide-link"
-              class="w-full"
               placeholder="https://app.example.com/verify"
             />
-          </UFormField>
+          </PField>
           <div
             v-if="emailVerificationEnabled"
             class="mt-3 flex items-start justify-between gap-4 border-t border-default pt-3"

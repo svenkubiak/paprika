@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import CopyButton from '@/components/CopyButton.vue'
 import OverlayDrawer from '@/components/OverlayDrawer.vue'
+import PField from '@/components/PField.vue'
+import PSwitchField from '@/components/PSwitchField.vue'
 import type { HookEditorMode } from '@/composables/useHookEditorSheet'
 import { hookContractExample, hookRequestHeaders } from '@/lib/hook-contract'
 import { hookEventOptions } from '@/lib/hook-events'
@@ -110,56 +113,41 @@ watch(
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
         <div class="space-y-4">
           <UCard variant="subtle" :ui="{ body: 'space-y-4 p-4 sm:p-4' }">
-            <UFormField label="Name" required class="w-full">
-              <UInput
-                v-model="form.name"
-                icon="i-lucide-tag"
-                placeholder="Post slug generator"
-                class="w-full"
-                autofocus
-              />
-            </UFormField>
+            <PField label="Name" icon="i-lucide-tag">
+              <UInput v-model="form.name" icon="i-lucide-tag" placeholder="Post slug generator" autofocus />
+            </PField>
 
-            <UFormField label="Description" class="w-full">
-              <UTextarea
-                v-model="form.description"
-                placeholder="What does this hook do?"
-                :rows="2"
-                class="w-full"
-              />
-            </UFormField>
+            <PField label="Description" icon="i-lucide-align-left" optional>
+              <UTextarea v-model="form.description" placeholder="What does this hook do?" :rows="2" class="w-full" />
+            </PField>
 
-            <UFormField label="Event" required class="w-full">
+            <PField label="Event" icon="i-lucide-zap" help="When this hook runs.">
               <USelect
                 v-model="form.event"
                 :items="eventOptions"
                 icon="i-lucide-zap"
                 :content="selectContentProps"
                 :ui="selectMenuUi"
-                class="w-full"
                 @update:model-value="onEventChange"
               />
-            </UFormField>
+            </PField>
 
-            <UFormField
+            <PField
               label="URL"
-              required
-              class="w-full"
-              help="HTTPS endpoint that receives the Paprika envelope"
+              icon="i-lucide-link"
+              help="HTTPS endpoint that receives the Paprika envelope."
             >
               <UInput
                 v-model="form.url"
                 icon="i-lucide-link"
                 placeholder="https://example.com/hooks/posts"
-                class="w-full"
               />
-            </UFormField>
+            </PField>
 
-            <UFormField
+            <PField
               label="Signing secret"
-              required
-              class="w-full"
-              help="Required. Used for X-Paprika-Signature (HMAC-SHA256 over the raw JSON body)."
+              icon="i-lucide-key-round"
+              help="Used for X-Paprika-Signature: HMAC-SHA256 over the raw JSON body."
             >
               <UInput
                 v-model="form.secret"
@@ -172,49 +160,71 @@ watch(
                 data-form-type="other"
                 icon="i-lucide-key-round"
                 placeholder="Shared secret with your receiver"
-                class="w-full"
                 trailing
               >
                 <template #trailing>
                   <UButton
-                    variant="link"
+                    variant="ghost"
                     color="neutral"
                     size="xs"
                     :icon="secretVisible ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                     :aria-label="secretVisible ? 'Hide secret' : 'Show secret'"
                     @click="secretVisible = !secretVisible"
                   />
+                  <CopyButton size="xs" :value="form.secret" label="Copy signing secret" />
                 </template>
               </UInput>
-            </UFormField>
+            </PField>
 
             <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Priority" class="w-full" help="Lower runs first">
-                <UInput v-model.number="form.priority" type="number" min="1" class="w-full" />
-              </UFormField>
+              <PField label="Priority" icon="i-lucide-list-ordered" help="Lower runs first.">
+                <UInput v-model.number="form.priority" type="number" min="1" class="font-mono" />
+              </PField>
 
-              <UFormField label="Timeout (ms)" class="w-full">
-                <UInput v-model.number="form.timeoutMs" type="number" min="100" class="w-full" />
-              </UFormField>
+              <PField label="Timeout" icon="i-lucide-clock" help="How long the endpoint may take to answer.">
+                <UInput v-model.number="form.timeoutMs" type="number" min="100" class="font-mono">
+                  <template #trailing>
+                    <span class="text-xs text-muted">ms</span>
+                  </template>
+                </UInput>
+              </PField>
             </div>
 
-            <UFormField
+            <PField
               label="Forward request headers"
-              class="w-full"
-              help="Comma-separated, e.g. x-app-key-id, x-signature. These incoming request headers are sent to the configured hook URL on top of the default Content-Type, User-Agent, Accept, Accept-Language and X-Request-Id. Only list what the target actually needs to decide — Authorization, Cookie, Set-Cookie and Proxy-Authorization are never forwarded and are rejected here."
+              icon="i-lucide-list"
+              optional
+              help="Incoming request headers to send along, comma separated."
+              details="They are sent on top of the default Content-Type, User-Agent, Accept, Accept-Language and X-Request-Id. Only list what the target actually needs to decide - Authorization, Cookie, Set-Cookie and Proxy-Authorization are never forwarded and are rejected here."
             >
               <UInput
                 v-model="form.forwardHeaders"
                 icon="i-lucide-list"
                 placeholder="x-app-key-id, x-signature"
-                class="w-full font-mono"
+                class="font-mono"
               />
-            </UFormField>
+            </PField>
 
-            <div class="space-y-3 rounded-lg border border-default bg-muted/20 p-3">
-              <USwitch v-model="form.enabled" label="Enabled" />
-              <USwitch v-model="form.includeSchema" label="Include schema in payload" />
-              <USwitch v-model="form.failOpen" label="Fail open on errors" />
+            <div class="space-y-2">
+              <PSwitchField
+                v-model="form.enabled"
+                label="Enabled"
+                icon="i-lucide-radio"
+                help="Off keeps the configuration without calling the endpoint."
+              />
+              <PSwitchField
+                v-model="form.includeSchema"
+                label="Include schema in payload"
+                icon="i-lucide-table-2"
+                help="Adds the field definitions of the collection to the envelope."
+              />
+              <PSwitchField
+                v-model="form.failOpen"
+                label="Fail open on errors"
+                icon="i-lucide-shield-off"
+                help="Carry on with the request when the hook fails or answers with a non-2xx status."
+                details="With this off, a hook that is unreachable, times out or answers with an error rejects the request with 502."
+              />
             </div>
           </UCard>
 

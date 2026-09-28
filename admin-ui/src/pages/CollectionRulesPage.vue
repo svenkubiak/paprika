@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/lib/api'
-import FieldLabelHelp from '@/components/FieldLabelHelp.vue'
+import PField from '@/components/PField.vue'
 import { useBootstrap } from '@/composables/useBootstrap'
 import { useAppToast } from '@/composables/useAppToast'
 import {
@@ -42,30 +42,43 @@ const form = ref({
 
 const membershipFields = ref<FieldDefinition[]>([])
 
+/**
+ * Kept out of the template: the sentence names the literal field 'id', and the explanation is long
+ * enough that it belongs behind the info toggle rather than under the control.
+ */
+const groupRecordFieldDetails =
+  "Choose 'id' if the records of this collection are the groups themselves - then create needs " +
+  'another preset, because nobody can be a member of a group that does not exist yet.'
+
 const ruleFields = computed(() => [
   {
     key: 'listRule' as const,
     label: 'List rule',
+    icon: 'i-lucide-list',
     hint: `GET /api/collections/${collection.value}`
   },
   {
     key: 'viewRule' as const,
     label: 'View rule',
+    icon: 'i-lucide-eye',
     hint: `GET /api/collections/${collection.value}/{id}`
   },
   {
     key: 'createRule' as const,
     label: 'Create rule',
+    icon: 'i-lucide-plus',
     hint: `POST /api/collections/${collection.value}`
   },
   {
     key: 'updateRule' as const,
     label: 'Update rule',
+    icon: 'i-lucide-pencil',
     hint: `PATCH /api/collections/${collection.value}/{id}`
   },
   {
     key: 'deleteRule' as const,
     label: 'Delete rule',
+    icon: 'i-lucide-trash-2',
     hint: `DELETE /api/collections/${collection.value}/{id}`
   }
 ])
@@ -338,15 +351,16 @@ async function saveRules() {
           description="On the users collection, Own records resolves to record.id = auth.id: each user reaches exactly their own record. No RELATION → users field and no owner field are needed - a stored owner field is ignored. Create is never granted by Own records; sign-up goes through POST /api/auth/register."
         />
 
-        <UFormField v-if="usesOwnerRules && !isUsers" class="w-full">
-          <template #label>
-            <FieldLabelHelp
-              label="Owner field"
-              hint="Schema field that stores the tenant user id. Use a RELATION → users field in Schema."
-            />
-          </template>
-          <USelect v-model="form.ownerField" :items="ownerFieldOptions" icon="i-lucide-user-cog" class="w-full" />
-        </UFormField>
+        <PField
+          v-if="usesOwnerRules && !isUsers"
+          label="Owner field"
+          icon="i-lucide-user-cog"
+          orientation="horizontal"
+          help="Schema field that stores the tenant user id."
+          details="Use a RELATION → users field, added on the Schema tab."
+        >
+          <USelect v-model="form.ownerField" :items="ownerFieldOptions" icon="i-lucide-user-cog" />
+        </PField>
 
         <template v-if="usesMembershipRules">
           <UAlert
@@ -358,80 +372,75 @@ async function saveRules() {
           />
 
           <div class="grid gap-4 md:grid-cols-2">
-            <UFormField class="w-full">
-              <template #label>
-                <FieldLabelHelp
-                  label="Membership collection"
-                  hint="Collection holding one record per membership, e.g. team_members. Pick this collection itself to let the members of a group see their group's membership records - the member list."
-                />
-              </template>
+            <PField
+              label="Membership collection"
+              icon="i-lucide-users"
+              help="Holds one record per membership, e.g. team_members."
+              details="Pick this collection itself to let the members of a group see their group's membership records - the member list."
+            >
               <USelect
                 v-model="form.groupCollection"
                 :items="collectionOptions"
                 icon="i-lucide-users"
-                class="w-full"
               />
-            </UFormField>
+            </PField>
 
-            <UFormField class="w-full">
-              <template #label>
-                <FieldLabelHelp
-                  label="Member field"
-                  hint="Field of the membership collection pointing at the user (RELATION → users or STRING)."
-                />
-              </template>
+            <PField
+              label="Member field"
+              icon="i-lucide-user"
+              help="Field of the membership collection pointing at the user."
+              details="A RELATION → users field or a STRING holding the user id."
+            >
               <USelect
                 v-model="form.groupMemberField"
                 :items="membershipFieldOptions"
                 icon="i-lucide-user"
-                class="w-full"
               />
-            </UFormField>
+            </PField>
 
-            <UFormField class="w-full">
-              <template #label>
-                <FieldLabelHelp
-                  label="Group field"
-                  hint="Field of the membership collection pointing at the group (RELATION or STRING)."
-                />
-              </template>
+            <PField
+              label="Group field"
+              icon="i-lucide-users-round"
+              help="Field of the membership collection pointing at the group."
+              details="A RELATION or a STRING holding the group id."
+            >
               <USelect
                 v-model="form.groupField"
                 :items="membershipFieldOptions"
                 icon="i-lucide-users-round"
-                class="w-full"
               />
-            </UFormField>
+            </PField>
 
-            <UFormField v-if="usesGroupRules" class="w-full">
-              <template #label>
-                <FieldLabelHelp
-                  label="Group field on this collection"
-                  hint="Field of this collection carrying the group. Clients set it on create; Paprika never fills it in. Choose 'id' if the records of this collection are the groups themselves - then create needs another preset, because nobody can be a member of a group that does not exist yet."
-                />
-              </template>
+            <PField
+              v-if="usesGroupRules"
+              label="Group field on this collection"
+              icon="i-lucide-folder-tree"
+              help="Field of this collection carrying the group. Clients set it on create; Paprika never fills it in."
+              :details="groupRecordFieldDetails"
+            >
               <USelect
                 v-model="form.groupRecordField"
                 :items="recordFieldOptions"
                 icon="i-lucide-folder-tree"
-                class="w-full"
               />
-            </UFormField>
+            </PField>
           </div>
         </template>
 
         <div class="grid gap-4 md:grid-cols-2">
-          <UFormField v-for="field in ruleFields" :key="field.key" class="w-full">
-            <template #label>
-              <FieldLabelHelp :label="field.label" :hint="field.hint" />
-            </template>
+          <PField
+            v-for="field in ruleFields"
+            :key="field.key"
+            :label="field.label"
+            :icon="field.icon"
+            :help="field.hint"
+          >
             <USelect
               v-model="form[field.key]"
               :items="levelOptions"
               :icon="iconForLevel(form[field.key])"
-              class="w-full"
             />
-          </UFormField>
+          </PField>
         </div>
       </div>
     </UCard>

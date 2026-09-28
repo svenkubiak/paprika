@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLogo from '@/components/AppLogo.vue'
+import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
 import { useBootstrap } from '@/composables/useBootstrap'
 
@@ -93,43 +94,44 @@ async function submit() {
           description="The setup token expires after 30 minutes and is invalidated immediately after use."
         />
 
-        <UFormField label="Username" required class="w-full">
+        <PField label="Username" icon="i-lucide-user">
           <UInput
             v-model="username"
-            class="w-full"
             type="text"
             autocomplete="username"
             icon="i-lucide-user"
             autofocus
           />
-        </UFormField>
+        </PField>
 
-        <UFormField
+        <PField
           label="Password"
-          required
-          class="w-full"
-          help="Must be at least 16 characters long"
+          icon="i-lucide-lock-keyhole"
+          help="Must be at least 16 characters long."
+          :counter="`${password.length} / 16`"
         >
           <UInput
             v-model="password"
-            class="w-full"
             type="password"
             autocomplete="new-password"
             minlength="16"
             icon="i-lucide-lock-keyhole"
           />
-        </UFormField>
+        </PField>
 
-        <UFormField label="Confirm password" required class="w-full">
+        <PField
+          label="Confirm password"
+          icon="i-lucide-lock-keyhole"
+          :error="confirmPassword && password !== confirmPassword ? 'The two passwords do not match.' : undefined"
+        >
           <UInput
             v-model="confirmPassword"
-            class="w-full"
             type="password"
             autocomplete="new-password"
             minlength="16"
             icon="i-lucide-lock-keyhole"
           />
-        </UFormField>
+        </PField>
 
         <UButton
           type="submit"
