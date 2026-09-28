@@ -187,26 +187,45 @@ public class MetaController {
 
         var database = resolver.tenant(ctx);
         String currentPhysical = CollectionName.physicalTenantData(current.name());
-
-        if (renamed && database.listCollectionNames().into(new HashSet<>()).contains(currentPhysical)) {
-            database.getCollection(currentPhysical)
-                    .renameCollection(new MongoNamespace(
-                            database.getName(),
-                            CollectionName.physicalTenantData(newName)));
-        }
+        String newPhysical = CollectionName.physicalTenantData(newName);
 
         // Drops what is gone, rebuilds what changed, creates what is new. An index whose options
         // changed - flipping unique on an existing one is the common case - has to be dropped
         // first; reusing the name is what MongoDB answers with IndexOptionsConflict.
+        //
+        // Runs before the rename, not after it. A rename cannot be taken back by answering 400,
+        // and a definition still naming the old collection while the data sits under the new one
+        // makes every record of it unreachable through the API. Indexes travel with a collection
+        // through a rename, so syncing them under the current name produces the same result - it
+        // just leaves nothing behind when it fails.
         try {
-            tenantCollections.syncIndexes(ctx, newName, updated.indexes());
+            tenantCollections.syncIndexes(ctx, current.name(), updated.indexes());
         } catch (IllegalArgumentException e) {
             // The definition is not stored, so the collection keeps working with the schema it
             // had. Telling the admin which index and why beats a 500.
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
 
-        tenantCollections.replaceDefinition(ctx, updated);
+        boolean physicalRenamed = false;
+        if (renamed && database.listCollectionNames().into(new HashSet<>()).contains(currentPhysical)) {
+            database.getCollection(currentPhysical)
+                    .renameCollection(new MongoNamespace(database.getName(), newPhysical));
+            physicalRenamed = true;
+        }
+
+        try {
+            tenantCollections.replaceDefinition(ctx, updated);
+        } catch (RuntimeException e) {
+            // The data has already moved. Without a definition naming the collection it moved to,
+            // every record in it would be unreachable, so the move is undone before the failure
+            // is reported rather than left for someone to discover later.
+            if (physicalRenamed) {
+                database.getCollection(newPhysical)
+                        .renameCollection(new MongoNamespace(database.getName(), currentPhysical));
+            }
+            throw e;
+        }
+
         return Response.ok();
     }
 

@@ -179,7 +179,7 @@ public final class ImageVariants {
             case 4 -> flipVertically(height);
             case 5 -> transpose();
             case 6 -> rotateQuarterClockwise(height);
-            case 7 -> transverse(height, width);
+            case 7 -> transverse(width, height);
             case 8 -> rotateQuarterCounterClockwise(width);
             default -> null;
         };
@@ -228,11 +228,18 @@ public final class ImageVariants {
         return transform;
     }
 
-    private static AffineTransform transverse(int height, int width) {
-        AffineTransform transform = AffineTransform.getRotateInstance(-Math.PI / 2);
-        transform.translate(-height, width);
-        transform.scale(1, -1);
-        transform.translate(0, -width);
+    /**
+     * The mirror on the anti-diagonal: {@code (x, y) -> (height - y, width - x)}.
+     * <p>
+     * Built as the transpose followed by a half turn, because the half turn then happens inside
+     * the <em>transposed</em> raster - which is {@code height} wide and {@code width} high, so
+     * the translation takes those two in that order. Getting that pair the wrong way round moved
+     * the whole image outside the target raster and produced a blank variant.
+     */
+    private static AffineTransform transverse(int width, int height) {
+        AffineTransform transform = AffineTransform.getTranslateInstance(height, width);
+        transform.scale(-1, -1);
+        transform.concatenate(transpose());
         return transform;
     }
 
