@@ -12,14 +12,14 @@ import java.util.Optional;
  * the rightful owner their password is wrong, and would tell an attacker their guess failed when
  * it was never checked.
  *
- * @see services.PasswordHashGate
+ * @see io.mangoo.crypto.PasswordHasher
  */
 public record SuperadminPasswordResult(SuperadminPasswordResult.Status status, Optional<AuthContext> auth) {
     public enum Status {
         MATCH,
         NO_MATCH,
 
-        /** The instance is already running as many Argon2 verifications as it has memory for. */
+        /** No Argon2 slot became free in time, so the password was never verified. */
         AT_CAPACITY
     }
 

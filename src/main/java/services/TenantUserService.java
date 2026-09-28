@@ -11,6 +11,7 @@ import constants.CollectionName;
 import constants.SystemCollections;
 import constants.SystemFields;
 import enums.Role;
+import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.utils.CommonUtils;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
@@ -56,12 +57,21 @@ public class TenantUserService {
 
     /**
      * A salt and hash that no password matches, used to spend the time an Argon2 verification
-     * would have taken when there is no user to verify against. Computed once at class load, not
-     * per request, because deriving it is exactly as expensive as the check it stands in for.
+     * would have taken when there is no user to verify against. Derived once and not per request,
+     * because deriving it is exactly as expensive as the check it stands in for.
+     * <p>
+     * Held in a holder class so that it is derived on first use rather than at class load:
+     * hashing goes through a PasswordHasher that mangoo resolves from the injector, and that
+     * injector is still being built when this class is initialized as part of the object graph.
      */
-    private static final String DUMMY_SALT = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
-    private static final String DUMMY_HASH = CommonUtils.hashArgon2(
-            "a password that is never anybody's", DUMMY_SALT);
+    private static final class Dummy {
+        private static final String SALT = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
+        private static final String HASH = CommonUtils.hashArgon2(
+                "a password that is never anybody's", SALT);
+
+        private Dummy() {
+        }
+    }
     /**
      * Field names the admin user editor must never write: the core fields have their own
      * parameters, the rest is server-managed. Everything else in a request body is a custom field
@@ -77,7 +87,6 @@ public class TenantUserService {
     private final RealtimeService realtimeService;
     private final TenantCollectionService tenantCollections;
     private final ValidationService validationService;
-    private final PasswordHashGate passwordHashGate;
 
     @Inject
     public TenantUserService(
@@ -85,14 +94,12 @@ public class TenantUserService {
             TenantService tenantService,
             RealtimeService realtimeService,
             TenantCollectionService tenantCollections,
-            ValidationService validationService,
-            PasswordHashGate passwordHashGate) {
+            ValidationService validationService) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.validationService = Objects.requireNonNull(validationService, "validationService must not be null");
-        this.passwordHashGate = Objects.requireNonNull(passwordHashGate, "passwordHashGate must not be null");
     }
 
     public TenantLoginResult authenticateForLogin(String username, String password, String tenantSlug) {
@@ -166,12 +173,9 @@ public class TenantUserService {
     /**
      * Self-registration through {@code POST /api/auth/register}. This is the unauthenticated way
      * into {@link #createUser}, and hashing a new password costs the same as verifying one, so it
-     * goes through {@link PasswordHashGate} for the same reason the login does. The internal
-     * callers - the admin UI and the bootstrap helpers - keep using {@code createUser} directly:
-     * they are authenticated, low volume, and must not fail because someone is flooding the
-     * public endpoint.
+     * is subject to the same cap on concurrent Argon2 computations that the login is.
      *
-     * @return the created user, or empty when the instance is at its hashing capacity
+     * @return the created user, or empty when no hashing slot became free in time
      */
     public Optional<Map<String, Object>> registerUser(
             TenantDefinition tenant,
@@ -179,7 +183,12 @@ public class TenantUserService {
             String email,
             String password) {
 
-        return passwordHashGate.withPermit(() -> createUser(tenant, username, email, password));
+        try {
+            return Optional.of(createUser(tenant, username, email, password));
+        } catch (MangooHashingException e) {
+            LOG.warn("Refused a self-registration, no Argon2 slot became free", e);
+            return Optional.empty();
+        }
     }
 
     /**
@@ -210,7 +219,7 @@ public class TenantUserService {
                 .append("email", normalizeEmail(email))
                 .append("role", Role.USER)
                 .append("passwordSalt", salt)
-                .append("passwordHash", CommonUtils.hashArgon2(password, salt))
+                .append("passwordHash", hashPassword(password, salt))
                 .append(SystemFields.CREATED_AT, now)
                 .append(SystemFields.UPDATED_AT, now);
 
@@ -284,7 +293,7 @@ public class TenantUserService {
             validatePassword(password);
             String salt = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
             updates.append("passwordSalt", salt);
-            updates.append("passwordHash", CommonUtils.hashArgon2(password, salt));
+            updates.append("passwordHash", hashPassword(password, salt));
         }
 
         if (updates.isEmpty() && unsets.isEmpty()) {
@@ -348,7 +357,7 @@ public class TenantUserService {
         usersCollection(tenant).updateOne(
                 eq("id", user.getString("id")),
                 new Document("$set", new Document("passwordSalt", salt)
-                        .append("passwordHash", CommonUtils.hashArgon2(newPassword, salt))
+                        .append("passwordHash", hashPassword(newPassword, salt))
                         .append(SystemFields.UPDATED_AT, SystemFields.timestamp())));
 
         return true;
@@ -607,23 +616,25 @@ public class TenantUserService {
     }
 
     /**
-     * Verifies the password against the user, or burns the equivalent time when there is no user -
-     * both under {@link PasswordHashGate}, which is what bounds the memory an unauthenticated
-     * caller can make this instance allocate.
+     * Verifies the password against the user, or burns the equivalent time when there is no user.
      * <p>
-     * The gate is taken before the two cases part ways on purpose: a refusal that only happened
-     * for missing users would hand out exactly the account existence this path is built to hide.
+     * Both cases hash, and both therefore compete for the same Argon2 slot and are refused the
+     * same way when none is free. That symmetry is the point: a refusal that only happened for
+     * missing users would hand out exactly the account existence this path is built to hide.
      *
      * @param user the user to verify against, or {@code null} when the username is unknown
      */
     private PasswordCheck checkPassword(String password, Document user) {
-        return passwordHashGate.withPermit(() -> {
+        try {
             if (user == null) {
                 burnPasswordHashTime(password);
                 return PasswordCheck.NO_MATCH;
             }
             return matchesPassword(password, user) ? PasswordCheck.MATCH : PasswordCheck.NO_MATCH;
-        }).orElse(PasswordCheck.AT_CAPACITY);
+        } catch (MangooHashingException e) {
+            LOG.warn("Refused a tenant password verification, no Argon2 slot became free", e);
+            return PasswordCheck.AT_CAPACITY;
+        }
     }
 
     /** The answer for a login that failed before a user was found, with the hash still spent. */
@@ -638,11 +649,19 @@ public class TenantUserService {
      * every path that answers "invalid credentials" without having verified a password, so the
      * response time does not say whether the account exists.
      */
-    private static void burnPasswordHashTime(String password) {
+    /**
+     * Hashes a new password. Sits on the service rather than being called statically so that a
+     * test can make it refuse the way mangoo refuses when no Argon2 slot is free.
+     */
+    String hashPassword(String password, String salt) {
+        return CommonUtils.hashArgon2(password, salt);
+    }
+
+    void burnPasswordHashTime(String password) {
         if (password == null) {
             return;
         }
-        CommonUtils.matchArgon2(password, DUMMY_SALT, DUMMY_HASH);
+        CommonUtils.matchArgon2(password, Dummy.SALT, Dummy.HASH);
     }
 
     private com.mongodb.client.MongoCollection<Document> usersCollection(TenantDefinition tenant) {
@@ -670,7 +689,7 @@ public class TenantUserService {
                 .first();
     }
 
-    private boolean matchesPassword(String password, Document user) {
+    boolean matchesPassword(String password, Document user) {
         String salt = user.getString("passwordSalt");
         String hash = user.getString("passwordHash");
         if (StringUtils.isBlank(salt) || StringUtils.isBlank(hash)) {

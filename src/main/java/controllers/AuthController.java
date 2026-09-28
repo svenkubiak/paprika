@@ -11,6 +11,7 @@ import filters.api.ApiBeforeRequestHookFilter;
 import helpers.HookResponseHelper;
 import hooks.HookExecutionResult;
 import io.mangoo.annotations.FilterWith;
+import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
@@ -112,8 +113,8 @@ public class AuthController {
                     registerDto.password()).orElse(null);
 
             if (user == null) {
-                // Hashing the new password would have cost as much memory as verifying one, and
-                // the instance has none of that budget left. Same answer as an over-capacity login.
+                // Hashing the new password competes for the same Argon2 slots a login needs, and
+                // none became free in time. Same answer as an over-capacity login.
                 return Response.status(StatusCodes.TOO_MANY_REQUESTS)
                         .header("Retry-After", "1")
                         .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"));
@@ -261,6 +262,15 @@ public class AuthController {
             return Response.ok().bodyJson(Map.of("success", true));
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
+        } catch (MangooHashingException e) {
+            // Hashing the new password needs the same Argon2 slot a login does. The reset token
+            // is already claimed at this point, so the caller has to request a new link - the
+            // alternative, hashing before the token is claimed, would make every invalid token
+            // cost an Argon2 computation and hand an attacker the amplification the slot limit
+            // exists to prevent.
+            return Response.status(StatusCodes.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "1")
+                    .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"));
         }
     }
 

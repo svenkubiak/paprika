@@ -17,9 +17,9 @@ public record TenantLoginResult(TenantLoginResult.Status status, Optional<AuthCo
         EMAIL_NOT_VERIFIED,
 
         /**
-         * The instance is already running as many password verifications as it has memory for.
-         * Says nothing about the credentials - it is answered before they are looked at, so it
-         * cannot be used to tell an existing account from a missing one.
+         * No Argon2 slot became free in time, so the password was never verified. Says nothing
+         * about the credentials, and it is reached for a known and an unknown username alike, so
+         * it cannot be used to tell an existing account from a missing one.
          */
         AT_CAPACITY
     }

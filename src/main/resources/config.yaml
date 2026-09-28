@@ -10,6 +10,8 @@
 default:
   undertow:
     maxentitysize: 67108864
+  form:
+    maxfilesize: 64000000
   application:
     name: paprika
     secret: tXbwvKVetgZSi1VSIEGTsPcIWmSwajJuQkYrx7OSwwGdGZ3J5yGi8IFiGhVEuT6T
@@ -40,6 +42,18 @@ default:
       key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
       secure: true
   authentication:
+    hashing:
+      # How long a caller waits for a free Argon2 slot before mangoo rejects the hashing with a
+      # MangooHashingException, which the auth services answer as 429. The framework default of
+      # 5000 would hold a login connection open for five seconds before saying no; a single
+      # verification takes about 40 ms with the parameters below, so 200 absorbs the overlap of a
+      # burst several hashes deep and still fails fast when the instance is genuinely loaded.
+      timeout: 200
+      # memory, iterations and parallelism are left at mangoo's defaults (32768 KB, 3, 1), which
+      # sit above the OWASP baseline for Argon2id. concurrency is left derived from the heap.
+      # Note that the derivation knows nothing about the core count: a verification holds one core
+      # for its whole duration, because Argon2BytesGenerator walks the lanes sequentially. On a
+      # container with fewer cores than slots, pin concurrency to the core count instead.
     redirect:
       # The key mangoo reads is authentication.redirect.login. Without it an unauthenticated
       # request to a route bound withAuthentication() does not redirect at all, it ends with
@@ -113,6 +127,11 @@ environments:
         key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
         secure: false
     authentication:
+      # One slot, so that PasswordHashCapacityIntegrationTest can fill it and observe the
+      # refusal. The rest of the suite hashes sequentially and waits at most one verification
+      # (~40 ms) for the slot, well inside the 200 ms timeout.
+      hashing:
+        concurrency: 1
       cookie:
         secret: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
         key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000

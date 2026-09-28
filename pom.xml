@@ -9,7 +9,7 @@
 	<packaging>jar</packaging>
 	<url>https://github.com/svenkubiak/paprika</url>
 	<properties>
-		<mangooio.version>10.12.2</mangooio.version>
+		<mangooio.version>10.13.0-Beta7</mangooio.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<jdk.version>25</jdk.version>
 		<node.version>v24.20.0</node.version>
@@ -35,10 +35,6 @@
 					<exclude>paprika-version.properties</exclude>
 				</excludes>
 			</resource>
-			<!--
-				Filtering is scoped to this one file on purpose. The directory above holds the
-				built admin UI including PNGs, and filtering those would corrupt them.
-			-->
 			<resource>
 				<directory>src/main/resources</directory>
 				<filtering>true</filtering>

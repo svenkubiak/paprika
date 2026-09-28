@@ -5,6 +5,7 @@ import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
 import constants.CollectionName;
 import enums.Role;
+import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.utils.CommonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -101,12 +102,10 @@ public class SystemUserService {
     }
 
     private final TenantDatabaseResolver resolver;
-    private final PasswordHashGate passwordHashGate;
 
     @Inject
-    public SystemUserService(TenantDatabaseResolver resolver, PasswordHashGate passwordHashGate) {
+    public SystemUserService(TenantDatabaseResolver resolver) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
-        this.passwordHashGate = Objects.requireNonNull(passwordHashGate, "passwordHashGate must not be null");
     }
 
     /** For callers that only care whether the credentials were right, not why they were not. */
@@ -694,13 +693,18 @@ public class SystemUserService {
     }
 
     /**
-     * Verifies a superadmin password under {@link PasswordHashGate}.
+     * Verifies a superadmin password.
      * <p>
-     * The permit is held around the Argon2 verification alone. The lookups before it cost nothing
-     * worth bounding, and a username that does not belong to a superadmin never reaches a hash on
-     * this path - unlike the tenant login, which hashes anyway so that its response time does not
-     * give account existence away. That difference is intentional: this endpoint sits behind the
-     * admin IP gate, and the single superadmin username is not a secret worth a permit.
+     * A username that does not belong to a superadmin never reaches a hash on this path - unlike
+     * the tenant login, which hashes anyway so that its response time does not give account
+     * existence away. That difference is intentional: this endpoint sits behind the admin IP
+     * gate, and the single superadmin username is not a secret worth an Argon2 computation.
+     * <p>
+     * mangoo caps how many of those run at once and rejects with a
+     * {@link MangooHashingException} when no slot becomes free in time. That is an overload and
+     * not a wrong password, so it is reported apart from one - answering 401 here would tell the
+     * rightful owner their password is wrong and would tell an attacker their guess failed when
+     * it was never checked.
      */
     public SuperadminPasswordResult verifyPassword(String username, String password) {
         if (StringUtils.isBlank(username) || password == null) {
@@ -712,10 +716,14 @@ public class SystemUserService {
             return SuperadminPasswordResult.noMatch();
         }
 
-        return passwordHashGate.withPermit(() -> matchesPassword(password, user)
-                        ? SuperadminPasswordResult.match(AuthContext.of(user.getString("id"), Role.SUPERADMIN, null))
-                        : SuperadminPasswordResult.noMatch())
-                .orElseGet(SuperadminPasswordResult::atCapacity);
+        try {
+            return matchesPassword(password, user)
+                    ? SuperadminPasswordResult.match(AuthContext.of(user.getString("id"), Role.SUPERADMIN, null))
+                    : SuperadminPasswordResult.noMatch();
+        } catch (MangooHashingException e) {
+            LOG.warn("Refused a superadmin password verification, no Argon2 slot became free", e);
+            return SuperadminPasswordResult.atCapacity();
+        }
     }
 
     private Document findCompletedSuperadmin() {
@@ -732,7 +740,7 @@ public class SystemUserService {
         return resolver.systemCollection(CollectionName.USERS).find(eq("username", username)).first();
     }
 
-    private boolean matchesPassword(String password, Document user) {
+    boolean matchesPassword(String password, Document user) {
         String salt = user.getString("passwordSalt");
         String hash = user.getString("passwordHash");
         if (StringUtils.isBlank(salt) || StringUtils.isBlank(hash)) {

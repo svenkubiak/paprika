@@ -1,5 +1,6 @@
 package services;
 
+import io.mangoo.exceptions.MangooHashingException;
 import auth.AuthContext;
 import dtos.ChangePasswordDto;
 import dtos.LoginAlertDto;
@@ -243,6 +244,10 @@ public class SuperadminProfileService {
                 systemUserService.changePassword(userId, dto.newPassword());
             } catch (IllegalArgumentException e) {
                 return AdminSettingsResult.badRequest(e.getMessage());
+            } catch (MangooHashingException e) {
+                // Hashing the new password competes for the same Argon2 slot the verification
+                // above just used. Nothing was written, so the old password still stands.
+                return AdminSettingsResult.atCapacity();
             }
 
             return AdminSettingsResult.ok(Map.of("success", true));
