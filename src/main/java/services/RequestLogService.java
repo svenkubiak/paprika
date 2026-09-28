@@ -141,6 +141,12 @@ public class RequestLogService {
             if (Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES))) {
                 entry.append("rulesBypassed", true);
             }
+            // Without this the entry of a hook-free key looks exactly like one whose hook silently
+            // failed to run, and telling a deliberate exemption from a defect apart is precisely
+            // what someone needs the log for during the next incident.
+            if (ApiKeys.bypassesHooks(request)) {
+                entry.append("hooksBypassed", true);
+            }
         }
 
         resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS).insertOne(entry);

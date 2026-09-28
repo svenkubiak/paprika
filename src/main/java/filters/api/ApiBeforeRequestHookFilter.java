@@ -10,6 +10,7 @@ import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
 import services.HookService;
+import utils.ApiKeys;
 
 import java.util.Objects;
 
@@ -37,6 +38,13 @@ public class ApiBeforeRequestHookFilter implements PerRequestFilter {
         }
 
         request.addAttribute(TenantContext.REQUEST_ATTRIBUTE, ctx);
+
+        // The resolved tenant context above is not a hook concern - login resolves its tenant from
+        // the body and the routes behind this filter need that either way - so only the hook run
+        // itself is skipped for a hook-free key. Downstream sees a request no hook ever touched.
+        if (ApiKeys.bypassesHooks(request)) {
+            return response;
+        }
 
         HookExecutionResult result = hookService.runBeforeRequestForAuth(ctx, request);
         request.addAttribute(constants.RequestAttributes.HOOK_FIRED, result.hooksRan());

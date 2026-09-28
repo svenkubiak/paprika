@@ -212,7 +212,8 @@ public class TenantController {
                                 apiKeyDto.name(),
                                 apiKeyDto.userId(),
                                 apiKeyDto.expiresAt(),
-                                Boolean.TRUE.equals(apiKeyDto.bypassRules()));
+                                Boolean.TRUE.equals(apiKeyDto.bypassRules()),
+                                Boolean.TRUE.equals(apiKeyDto.bypassHooks()));
 
                         Map<String, Object> body = new LinkedHashMap<>(created.key());
                         body.put("key", created.plaintext());

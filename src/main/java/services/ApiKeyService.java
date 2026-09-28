@@ -78,7 +78,12 @@ public class ApiKeyService {
     }
 
     /** The key that authenticated a request, for logging. Never carries the key itself. */
-    public record ResolvedApiKey(AuthContext auth, String keyId, String keyName, boolean bypassRules) {}
+    public record ResolvedApiKey(
+            AuthContext auth,
+            String keyId,
+            String keyName,
+            boolean bypassRules,
+            boolean bypassHooks) {}
 
     /** A freshly created key: the record plus the plaintext, which is returned exactly once. */
     public record CreatedApiKey(Map<String, Object> key, String plaintext) {}
@@ -101,9 +106,9 @@ public class ApiKeyService {
         ensureIndex(collection, TENANT_INDEX, Indexes.ascending("tenantId"), false);
     }
 
-    /** Creates an ordinary key, bound to the rules of its user. */
+    /** Creates an ordinary key, bound to the rules of its user and subject to its hooks. */
     public CreatedApiKey create(TenantDefinition tenant, String name, String userId, String expiresAt) {
-        return create(tenant, name, userId, expiresAt, false);
+        return create(tenant, name, userId, expiresAt, false, false);
     }
 
     /**
@@ -114,13 +119,21 @@ public class ApiKeyService {
      * rules on the data plane, which is the only way to express "this one caller, and nobody
      * else" with the four rule presets. It stays bound to this tenant and this user, and it never
      * reaches the management API. There is deliberately no way to set the flag afterwards.
+     * <p>
+     * {@code bypassHooks} exempts the key from the hooks. It is meant for the service a hook
+     * itself calls, whose callbacks into Paprika would otherwise re-enter that same hook; see
+     * {@link ApiKeyDefinition#bypassHooks()}. It is a separate flag rather than a property of
+     * every key, because a tenant may well be using hooks to log or narrow exactly the machine
+     * traffic that API keys produce - and because a second, less trusted key must not inherit the
+     * exemption of the first. Just like {@code bypassRules}, it cannot be set afterwards.
      */
     public CreatedApiKey create(
             TenantDefinition tenant,
             String name,
             String userId,
             String expiresAt,
-            boolean bypassRules) {
+            boolean bypassRules,
+            boolean bypassHooks) {
         if (StringUtils.isBlank(name)) {
             throw new IllegalArgumentException("Name is required");
         }
@@ -152,13 +165,20 @@ public class ApiKeyService {
                 null,
                 normalizedExpiry,
                 null,
-                bypassRules);
+                bypassRules,
+                bypassHooks);
 
         keys().insertOne(toDocument(key));
 
         // Issuing a credential that is not subject to the rules is a security relevant event
         if (bypassRules) {
             LOG.info("Issued a rule-bypassing API key {} for user {} in tenant {}",
+                    key.id(), key.userId(), tenant.id());
+        }
+
+        // So is one that no hook ever sees: a hook used as an authorizer stops applying to it
+        if (bypassHooks) {
+            LOG.info("Issued a hook-free API key {} for user {} in tenant {}",
                     key.id(), key.userId(), tenant.id());
         }
 
@@ -266,7 +286,8 @@ public class ApiKeyService {
 
         touch(key);
 
-        return Optional.of(new ResolvedApiKey(auth, key.id(), key.name(), key.bypassRules()));
+        return Optional.of(new ResolvedApiKey(
+                auth, key.id(), key.name(), key.bypassRules(), key.bypassHooks()));
     }
 
     private void touch(ApiKeyDefinition key) {
@@ -340,7 +361,8 @@ public class ApiKeyService {
                 .append("lastUsedAt", key.lastUsedAt())
                 .append("expiresAt", key.expiresAt())
                 .append("revokedAt", key.revokedAt())
-                .append("bypassRules", key.bypassRules());
+                .append("bypassRules", key.bypassRules())
+                .append("bypassHooks", key.bypassHooks());
     }
 
     private ApiKeyDefinition fromDocument(Document doc) {
@@ -355,8 +377,9 @@ public class ApiKeyService {
                 doc.getString("lastUsedAt"),
                 doc.getString("expiresAt"),
                 doc.getString("revokedAt"),
-                // Keys written before this flag existed are ordinary keys
-                doc.getBoolean("bypassRules", false));
+                // Keys written before these flags existed are ordinary keys
+                doc.getBoolean("bypassRules", false),
+                doc.getBoolean("bypassHooks", false));
     }
 
     /** The view the admin UI gets: everything but the hash, which never leaves this service. */
@@ -371,6 +394,7 @@ public class ApiKeyService {
         map.put("expiresAt", key.expiresAt());
         map.put("revokedAt", key.revokedAt());
         map.put("bypassRules", key.bypassRules());
+        map.put("bypassHooks", key.bypassHooks());
         return map;
     }
 }

@@ -120,6 +120,9 @@ public class AuthService {
                     if (resolved.bypassRules()) {
                         request.addAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES, Boolean.TRUE);
                     }
+                    if (resolved.bypassHooks()) {
+                        request.addAttribute(ApiKeys.ATTRIBUTE_BYPASS_HOOKS, Boolean.TRUE);
+                    }
                     return resolved.auth();
                 })
                 .orElseGet(AuthContext::guest);

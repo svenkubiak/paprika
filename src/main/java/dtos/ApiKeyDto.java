@@ -16,5 +16,11 @@ public record ApiKeyDto(
          * Whether this key skips the collection rules on the data plane. Absent or false creates
          * an ordinary key; the flag cannot be changed after creation.
          */
-        Boolean bypassRules) {
+        Boolean bypassRules,
+
+        /**
+         * Whether this key runs no hooks. Absent or false creates a key the hooks apply to; the
+         * flag cannot be changed after creation.
+         */
+        Boolean bypassHooks) {
 }

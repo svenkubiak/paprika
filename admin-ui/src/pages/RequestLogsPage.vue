@@ -617,6 +617,15 @@ function showRelated(requestId: string) {
                     >
                       rules bypassed
                     </UBadge>
+                    <UBadge
+                      v-if="entry.hooksBypassed"
+                      color="warning"
+                      variant="subtle"
+                      size="md"
+                      title="No hook ran for this request (hook-free API key) — the empty hook column is deliberate, not a failure"
+                    >
+                      hooks bypassed
+                    </UBadge>
                   </div>
                   <span v-else class="text-muted">—</span>
                 </td>

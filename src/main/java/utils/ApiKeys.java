@@ -1,5 +1,6 @@
 package utils;
 
+import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.CommonUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -38,6 +39,14 @@ public final class ApiKeys {
      */
     public static final String ATTRIBUTE_BYPASS_RULES = "paprika.apikey.bypassRules";
 
+    /**
+     * Set when the key that authenticated this request is allowed to skip the hooks. Written once
+     * in the auth layer for the same reason {@link #ATTRIBUTE_BYPASS_RULES} is: the auth layer is
+     * the only place that sees the key, and resolving it again in each of the three hook filters
+     * would mean three chances for them to disagree about the same request.
+     */
+    public static final String ATTRIBUTE_BYPASS_HOOKS = "paprika.apikey.bypassHooks";
+
     private static final int SECRET_LENGTH = 40;
 
     /**
@@ -47,6 +56,15 @@ public final class ApiKeys {
     private static final int LOOKUP_LENGTH = PREFIX.length() + 8;
 
     private ApiKeys() {
+    }
+
+    /**
+     * Whether the key that authenticated this request runs no hooks. Read by every filter that
+     * would execute one, so that the answer is the same on the auth routes, the collection routes
+     * and the file routes.
+     */
+    public static boolean bypassesHooks(Request request) {
+        return Boolean.TRUE.equals(request.getAttribute(ATTRIBUTE_BYPASS_HOOKS));
     }
 
     /** A fresh key to hand to the caller exactly once (never persisted in the clear). */

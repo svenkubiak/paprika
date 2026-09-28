@@ -356,6 +356,8 @@ export const api = {
       expiresAt?: string | null
       /** Only settable here: the flag cannot be changed after creation. */
       bypassRules?: boolean
+      /** Only settable here either: the flag cannot be changed after creation. */
+      bypassHooks?: boolean
     }
   ): Promise<CreatedApiKey> {
     return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys`, {
@@ -365,7 +367,8 @@ export const api = {
         name: payload.name,
         userId: payload.userId,
         expiresAt: payload.expiresAt || undefined,
-        bypassRules: payload.bypassRules === true
+        bypassRules: payload.bypassRules === true,
+        bypassHooks: payload.bypassHooks === true
       })
     })
   },

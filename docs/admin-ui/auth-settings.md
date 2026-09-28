@@ -61,6 +61,8 @@ keys** card at the bottom of this page (it needs an active tenant).
 - **Expires** - optional. Without it the key is valid until revoked.
 - **Bypass collection rules** - off by default. Switch it on only for a trusted backend service
   (see below).
+- **Bypass hooks** - off by default. Switch it on only for the service a hook itself calls back
+  into Paprika (see below).
 
 The plaintext key is shown **once**, right after creating it, with a copy button:
 
@@ -120,7 +122,8 @@ What stays true for a bypassing key:
 - it cannot reach another tenant, and an unknown collection is still a `404`;
 - it cannot be bound to a superadmin;
 - **hooks still fire** - a blocking `beforeCreate` stops it like any other caller, so field
-  guards and approval gates keep working;
+  guards and approval gates keep working, unless the key also carries
+  [Bypass hooks](#bypass-hooks);
 - the `users` collection keeps its credential and role protections.
 
 The switch is only available **while creating** the key. There is no way to turn it on or off
@@ -139,6 +142,54 @@ including the ability to mint sessions for other users if that user is listed un
 [token issuers](/admin-ui/tenants#editing-a-tenant). Keys never grant superadmin rights and never
 bypass rules, but within the bound identity they are complete. Bind them to a dedicated service
 account, keep them server-side, and rotate them.
+:::
+
+### Bypass hooks
+
+A global `beforeRequest` hook is regularly used as an **external authorizer**: Paprika asks a
+service on every request whether the caller may proceed. If that service answers by asking
+*Paprika* something - "is this device registered?" - and uses its own API key to do so, its lookup
+runs straight back into the hook it came from:
+
+```
+Client → Paprika  ──beforeRequest──►  Service
+                                        │  GET /api/collections/device_attestations?filter=…
+                                        ▼
+                                      Paprika  ──beforeRequest──►  Service
+                                                                     │ (recognises itself,
+                                                                     ▼  lets it through)
+```
+
+The inner call has exactly one possible outcome - the service recognises its own identity - so the
+roundtrip is decided before it starts. It costs a worker on each side and nothing else, right up
+to the moment the outer request's time budget runs out on a lookup that was never in doubt: the
+guard reads the failed lookup as "device unknown" and answers `403`, and the registration that
+would heal the state runs through the same path.
+
+A key created with **Bypass hooks** runs **no hook at all** - neither the global `beforeRequest`
+hooks nor the collection hooks, on collection routes, auth routes and file routes alike. Its
+requests behave as if the tenant had no hooks configured.
+
+Such a key is marked with an orange **bypasses hooks** badge in the key list, and the request log
+shows a **hooks bypassed** badge on every request made with it. That badge is the point: without
+it, an entry with no hook execution is indistinguishable from one whose hook silently failed.
+
+This is a per-key flag rather than a blanket rule for API keys, on purpose. Another tenant may be
+using hooks precisely to log or narrow **machine** writes, and exempting every key would be a
+silent loss for them. And a second, less trusted key would inherit the exemption of the first,
+even though the hook service can tell the two apart by the bound user today.
+
+What the flag does **not** weaken: rules. A hook-free key is still checked against the collection
+rules unless it *also* carries [Bypass collection rules](#bypass-collection-rules) - the two flags
+are independent, and either one alone leaves the other line of defence in place.
+
+Like the rule bypass, the switch is only available **while creating** the key, and issuing one is
+written to the server log.
+
+::: warning Your authorizer stops seeing this caller
+If a hook is what enforces device attestation, tenancy checks or an approval gate, a hook-free key
+is outside all of it. Issue one only for the service the hook itself calls, keep it bound to that
+service's own user, and use an ordinary key for everything else that service does.
 :::
 
 Keys cannot be bound to a superadmin: that would be a cross-tenant bypass credential, which is

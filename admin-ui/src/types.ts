@@ -174,6 +174,8 @@ export interface ApiKey {
   revokedAt?: string | null
   /** Requests with this key skip the collection rules. Set at creation, never changeable. */
   bypassRules?: boolean
+  /** Requests with this key run no hooks. Set at creation, never changeable. */
+  bypassHooks?: boolean
 }
 
 /** Only the create response carries the plaintext key, and only once. */
@@ -321,6 +323,7 @@ export interface RequestLogEntry {
   apiKeyId?: string | null
   apiKeyName?: string | null
   rulesBypassed?: boolean
+  hooksBypassed?: boolean
   hookFired?: boolean
   hookBlocked?: boolean
   hookBlockedBy?: string | null

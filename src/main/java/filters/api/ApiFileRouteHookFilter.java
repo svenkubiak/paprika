@@ -12,6 +12,7 @@ import jakarta.inject.Inject;
 import models.CollectionDefinition;
 import services.HookService;
 import services.TenantCollectionService;
+import utils.ApiKeys;
 
 import java.util.Objects;
 
@@ -43,6 +44,12 @@ public class ApiFileRouteHookFilter implements PerRequestFilter {
 
     @Override
     public Response execute(Request request, Response response) {
+        // Same exemption the collection and auth routes grant a hook-free key; a download that
+        // skipped the authorizer on one route but not the other would be the worse surprise.
+        if (ApiKeys.bypassesHooks(request)) {
+            return response;
+        }
+
         TenantContext ctx = TenantContextHolder.require(request);
         String collection = request.getPathParameter("collection");
 

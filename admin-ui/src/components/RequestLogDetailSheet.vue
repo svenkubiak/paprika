@@ -41,6 +41,8 @@ function statusColor(code: number) {
 
 const hookLabel = computed(() => {
   if (!entry.value) return '—'
+  // "bypassed" before "none": both mean no hook ran, but only one of them is a decision
+  if (entry.value.hooksBypassed) return 'bypassed'
   const count = entry.value.hookCount ?? entry.value.hooks?.length ?? 0
   if (entry.value.hookBlocked) return count > 1 ? `${count} called, blocked` : 'blocked'
   if (entry.value.hookFired) return count > 1 ? `${count} continued` : 'continued'
@@ -48,7 +50,7 @@ const hookLabel = computed(() => {
 })
 
 const hookColor = computed(() => {
-  if (entry.value?.hookBlocked) return 'warning'
+  if (entry.value?.hooksBypassed || entry.value?.hookBlocked) return 'warning'
   if (entry.value?.hookFired) return 'success'
   return 'neutral'
 })
@@ -346,10 +348,25 @@ const statusMeaning = computed(() => {
                 <span v-else class="text-sm text-muted">—</span>
               </dd>
             </div>
-            <div class="sm:col-span-2">
+            <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">Collection rules</dt>
               <dd class="mt-1">
                 <UBadge v-if="entry.rulesBypassed" color="error" variant="subtle" size="md">
+                  bypassed
+                </UBadge>
+                <UBadge v-else color="neutral" variant="subtle" size="md">applied</UBadge>
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs font-medium uppercase tracking-wide text-muted">Hooks</dt>
+              <dd class="mt-1">
+                <UBadge
+                  v-if="entry.hooksBypassed"
+                  color="warning"
+                  variant="subtle"
+                  size="md"
+                  title="This key runs no hooks — no hook entry above is expected"
+                >
                   bypassed
                 </UBadge>
                 <UBadge v-else color="neutral" variant="subtle" size="md">applied</UBadge>

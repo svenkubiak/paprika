@@ -266,12 +266,17 @@ What such a key may and may not do:
 | read, create, update, delete records of every collection of its tenant, regardless of the rules | reach the management API (`/api/meta/**`, `/api/admin/**`): tenant, schema, rule, hook, backup, settings and superadmin management stay closed - every request with a bearer header is refused there |
 | see all records on an `Own records` collection, not only those of the bound user | touch another tenant: the key resolves to its own tenant only, an unknown collection is still a `404` |
 | skip the owner field being forced on create, so it can write records on behalf of any user | become a superadmin: keys can only be bound to users with the `user` role, at creation and again at every resolve |
-| be revoked (record kept) or deleted (record removed) at any time | skip the hooks: `beforeCreate` and friends run unchanged, and a blocking hook stops a bypass request like any other |
+| be revoked (record kept) or deleted (record removed) at any time | skip the hooks on its own: `beforeCreate` and friends run unchanged, and a blocking hook stops a bypass request like any other - that takes the separate [Bypass hooks](/admin-ui/auth-settings#bypass-hooks) flag |
 | | write credential fields or roles through `/api/collections/users`: the usual data-plane protections apply |
 
 So this is emphatically **not a superadmin**. It is full access to the tenant's *data*, with the
 tenant's *configuration* out of reach - and because hooks still fire, business guards (field
 protection, immutability, approval gates) keep applying.
+
+A key can be exempted from the hooks too, but that is a **second, independent flag**
+([Bypass hooks](/admin-ui/auth-settings#bypass-hooks)), meant for the one service a hook itself
+calls back into Paprika. Neither flag implies the other: a rule-bypassing key still runs every
+hook, and a hook-free key is still checked against the rules.
 
 ::: danger Security assumption
 **Whoever holds a rule-bypassing key has full access to the data of that tenant - but no access

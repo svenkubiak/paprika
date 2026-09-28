@@ -23,11 +23,18 @@ const deleteOpen = ref(false)
 const revokingKey = ref<ApiKey | null>(null)
 const deletingKey = ref<ApiKey | null>(null)
 
-const form = ref<{ name: string; userId: string; expiresAt: string; bypassRules: boolean }>({
+const form = ref<{
+  name: string
+  userId: string
+  expiresAt: string
+  bypassRules: boolean
+  bypassHooks: boolean
+}>({
   name: '',
   userId: '',
   expiresAt: '',
-  bypassRules: false
+  bypassRules: false,
+  bypassHooks: false
 })
 
 /** Shown exactly once, right after creating: the server cannot hand it out again. */
@@ -95,7 +102,7 @@ async function refresh() {
 }
 
 function openCreate() {
-  form.value = { name: '', userId: '', expiresAt: '', bypassRules: false }
+  form.value = { name: '', userId: '', expiresAt: '', bypassRules: false, bypassHooks: false }
   createdKey.value = null
   copied.value = false
   createOpen.value = true
@@ -133,7 +140,8 @@ async function createKey() {
       name,
       userId: form.value.userId,
       expiresAt: form.value.expiresAt ? new Date(form.value.expiresAt).toISOString() : null,
-      bypassRules: form.value.bypassRules
+      bypassRules: form.value.bypassRules,
+      bypassHooks: form.value.bypassHooks
     })
     createdKey.value = created.key
     await refresh()
@@ -246,6 +254,15 @@ async function deleteKey() {
             >
               bypasses rules
             </UBadge>
+            <UBadge
+              v-if="row.original.bypassHooks"
+              color="warning"
+              variant="soft"
+              size="xs"
+              title="Requests with this key run no hooks of this tenant"
+            >
+              bypasses hooks
+            </UBadge>
           </div>
         </template>
         <template #keyPrefix-cell="{ row }">
@@ -332,6 +349,10 @@ async function deleteKey() {
                 This key <strong>bypasses the collection rules</strong>: it can read and write all
                 data of this tenant.
               </template>
+              <template v-if="form.bypassHooks">
+                This key <strong>runs no hooks</strong>: nothing a hook checks, logs or rewrites
+                applies to its requests.
+              </template>
             </p>
           </div>
 
@@ -373,7 +394,25 @@ async function deleteKey() {
                 variant="soft"
                 icon="i-lucide-shield-alert"
                 title="This key reads and writes all data of this tenant"
-                description="Every record of every collection, across all users, even where the rules say No access. It still cannot reach the admin API, another tenant, or superadmin functions, and hooks keep running. The flag cannot be changed later — revoke the key and create a new one instead."
+                description="Every record of every collection, across all users, even where the rules say No access. It still cannot reach the admin API, another tenant, or superadmin functions, and hooks keep running unless you switch them off below as well. The flag cannot be changed later — revoke the key and create a new one instead."
+              />
+            </div>
+
+            <div class="space-y-3">
+              <PSwitchField
+                v-model="form.bypassHooks"
+                label="Bypass hooks"
+                icon="i-lucide-webhook-off"
+                help="For the service a hook itself calls back into Paprika."
+                details="No hook runs for requests with this key — neither the global beforeRequest hooks nor the collection hooks."
+              />
+              <UAlert
+                v-if="form.bypassHooks"
+                color="warning"
+                variant="soft"
+                icon="i-lucide-webhook-off"
+                title="Hooks stop applying to this key"
+                description="A hook used as an external authorizer no longer sees these requests, and neither do hooks that log or narrow machine writes. Use this only where a hook target asks Paprika back with this key and would otherwise re-enter the very hook it came from. Requests made with it carry a hooks bypassed badge in the request log. The flag cannot be changed later — revoke the key and create a new one instead."
               />
             </div>
 
