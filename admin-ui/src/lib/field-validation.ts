@@ -37,15 +37,18 @@ function options(field: FieldDefinition) {
 function validateTextConstraints(field: FieldDefinition, value: string, issues: FieldValidationIssue[]) {
   const opts = options(field)
   if (opts.minLength != null && value.length < opts.minLength) {
-    issues.push({ field: field.name, message: 'Value is shorter than minLength' })
+    issues.push({ field: field.name, message: `At least ${opts.minLength} characters required` })
   }
   if (opts.maxLength != null && value.length > opts.maxLength) {
-    issues.push({ field: field.name, message: 'Value exceeds maxLength' })
+    issues.push({
+      field: field.name,
+      message: `${value.length - opts.maxLength} characters too long (limit ${opts.maxLength})`
+    })
   }
   if (opts.pattern) {
     try {
       if (!new RegExp(opts.pattern).test(value)) {
-        issues.push({ field: field.name, message: 'Value does not match pattern' })
+        issues.push({ field: field.name, message: `Does not match the pattern ${opts.pattern}` })
       }
     } catch {
       issues.push({ field: field.name, message: 'Invalid pattern configured for field' })
@@ -56,10 +59,10 @@ function validateTextConstraints(field: FieldDefinition, value: string, issues: 
 function validateNumberConstraints(field: FieldDefinition, value: number, issues: FieldValidationIssue[]) {
   const opts = options(field)
   if (opts.numberMin != null && value < opts.numberMin) {
-    issues.push({ field: field.name, message: 'Value is less than minimum' })
+    issues.push({ field: field.name, message: `Must be ${opts.numberMin} or more` })
   }
   if (opts.numberMax != null && value > opts.numberMax) {
-    issues.push({ field: field.name, message: 'Value exceeds maximum' })
+    issues.push({ field: field.name, message: `Must be ${opts.numberMax} or less` })
   }
 }
 
@@ -87,10 +90,10 @@ function validateJsonConstraints(field: FieldDefinition, value: unknown, issues:
     issues.push({ field: field.name, message: 'Expected JSON array' })
   }
   if (opts.maxDepth != null && jsonDepth(value) > opts.maxDepth) {
-    issues.push({ field: field.name, message: 'JSON exceeds maxDepth' })
+    issues.push({ field: field.name, message: `Nested deeper than the limit of ${opts.maxDepth}` })
   }
   if (opts.maxBytes != null && utf8Length(value) > opts.maxBytes) {
-    issues.push({ field: field.name, message: 'JSON exceeds maxBytes' })
+    issues.push({ field: field.name, message: `Larger than the limit of ${opts.maxBytes} bytes` })
   }
 }
 
@@ -105,17 +108,17 @@ export function validateFieldValue(field: FieldDefinition, value: unknown): stri
     (field.type === 'SELECT' && Array.isArray(value) && value.length === 0)
 
   if (empty) {
-    return field.required ? `${field.name} is required` : null
+    return field.required ? 'This field is required' : null
   }
 
   switch (field.type) {
     case 'STRING': {
-      if (typeof value !== 'string') return `${field.name} must be a string`
+      if (typeof value !== 'string') return 'Must be text'
       validateTextConstraints(field, value, issues)
       break
     }
     case 'EMAIL': {
-      if (typeof value !== 'string') return `${field.name} must be an email`
+      if (typeof value !== 'string') return 'Must be an email address'
       const at = value.indexOf('@')
       if (at <= 0 || at !== value.lastIndexOf('@') || at === value.length - 1) {
         issues.push({ field: field.name, message: 'Invalid email address' })
@@ -124,7 +127,7 @@ export function validateFieldValue(field: FieldDefinition, value: unknown): stri
       break
     }
     case 'URL': {
-      if (typeof value !== 'string') return `${field.name} must be a URL`
+      if (typeof value !== 'string') return 'Must be a URL'
       try {
         const url = new URL(value)
         if (!url.protocol || !url.hostname) {
@@ -137,18 +140,18 @@ export function validateFieldValue(field: FieldDefinition, value: unknown): stri
       break
     }
     case 'NUMBER': {
-      if (typeof value !== 'number' || Number.isNaN(value)) return `${field.name} must be a number`
+      if (typeof value !== 'number' || Number.isNaN(value)) return 'Must be a number'
       validateNumberConstraints(field, value, issues)
       break
     }
     case 'BOOLEAN': {
-      if (typeof value !== 'boolean') return `${field.name} must be a boolean`
+      if (typeof value !== 'boolean') return 'Must be true or false'
       break
     }
     case 'DATE': {
       if (typeof value !== 'string') return `${field.name} must be a string`
       if (!ISO_DATE.test(value) || !isRealDate(value)) {
-        return `${field.name}: Expected ISO date (yyyy-MM-dd)`
+        return 'Expected an ISO date (yyyy-MM-dd)'
       }
       validateTextConstraints(field, value, issues)
       break
@@ -156,7 +159,7 @@ export function validateFieldValue(field: FieldDefinition, value: unknown): stri
     case 'TIME': {
       if (typeof value !== 'string') return `${field.name} must be a string`
       if (!ISO_TIME.test(value)) {
-        return `${field.name}: Expected ISO time`
+        return 'Expected an ISO time (HH:mm or HH:mm:ss)'
       }
       validateTextConstraints(field, value, issues)
       break
@@ -164,13 +167,13 @@ export function validateFieldValue(field: FieldDefinition, value: unknown): stri
     case 'DATETIME': {
       if (typeof value !== 'string') return `${field.name} must be a string`
       if (!ISO_OFFSET_DATETIME.test(value)) {
-        return `${field.name}: Expected ISO datetime including timezone`
+        return 'Expected an ISO datetime including a timezone, e.g. 2026-01-01T00:00:00Z'
       }
       validateTextConstraints(field, value, issues)
       break
     }
     case 'JSON': {
-      if (typeof value !== 'object' || value === null) return `${field.name} must be a JSON object or array`
+      if (typeof value !== 'object' || value === null) return 'Must be a JSON object or array'
       validateJsonConstraints(field, value, issues)
       break
     }
@@ -179,12 +182,12 @@ export function validateFieldValue(field: FieldDefinition, value: unknown): stri
       const maxSelect = options(field).maxSelect || 1
       if (maxSelect <= 1) {
         if (typeof value !== 'string' || !allowed.includes(value)) {
-          issues.push({ field: field.name, message: 'Value is not an allowed option' })
+          issues.push({ field: field.name, message: 'Not one of the allowed options' })
         }
       } else if (!Array.isArray(value)) {
-        return `${field.name} must be an array of allowed options`
+        return 'Must be a list of allowed options'
       } else {
-        if (value.length > maxSelect) issues.push({ field: field.name, message: 'Too many selected values' })
+        if (value.length > maxSelect) issues.push({ field: field.name, message: `At most ${maxSelect} values may be selected` })
         const seen = new Set<string>()
         for (const item of value) {
           if (typeof item !== 'string' || !allowed.includes(item) || seen.has(item)) {
@@ -200,12 +203,12 @@ export function validateFieldValue(field: FieldDefinition, value: unknown): stri
       const maxSelect = options(field).maxSelect || 1
       if (maxSelect <= 1) {
         if (typeof value !== 'string' || !value.trim()) {
-          issues.push({ field: field.name, message: 'Expected relation id' })
+          issues.push({ field: field.name, message: 'Expected a related record id' })
         }
       } else if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !String(item).trim())) {
-        issues.push({ field: field.name, message: 'Expected array of relation ids' })
+        issues.push({ field: field.name, message: 'Expected a list of related record ids' })
       } else if (value.length > maxSelect) {
-        issues.push({ field: field.name, message: 'Too many relation ids' })
+        issues.push({ field: field.name, message: `At most ${maxSelect} relations are allowed` })
       }
       break
     }
