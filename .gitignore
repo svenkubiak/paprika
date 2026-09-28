@@ -13,6 +13,7 @@
 /docs/.vitepress/dist
 /docs/.vitepress/cache
 /storage
+/logs
 /src/main/resources/files/assets/
 /.claude
 .DS_Store

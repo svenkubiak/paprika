@@ -119,6 +119,21 @@ journalctl -u paprika -f
 systemctl restart paprika
 ```
 
+### Log files
+
+Besides the journal, Paprika writes its own log to `logs/` under the install directory:
+
+```bash
+tail -f /opt/paprika/logs/paprika.log
+```
+
+The file rolls over daily and whenever it reaches 10 MB. Rolled files are gzipped as
+`paprika-<date>-<n>.log.gz` in the same directory and deleted automatically once they are
+older than seven days, so the directory stays bounded without a logrotate entry. Point
+`PAPRIKA_LOG_PATH` somewhere else if you want the logs on a different volume — and add that
+path to `ReadWritePaths` in `/lib/systemd/system/paprika.service` when you do, otherwise the
+hardened unit will deny the writes.
+
 ## Uninstall
 
 Run the installer with `--uninstall` from the directory Paprika is installed in:
@@ -133,7 +148,7 @@ The script:
 1. Stops and disables the `paprika` systemd service
 2. Removes the service unit file and reloads systemd
 3. Removes the `paprika` system user
-4. Deletes the application files (`bin/`, `lib/`, `.env`, `.version`)
+4. Deletes the application files (`bin/`, `lib/`, `share/`, `logs/`, `.env`, `.version`)
 5. Asks whether to also delete the `storage/` directory — since this holds all application data, you're prompted to confirm. When run non-interactively (piped from `curl`), the storage directory is **not** removed automatically; delete it manually afterwards if no longer needed:
 
 ```bash

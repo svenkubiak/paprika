@@ -16,11 +16,14 @@ chown root:paprika /opt/paprika
 chmod 750 /opt/paprika
 
 # Binaries and libraries: root:paprika, group-executable
-find /opt/paprika -mindepth 1 -not -path "/opt/paprika/storage*" -not -name ".env" \
+find /opt/paprika -mindepth 1 \
+    -not -path "/opt/paprika/storage*" -not -path "/opt/paprika/logs*" -not -name ".env" \
     -exec chown root:paprika {} \;
-find /opt/paprika -mindepth 1 -type d -not -path "/opt/paprika/storage*" \
+find /opt/paprika -mindepth 1 -type d \
+    -not -path "/opt/paprika/storage*" -not -path "/opt/paprika/logs*" \
     -exec chmod 750 {} \;
-find /opt/paprika -mindepth 1 -type f -not -path "/opt/paprika/storage*" -not -name ".env" \
+find /opt/paprika -mindepth 1 -type f \
+    -not -path "/opt/paprika/storage*" -not -path "/opt/paprika/logs*" -not -name ".env" \
     -exec chmod 640 {} \;
 
 # Launcher must be executable by the group
@@ -30,6 +33,11 @@ chmod 750 /opt/paprika/bin/paprika 2>/dev/null || true
 mkdir -p /opt/paprika/storage
 chown paprika:paprika /opt/paprika/storage
 chmod 750 /opt/paprika/storage
+
+# Log directory: same deal, log4j2 writes and rolls files in here
+mkdir -p /opt/paprika/logs
+chown paprika:paprika /opt/paprika/logs
+chmod 750 /opt/paprika/logs
 
 # Environment file: root owns it, paprika group may read — never world-readable
 if [ -f /opt/paprika/.env ]; then
@@ -79,7 +87,7 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
-ReadWritePaths=/opt/paprika/storage
+ReadWritePaths=/opt/paprika/storage /opt/paprika/logs
 
 # ── Network hardening ─────────────────────────────────────────
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

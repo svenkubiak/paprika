@@ -1,13 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration>
+<Configuration status="warn">
+	<Properties>
+		<Property name="APP_NAME">paprika</Property>
+		<!--
+			The installation writes its logs next to its own data, under the install
+			directory. The installer puts the absolute path into PAPRIKA_LOG_PATH, the
+			same way it does for PAPRIKA_STORAGE. The relative fallback resolves against
+			the working directory, which systemd sets to the install directory as well,
+			so an installation that predates the variable keeps logging to the right
+			place. In development it means ./logs in the project directory.
+		-->
+		<Property name="LOG_PATH">${env:PAPRIKA_LOG_PATH:-logs}</Property>
+		<Property name="LOG_ARCHIVE_PATTERN">${APP_NAME}-*.log.gz</Property>
+	</Properties>
 	<Appenders>
 		<Console name="Console" target="SYSTEM_OUT">
 			<PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
 		</Console>
+		<RollingFile name="RollingFile"
+			fileName="${LOG_PATH}/${APP_NAME}.log"
+			filePattern="${LOG_PATH}/${APP_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
+			<PatternLayout>
+				<Pattern>%d{dd.MM.yyyy HH:mm:ss,SSS} [%t] %-5level %logger{36} - %msg%n</Pattern>
+			</PatternLayout>
+			<Policies>
+				<SizeBasedTriggeringPolicy size="10 MB" />
+				<TimeBasedTriggeringPolicy interval="1" />
+			</Policies>
+			<!--
+				max caps how many archives one day may produce, the Delete rule is what
+				actually bounds the directory over time: anything older than 7 days goes.
+			-->
+			<DefaultRolloverStrategy max="30">
+				<Delete basePath="${LOG_PATH}" maxDepth="1">
+					<IfFileName glob="${LOG_ARCHIVE_PATTERN}" />
+					<IfLastModified age="7d" />
+				</Delete>
+			</DefaultRolloverStrategy>
+		</RollingFile>
+		<Async name="Async">
+			<AppenderRef ref="RollingFile" />
+			<AppenderRef ref="Console" />
+		</Async>
 	</Appenders>
 	<Loggers>
 		<Root level="info">
-			<AppenderRef ref="Console" />
+			<AppenderRef ref="Async" />
 		</Root>
 	</Loggers>
 </Configuration>

@@ -122,9 +122,11 @@ if [ "$UNINSTALL" = true ]; then
         echo "System user '${APP_NAME}' removed."
     fi
 
-    rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/share"
+    # Logs go with the application: unlike storage/ they hold no data that cannot
+    # be recreated, so there is nothing here worth asking about.
+    rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/share" "${INSTALL_DIR}/logs"
     rm -f "${INSTALL_DIR}/.env" "${INSTALL_DIR}/.version"
-    echo "✅ Application files removed."
+    echo "✅ Application files and logs removed."
 
     if [ -d "${INSTALL_DIR}/storage" ]; then
         DELETE_STORAGE=false
@@ -417,7 +419,7 @@ if [ "$IS_UPDATE" = true ]; then
     systemctl stop "$APP_NAME" || true
 
     # Replace only the app directories from the new package.
-    # .env, .version and storage/ are not part of the .deb and remain untouched.
+    # .env, .version, storage/ and logs/ are not part of the .deb and remain untouched.
     rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/share"
     cp -a "${EXTRACTED_APP}/bin" "${INSTALL_DIR}/bin"
     cp -a "${EXTRACTED_APP}/lib" "${INSTALL_DIR}/lib"
@@ -499,6 +501,11 @@ CONNECTOR_HTTP_PORT=8080
 # ── Storage ───────────────────────────────────
 PAPRIKA_STORAGE=${INSTALL_DIR}/storage
 
+# ── Logging ───────────────────────────────────
+#  Directory for the rolling log files. Archives older than
+#  7 days are deleted automatically.
+PAPRIKA_LOG_PATH=${INSTALL_DIR}/logs
+
 # ── Email (SMTP) ──────────────────────────────
 #  Only needed if you enable password reset or email verification
 #  for a tenant. Leave SMTP_HOST commented out to disable sending.
@@ -552,23 +559,26 @@ fi
 
 # ── Permissions ───────────────────────────────────────────────────────────────
 # root:paprika ownership: the app can read its own files but not modify them.
-# Only the storage directory is fully owned by the app user.
+# Only the storage and log directories are fully owned by the app user.
 
 chown root:paprika "$INSTALL_DIR"
 chmod 750 "$INSTALL_DIR"
 
 find "$INSTALL_DIR" -mindepth 1 \
     -not -path "${INSTALL_DIR}/storage*" \
+    -not -path "${INSTALL_DIR}/logs*" \
     -not -name ".env" \
     -not -name ".version" \
     -exec chown root:paprika {} \;
 
 find "$INSTALL_DIR" -mindepth 1 -type d \
     -not -path "${INSTALL_DIR}/storage*" \
+    -not -path "${INSTALL_DIR}/logs*" \
     -exec chmod 750 {} \;
 
 find "$INSTALL_DIR" -mindepth 1 -type f \
     -not -path "${INSTALL_DIR}/storage*" \
+    -not -path "${INSTALL_DIR}/logs*" \
     -not -name ".env" \
     -not -name ".version" \
     -exec chmod 640 {} \;
@@ -587,6 +597,10 @@ done
 mkdir -p "${INSTALL_DIR}/storage"
 chown paprika:paprika "${INSTALL_DIR}/storage"
 chmod 750 "${INSTALL_DIR}/storage"
+
+mkdir -p "${INSTALL_DIR}/logs"
+chown -R paprika:paprika "${INSTALL_DIR}/logs"
+chmod 750 "${INSTALL_DIR}/logs"
 
 chown root:paprika "$ENV_FILE" 2>/dev/null || true
 chmod 640 "$ENV_FILE" 2>/dev/null || true
@@ -638,7 +652,7 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
-ReadWritePaths=${INSTALL_DIR}/storage
+ReadWritePaths=${INSTALL_DIR}/storage ${INSTALL_DIR}/logs
 
 # ── Network hardening ─────────────────────────────────────────
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

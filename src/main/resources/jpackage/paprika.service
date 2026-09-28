@@ -35,8 +35,8 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
-# Only the storage directory may be written to at runtime
-ReadWritePaths=/opt/paprika/storage
+# Only the storage and log directories may be written to at runtime
+ReadWritePaths=/opt/paprika/storage /opt/paprika/logs
 
 # ── Network hardening ─────────────────────────────────────────
 # AF_UNIX is required for some JVM internals
