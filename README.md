@@ -135,6 +135,29 @@ instead of application/x-www-form-urlencoded.
 
 The release notes are generated from these messages, so clear commits mean a clear changelog.
 
+## ❓ FAQ
+
+**Why "Paprika"?**
+
+When I started working on the application, I needed a working title. I called it Paprika and somehow the name just stuck.
+
+**Why another BaaS?**
+
+I was looking for something small, scalable, intuitive and not too complex. Surprisingly, that ruled out quite a few of the usual Google and GitHub results.
+
+I initially ended up using PocketBase, which I still think is a great piece of open-source software. The only real issue for my use case was SQLite. It works perfectly well for what PocketBase is built for, but it wasn't quite the right fit for what I had in mind.
+
+
+**Has AI been used in this project?**
+
+Yes, but it depends on which part of the project we're talking about.
+
+The Admin UI and the documentation make quite a bit of use of AI.
+
+The backend, on the other hand, was mostly written from scratch. I'm also the author of the underlying web framework, so there was already a pretty clear idea of how things should work.
+
+That doesn't mean AI never touched the backend. It has definitely been used to review code, find issues and help with some of the boring bits.
+
 ## 📄 License
 
 Paprika uses a dual-licensing model, but there's only one version of the software. Everyone gets the same code, features, and fixes; the license just depends on how you use it.
