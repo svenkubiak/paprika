@@ -341,19 +341,27 @@ class ApiKeyBypassIntegrationTest {
                 "application/json");
         assertThat(rejected.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
-        // There is no route that could flip the flag of an existing key
+        // The one field an existing key exposes for editing is its source binding; naming the
+        // flag here is refused outright rather than accepted and ignored, because a 204 would
+        // read as "the flag is set now".
         CreatedKey ordinary = createKey("bypass-immutable-key", boundId, false);
         String path = "/api/meta/tenants/" + tenant.id() + "/api-keys/" + ordinary.id();
         TestResponse patched = AdminTestUtils.patchWithAdminCookies(
                 path, adminCookies(), "{\"bypassRules\":true}", "application/json");
-        assertThat(patched.getStatusCode(), anyOf(
-                equalTo(StatusCodes.NOT_FOUND),
-                equalTo(StatusCodes.METHOD_NOT_ALLOWED)));
+        assertThat(patched.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
         TestResponse list = AdminTestUtils.getWithAdminCookies(
                 "/api/meta/tenants/" + tenant.id() + "/api-keys", adminCookies());
         assertThat(list.getContent(), containsString("\"name\":\"bypass-immutable-key\""));
         assertThat(list.getContent(), not(containsString("\"name\":\"bypass-elevated\"")));
+
+        // ... and the key really is still an ordinary one afterwards
+        Document stored = Application.getInstance(services.TenantDatabaseResolver.class)
+                .systemCollection(models.ApiKeyDefinition.COLLECTION)
+                .find(new Document("id", ordinary.id()))
+                .first();
+        assertThat(stored, notNullValue());
+        assertThat(stored.getBoolean("bypassRules", false), is(false));
     }
 
     @Test

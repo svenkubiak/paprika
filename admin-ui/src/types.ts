@@ -176,6 +176,11 @@ export interface ApiKey {
   bypassRules?: boolean
   /** Requests with this key run no hooks. Set at creation, never changeable. */
   bypassHooks?: boolean
+  /**
+   * Source address ranges (CIDR) the key may be presented from; empty means anywhere. This one
+   * *is* changeable - it narrows reach instead of granting it.
+   */
+  allowedCidrs?: string[]
 }
 
 /** Only the create response carries the plaintext key, and only once. */

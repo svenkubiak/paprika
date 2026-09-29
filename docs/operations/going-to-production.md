@@ -198,6 +198,16 @@ Operational hints:
 - **Store keys like passwords:** in the consumer's secret store, never in a repository, never in
   a mobile or browser client. Whoever holds the key *is* the bound user.
 - **A leaked key is revoked, not rotated in place.** Revocation is immediate.
+- **Bind the key to where it is used.** A service calls from a known address range, a thief does
+  not. [Allowed source ranges](/admin-ui/auth-settings#restricting-a-key-to-a-source) refuse a
+  key that arrives from anywhere else, indistinguishably from an invalid one. The address checked
+  is the peer of the connection and never `X-Forwarded-For`, so this binds a caller that reaches
+  Paprika directly over the internal network - which is what a server-to-server integration does.
+- **Refuse API keys on the public vHost** if you only use them server to server. One line in the
+  proxy config (`if ($http_authorization ~* "^Bearer\s+pk_") { return 401; }`, see
+  [the same section](/admin-ui/auth-settings#block-api-keys-on-the-public-vhost)) takes the whole
+  internet away from a leaked key. Optional - some setups legitimately call in over the public
+  host - but worth deciding on purpose rather than by default.
 
 A key never grants superadmin rights and never reaches the admin API; for administrative
 automation use `POST /api/admin/token` instead.
@@ -264,8 +274,9 @@ That difference decides what a proxy can do:
 - `issue-token` is **one route, called only by your backend** → it can be gated by path.
 - An API key used for data access travels on `/api/collections/*`, which has to stay public for
   real users → **no path gate is possible** there. Such a key is protected by its entropy, by the
-  rules of the bound user, and by being revocable. If your backend only ever calls `issue-token`,
-  its key never touches a public route in the first place.
+  rules of the bound user, by being revocable, and - if you set them - by its
+  [allowed source ranges](/admin-ui/auth-settings#restricting-a-key-to-a-source). If your backend
+  only ever calls `issue-token`, its key never touches a public route in the first place.
 
 Paprika-side, `/api/auth/issue-token` already refuses anyone who is not an allowlisted tenant user
 (`401`/`403`), so the proxy rule below is defense in depth: if the route is only reachable from

@@ -358,6 +358,8 @@ export const api = {
       bypassRules?: boolean
       /** Only settable here either: the flag cannot be changed after creation. */
       bypassHooks?: boolean
+      /** Source ranges in CIDR notation; empty or omitted means the key works from anywhere. */
+      allowedCidrs?: string[]
     }
   ): Promise<CreatedApiKey> {
     return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys`, {
@@ -368,9 +370,29 @@ export const api = {
         userId: payload.userId,
         expiresAt: payload.expiresAt || undefined,
         bypassRules: payload.bypassRules === true,
-        bypassHooks: payload.bypassHooks === true
+        bypassHooks: payload.bypassHooks === true,
+        allowedCidrs: payload.allowedCidrs ?? []
       })
     })
+  },
+
+  /**
+   * The only part of an existing key that can be changed. The bypass flags stay creation-only
+   * because they hand out reach; this one takes reach away, and hosts move.
+   */
+  updateApiKeyAllowedCidrs(
+    tenantId: string,
+    keyId: string,
+    allowedCidrs: string[]
+  ): Promise<void> {
+    return request(
+      `/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys/${encodeURIComponent(keyId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowedCidrs })
+      }
+    )
   },
 
   /** Stops the key from authenticating, but keeps its record visible in the list. */

@@ -16,8 +16,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import utils.ApiKeys;
+import utils.Cidrs;
 import utils.DbUtils;
 
+import java.net.InetAddress;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -85,6 +87,33 @@ public class ApiKeyService {
             boolean bypassRules,
             boolean bypassHooks) {}
 
+    /**
+     * What resolving a presented key came to. {@code resolved} is {@code null} for everything the
+     * caller has to treat as an invalid key; {@code sourceRejected} distinguishes one of those
+     * cases - a valid key presented from an address it is not bound to - for the request log and
+     * for nothing else. The response a client sees must stay identical, because a different
+     * answer would confirm to whoever presented the key that the secret itself is good.
+     */
+    public record ApiKeyResolution(ResolvedApiKey resolved, String rejectedKeyName, boolean sourceRejected) {
+        private static final ApiKeyResolution INVALID = new ApiKeyResolution(null, null, false);
+
+        static ApiKeyResolution invalid() {
+            return INVALID;
+        }
+
+        static ApiKeyResolution sourceRejected(String keyName) {
+            return new ApiKeyResolution(null, keyName, true);
+        }
+
+        static ApiKeyResolution of(ResolvedApiKey resolved) {
+            return new ApiKeyResolution(resolved, null, false);
+        }
+
+        public Optional<ResolvedApiKey> key() {
+            return Optional.ofNullable(resolved);
+        }
+    }
+
     /** A freshly created key: the record plus the plaintext, which is returned exactly once. */
     public record CreatedApiKey(Map<String, Object> key, String plaintext) {}
 
@@ -108,7 +137,7 @@ public class ApiKeyService {
 
     /** Creates an ordinary key, bound to the rules of its user and subject to its hooks. */
     public CreatedApiKey create(TenantDefinition tenant, String name, String userId, String expiresAt) {
-        return create(tenant, name, userId, expiresAt, false, false);
+        return create(tenant, name, userId, expiresAt, false, false, null);
     }
 
     /**
@@ -126,6 +155,12 @@ public class ApiKeyService {
      * every key, because a tenant may well be using hooks to log or narrow exactly the machine
      * traffic that API keys produce - and because a second, less trusted key must not inherit the
      * exemption of the first. Just like {@code bypassRules}, it cannot be set afterwards.
+     * <p>
+     * {@code allowedCidrs} is the opposite kind of field: it binds the key to the source
+     * addresses it may be presented from, and an invalid range is refused here rather than
+     * ignored - a range that silently vanishes would leave a key open to a network the operator
+     * believes they excluded. Empty means unrestricted, and because the field only ever narrows,
+     * it is the one property of a key that {@link #updateAllowedCidrs} may change later.
      */
     public CreatedApiKey create(
             TenantDefinition tenant,
@@ -133,7 +168,8 @@ public class ApiKeyService {
             String userId,
             String expiresAt,
             boolean bypassRules,
-            boolean bypassHooks) {
+            boolean bypassHooks,
+            List<String> allowedCidrs) {
         if (StringUtils.isBlank(name)) {
             throw new IllegalArgumentException("Name is required");
         }
@@ -153,6 +189,7 @@ public class ApiKeyService {
         }
 
         String normalizedExpiry = normalizeExpiry(expiresAt);
+        List<String> normalizedCidrs = Cidrs.normalizeAll(allowedCidrs);
         String plaintext = ApiKeys.generate();
         ApiKeyDefinition key = new ApiKeyDefinition(
                 DbUtils.id(),
@@ -166,7 +203,8 @@ public class ApiKeyService {
                 normalizedExpiry,
                 null,
                 bypassRules,
-                bypassHooks);
+                bypassHooks,
+                normalizedCidrs);
 
         keys().insertOne(toDocument(key));
 
@@ -210,6 +248,37 @@ public class ApiKeyService {
     }
 
     /**
+     * Narrows (or widens, or lifts) the source binding of an existing key.
+     * <p>
+     * This is the one property of a key that may change after it has been handed out, and the
+     * asymmetry to {@code bypassRules}/{@code bypassHooks} is the point: those grant reach, so a
+     * credential already in circulation must not acquire them behind the holder's back, while
+     * this one only ever says where the key works. Addresses, unlike trust, change on their own -
+     * a host moves, a network is renumbered - and forcing a key rotation for that would push
+     * operators towards not using the binding at all.
+     *
+     * @throws IllegalArgumentException if any of the ranges is not valid CIDR notation
+     */
+    public boolean updateAllowedCidrs(String tenantId, String keyId, List<String> allowedCidrs) {
+        if (StringUtils.isBlank(keyId)) {
+            return false;
+        }
+
+        List<String> normalized = Cidrs.normalizeAll(allowedCidrs);
+        boolean updated = keys().updateOne(
+                        and(eq("tenantId", tenantId), eq("id", keyId.trim())),
+                        new Document("$set", new Document("allowedCidrs", normalized)))
+                .getMatchedCount() == 1;
+
+        if (updated) {
+            LOG.info("Source binding of API key {} in tenant {} set to {}",
+                    keyId.trim(), tenantId, normalized.isEmpty() ? "unrestricted" : normalized);
+        }
+
+        return updated;
+    }
+
+    /**
      * Removes a key for good, record included. Revoking is the safer of the two - it keeps the
      * entry so it stays visible that this named key existed and when it was last used - so this
      * exists for housekeeping: a mistyped or superseded key that nobody wants to keep reading
@@ -249,30 +318,43 @@ public class ApiKeyService {
     }
 
     /**
-     * Resolves a presented key to the identity it is bound to, or empty when the key is unknown,
-     * revoked, expired, or its user or tenant is gone. Empty is treated exactly like an invalid
-     * access token by the callers.
+     * Resolves a presented key to the identity it is bound to, or nothing when the key is
+     * unknown, revoked, expired, presented from a source it is not bound to, or its user or
+     * tenant is gone. All of those are treated exactly like an invalid access token by the
+     * callers - the outcome only records <em>which</em> of them it was so the request log can say
+     * so; see {@link ApiKeyResolution}.
+     *
+     * @param source the peer of the TCP connection, or {@code null} when it cannot be
+     *               determined. A key with {@code allowedCidrs} fails closed on {@code null}:
+     *               "we do not know where this came from" is not a reason to let it through.
      */
-    public Optional<ResolvedApiKey> resolve(String presented) {
+    public ApiKeyResolution resolve(String presented, InetAddress source) {
         if (!ApiKeys.isApiKey(presented)) {
-            return Optional.empty();
+            return ApiKeyResolution.invalid();
         }
 
         Document document = keys().find(eq("lookup", ApiKeys.lookup(presented))).first();
         if (document == null) {
-            return Optional.empty();
+            return ApiKeyResolution.invalid();
         }
 
         ApiKeyDefinition key = fromDocument(document);
         if (!ApiKeys.matches(presented, key.keyHash()) || key.isRevoked() || isExpired(key)) {
-            return Optional.empty();
+            return ApiKeyResolution.invalid();
+        }
+
+        // Checked before anything else the key would cause - before the tenant and user lookups
+        // and before touch() - so that a key presented from the wrong place leaves no trace of
+        // having been used and costs no reads.
+        if (!isAllowedSource(key, source)) {
+            return ApiKeyResolution.sourceRejected(key.name());
         }
 
         TenantDefinition tenant = tenantService.findById(key.tenantId())
                 .filter(TenantDefinition::isActive)
                 .orElse(null);
         if (tenant == null) {
-            return Optional.empty();
+            return ApiKeyResolution.invalid();
         }
 
         TenantContext ctx = TenantContext.guest(tenant.id(), tenant.databaseName());
@@ -281,13 +363,23 @@ public class ApiKeyService {
         // Defence in depth: a role change on the bound user must never turn the key into an
         // admin credential, the same way create() refuses a non-user role in the first place.
         if (auth == null || !Role.USER.equals(auth.role())) {
-            return Optional.empty();
+            return ApiKeyResolution.invalid();
         }
 
         touch(key);
 
-        return Optional.of(new ResolvedApiKey(
+        return ApiKeyResolution.of(new ResolvedApiKey(
                 auth, key.id(), key.name(), key.bypassRules(), key.bypassHooks()));
+    }
+
+    /**
+     * Whether the key may be presented from this address. A key without {@code allowedCidrs} may
+     * be presented from anywhere, which is the behaviour of every key that existed before the
+     * field did.
+     */
+    private static boolean isAllowedSource(ApiKeyDefinition key, InetAddress source) {
+        List<String> allowed = key.allowedCidrs();
+        return allowed.isEmpty() || Cidrs.contains(allowed, source);
     }
 
     private void touch(ApiKeyDefinition key) {
@@ -362,7 +454,8 @@ public class ApiKeyService {
                 .append("expiresAt", key.expiresAt())
                 .append("revokedAt", key.revokedAt())
                 .append("bypassRules", key.bypassRules())
-                .append("bypassHooks", key.bypassHooks());
+                .append("bypassHooks", key.bypassHooks())
+                .append("allowedCidrs", key.allowedCidrs());
     }
 
     private ApiKeyDefinition fromDocument(Document doc) {
@@ -379,7 +472,9 @@ public class ApiKeyService {
                 doc.getString("revokedAt"),
                 // Keys written before these flags existed are ordinary keys
                 doc.getBoolean("bypassRules", false),
-                doc.getBoolean("bypassHooks", false));
+                doc.getBoolean("bypassHooks", false),
+                // ... and keys written before this field existed are bound to no source
+                allowedCidrs(doc));
     }
 
     /** The view the admin UI gets: everything but the hash, which never leaves this service. */
@@ -395,6 +490,19 @@ public class ApiKeyService {
         map.put("revokedAt", key.revokedAt());
         map.put("bypassRules", key.bypassRules());
         map.put("bypassHooks", key.bypassHooks());
+        map.put("allowedCidrs", key.allowedCidrs());
         return map;
+    }
+
+    private static List<String> allowedCidrs(Document doc) {
+        Object value = doc.get("allowedCidrs");
+        if (!(value instanceof List<?> list) || list.isEmpty()) {
+            return List.of();
+        }
+
+        return list.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .toList();
     }
 }

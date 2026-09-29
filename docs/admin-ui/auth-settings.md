@@ -63,6 +63,9 @@ keys** card at the bottom of this page (it needs an active tenant).
   (see below).
 - **Bypass hooks** - off by default. Switch it on only for the service a hook itself calls back
   into Paprika (see below).
+- **Allowed source ranges** - optional. CIDR ranges the key may be presented from; empty means
+  anywhere, which is the default and the old behaviour (see
+  [Restricting a key to a source](#restricting-a-key-to-a-source)).
 
 The plaintext key is shown **once**, right after creating it, with a copy button:
 
@@ -90,8 +93,10 @@ whom** a session is minted. They meet only in that `issue-token` accepts a key a
 credential, next to an access token - which is exactly what lets a middleware work without any
 password at all.
 
-**The list** shows each key's name, its non-secret prefix, the bound user, when it was last used
-(updated at most once per minute, so it never slows a request down), its expiry and its status.
+**The list** shows each key's name, its non-secret prefix, the bound user, its source binding
+(the number of ranges, with the ranges themselves in the tooltip, or `anywhere`), when it was
+last used (updated at most once per minute, so it never slows a request down), its expiry and
+its status.
 
 Two ways to get rid of a key, and the difference matters:
 
@@ -128,6 +133,12 @@ What stays true for a bypassing key:
 
 The switch is only available **while creating** the key. There is no way to turn it on or off
 afterwards: revoke the key and issue a new one, which is the safe path anyway.
+
+That is the line between the three per-key fields, and it is worth stating once: `bypassRules`
+and `bypassHooks` **give** reach, so they can only be set while creating the key - a credential
+already in someone's hands must never grow. [`allowedCidrs`](#restricting-a-key-to-a-source)
+**takes** reach away, so it is editable at any time - it can only ever make the key work in fewer
+places, and the addresses it names change on their own when a host moves.
 
 ::: danger Whoever holds a bypassing key has all the data
 A rule-bypassing key reads and writes every record of every collection of this tenant, across all
@@ -191,6 +202,83 @@ If a hook is what enforces device attestation, tenancy checks or an approval gat
 is outside all of it. Issue one only for the service the hook itself calls, keep it bound to that
 service's own user, and use an ordinary key for everything else that service does.
 :::
+
+### Restricting a key to a source
+
+An API key is a bearer credential with a single factor, no expiry unless you set one, and - with
+[Bypass collection rules](#bypass-collection-rules) - the reach of a whole tenant. It is used
+machine to machine, which means from a small and known set of addresses; it is stolen somewhere
+else entirely, and then used from there. **Allowed source ranges** closes that gap: a key with
+ranges is only accepted when it arrives from one of them.
+
+Set them while creating the key, or later with the network button next to a key in the list. One
+CIDR range per line, IPv4 and IPv6 alike:
+
+```
+10.200.0.0/24
+2a01:4f8:c17:c74c::1/128
+```
+
+A bare address without a prefix length is accepted as a shorthand and stored as `/32` or `/128`.
+Host bits below the prefix are masked off, so `10.200.0.7/24` is saved - and shown back - as
+`10.200.0.0/24`. Both happen when the key is saved, not on every request. A range Paprika cannot
+parse is rejected with a `400` and nothing is written: a malformed entry that was quietly dropped
+would leave you believing you had excluded a network you had not.
+
+Only CIDR ranges are accepted. No hostnames, no wildcards, no geo lookup - all three would have
+to be resolved while a request is being authenticated, which would put an external service, its
+latency and its outages into the authentication path.
+
+Over the API this is `PATCH /api/meta/tenants/{tenantId}/api-keys/{keyId}` with
+`{"allowedCidrs": [...]}`; an empty list lifts the binding. It is the only field of an existing
+key that route accepts - a body naming `bypassRules`, `bypassHooks`, `name`, `userId` or
+`expiresAt` is answered with a `400` rather than quietly ignored, so a `204` can never be read
+as "the flag is set now".
+
+**A rejected key looks exactly like an invalid one.** Same `401`, same body, same
+`WWW-Authenticate` header. A distinct error would tell whoever presented the key that the secret
+itself is good and only the location is wrong, which is precisely what someone holding a stolen
+key would like to learn. The [request log](/admin-ui/request-logs) does say it - the entry for
+such a request names the key and the reason - so you are not left guessing why a key you know is
+valid stopped working.
+
+::: danger The address checked is the peer of the connection, not `X-Forwarded-For`
+Paprika compares the ranges against the address of the TCP connection the request arrived on. It
+does **not** read `X-Forwarded-For`, `X-Real-IP` or `Forwarded`, and it never will: those are
+written by whoever sends the request, so a binding that honoured them could be lifted by the very
+caller it is meant to keep out, by adding one header.
+
+The consequence follows directly: **if the key reaches Paprika through your reverse proxy, the
+proxy is what you are binding to**, and the restriction does nothing about where the real caller
+sits. It works when the calling machine reaches Paprika directly - over the internal network, a
+private interface or the loopback - which is the normal shape of a server-to-server integration
+and the case this feature is for. The request log's `clientIp` field is a separate thing with a
+separate purpose: it *is* read from the proxy headers, because a log entry is a record, not an
+authorization decision.
+:::
+
+#### Block API keys on the public vHost
+
+There is a measure that sits in front of this one, on your side, and it is worth taking
+deliberately. If a key is only ever used server to server - the normal case - the calling machine
+reaches Paprika over the internal network, not through the public vHost. Then nothing legitimate
+ever presents a key on the public host, and you can refuse them there outright:
+
+```nginx
+# Paprika accepts an API key as `Authorization: Bearer pk_…` on every route. If you use keys
+# server-to-server only, turn them away here: a key coming through the front door is either a
+# mistake or stolen.
+# 401 rather than 403 - the caller does not learn whether the key would have been valid.
+if ($http_authorization ~* "^Bearer\s+pk_") { return 401; }
+```
+
+This is optional - there are setups where an integration legitimately comes in over the public
+host, and then this rule would break it. But if you use API keys at all, decide it consciously:
+the block costs one line and takes the entire internet away from a key that has leaked.
+
+`allowedCidrs` is the same idea inside Paprika, and it keeps working on the day the proxy config
+is wrong. The two together are defense in depth, not redundancy: the proxy rule decides which
+door a key may come through, the ranges decide which machine may hold it.
 
 Keys cannot be bound to a superadmin: that would be a cross-tenant bypass credential, which is
 deliberately not part of this feature.

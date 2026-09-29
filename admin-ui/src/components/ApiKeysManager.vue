@@ -22,6 +22,10 @@ const revokeOpen = ref(false)
 const deleteOpen = ref(false)
 const revokingKey = ref<ApiKey | null>(null)
 const deletingKey = ref<ApiKey | null>(null)
+const sourceOpen = ref(false)
+const savingSource = ref(false)
+const sourceKey = ref<ApiKey | null>(null)
+const sourceInput = ref('')
 
 const form = ref<{
   name: string
@@ -29,13 +33,26 @@ const form = ref<{
   expiresAt: string
   bypassRules: boolean
   bypassHooks: boolean
+  allowedCidrs: string
 }>({
   name: '',
   userId: '',
   expiresAt: '',
   bypassRules: false,
-  bypassHooks: false
+  bypassHooks: false,
+  allowedCidrs: ''
 })
+
+/**
+ * One range per line or comma separated - the server normalises and rejects what it cannot
+ * parse, so nothing is validated twice here.
+ */
+function parseCidrs(value: string): string[] {
+  return value
+    .split(/[\n,;]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+}
 
 /** Shown exactly once, right after creating: the server cannot hand it out again. */
 const createdKey = ref<string | null>(null)
@@ -52,6 +69,7 @@ const columns = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'keyPrefix', header: 'Key' },
   { accessorKey: 'userId', header: 'Bound user' },
+  { id: 'allowedCidrs', header: 'Source' },
   { accessorKey: 'lastUsedAt', header: 'Last used' },
   { accessorKey: 'expiresAt', header: 'Expires' },
   { id: 'status', header: 'Status' },
@@ -102,7 +120,14 @@ async function refresh() {
 }
 
 function openCreate() {
-  form.value = { name: '', userId: '', expiresAt: '', bypassRules: false, bypassHooks: false }
+  form.value = {
+    name: '',
+    userId: '',
+    expiresAt: '',
+    bypassRules: false,
+    bypassHooks: false,
+    allowedCidrs: ''
+  }
   createdKey.value = null
   copied.value = false
   createOpen.value = true
@@ -141,7 +166,8 @@ async function createKey() {
       userId: form.value.userId,
       expiresAt: form.value.expiresAt ? new Date(form.value.expiresAt).toISOString() : null,
       bypassRules: form.value.bypassRules,
-      bypassHooks: form.value.bypassHooks
+      bypassHooks: form.value.bypassHooks,
+      allowedCidrs: parseCidrs(form.value.allowedCidrs)
     })
     createdKey.value = created.key
     await refresh()
@@ -167,6 +193,33 @@ async function copyKey() {
       color: 'error',
       icon: 'i-lucide-circle-x'
     })
+  }
+}
+
+function editSource(key: ApiKey) {
+  sourceKey.value = key
+  sourceInput.value = (key.allowedCidrs ?? []).join('\n')
+  sourceOpen.value = true
+}
+
+async function saveSource() {
+  const tenant = activeTenant.value
+  if (!tenant || !sourceKey.value) return
+
+  savingSource.value = true
+  try {
+    await api.updateApiKeyAllowedCidrs(tenant.id, sourceKey.value.id, parseCidrs(sourceInput.value))
+    sourceOpen.value = false
+    await refresh()
+    toast.add({ title: 'Source binding updated', color: 'success', icon: 'i-lucide-circle-check' })
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to update the source binding',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+  } finally {
+    savingSource.value = false
   }
 }
 
@@ -271,6 +324,21 @@ async function deleteKey() {
         <template #userId-cell="{ row }">
           <span class="text-sm">{{ usernameFor(row.original.userId) }}</span>
         </template>
+        <template #allowedCidrs-cell="{ row }">
+          <UBadge
+            v-if="row.original.allowedCidrs?.length"
+            color="success"
+            variant="soft"
+            size="xs"
+            :title="row.original.allowedCidrs.join('\n')"
+          >
+            {{ row.original.allowedCidrs.length }}
+            {{ row.original.allowedCidrs.length === 1 ? 'range' : 'ranges' }}
+          </UBadge>
+          <span v-else class="text-sm text-muted" title="This key works from any address">
+            anywhere
+          </span>
+        </template>
         <template #lastUsedAt-cell="{ row }">
           <span class="font-mono text-sm text-muted">{{ row.original.lastUsedAt || 'never' }}</span>
         </template>
@@ -284,6 +352,15 @@ async function deleteKey() {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-2" @click.stop>
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-network"
+              :aria-label="'Edit source ranges of ' + row.original.name"
+              title="Restrict this key to source address ranges"
+              @click="editSource(row.original)"
+            />
             <UButton
               v-if="!row.original.revokedAt"
               size="sm"
@@ -353,6 +430,10 @@ async function deleteKey() {
                 This key <strong>runs no hooks</strong>: nothing a hook checks, logs or rewrites
                 applies to its requests.
               </template>
+              <template v-if="parseCidrs(form.allowedCidrs).length">
+                It is only accepted from
+                <strong>{{ parseCidrs(form.allowedCidrs).join(', ') }}</strong>.
+              </template>
             </p>
           </div>
 
@@ -417,6 +498,21 @@ async function deleteKey() {
             </div>
 
             <PField
+              label="Allowed source ranges"
+              icon="i-lucide-network"
+              optional
+              help="CIDR ranges this key may be presented from, one per line. Empty means anywhere."
+              details="IPv4 and IPv6, e.g. 10.200.0.0/24 or 2a01:4f8:c17:c74c::1/128. A bare address becomes a /32 or /128. Checked against the peer of the TCP connection, never against X-Forwarded-For — so it binds a caller that reaches Paprika directly, not one that comes through your reverse proxy."
+            >
+              <UTextarea
+                v-model="form.allowedCidrs"
+                :rows="3"
+                class="w-full font-mono"
+                placeholder="10.200.0.0/24"
+              />
+            </PField>
+
+            <PField
               label="Expires"
               icon="i-lucide-calendar"
               optional
@@ -442,6 +538,48 @@ async function deleteKey() {
                   Create key
                 </UButton>
               </template>
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="sourceOpen" portal="body" :ui="modalUi">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-network" class="size-5 text-primary" />
+              <h3 class="font-semibold">Source ranges</h3>
+            </div>
+          </template>
+
+          <div class="space-y-3">
+            <p class="text-sm text-muted">
+              Which addresses "{{ sourceKey?.name }}" may be presented from, one CIDR range per
+              line. Leave this empty to let the key work from anywhere.
+            </p>
+            <UTextarea
+              v-model="sourceInput"
+              :rows="4"
+              class="w-full font-mono"
+              placeholder="10.200.0.0/24"
+            />
+            <UAlert
+              color="warning"
+              variant="soft"
+              icon="i-lucide-info"
+              title="The address checked is the peer of the connection"
+              description="Not X-Forwarded-For — a header the caller writes must not be able to lift this. If the key reaches Paprika through your reverse proxy, the proxy is what you would be binding here; a server-to-server integration on the internal network is the case this is for. Unlike the bypass flags, this can be changed at any time: it only ever narrows where the key works."
+            />
+          </div>
+
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" @click="sourceOpen = false">Cancel</UButton>
+              <UButton :loading="savingSource" icon="i-lucide-check" @click="saveSource">
+                Save
+              </UButton>
             </div>
           </template>
         </UCard>

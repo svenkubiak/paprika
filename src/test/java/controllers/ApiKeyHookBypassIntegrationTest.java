@@ -271,15 +271,22 @@ class ApiKeyHookBypassIntegrationTest {
         assertThat(list.getContent(), containsString("\"bypassHooks\":true"));
         assertThat(list.getContent(), containsString("\"bypassHooks\":false"));
 
-        // There is no route that could flip the flag of an existing key
+        // The update route exists for the source binding only; naming the flag is refused
+        // rather than silently dropped, so a 204 can never be read as "the flag is set now".
         TestResponse patched = AdminTestUtils.patchWithAdminCookies(
                 "/api/meta/tenants/" + tenant.id() + "/api-keys/" + ordinary.id(),
                 adminCookies(),
                 "{\"bypassHooks\":true}",
                 "application/json");
-        assertThat(patched.getStatusCode(), anyOf(
-                equalTo(StatusCodes.NOT_FOUND),
-                equalTo(StatusCodes.METHOD_NOT_ALLOWED)));
+        assertThat(patched.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+
+        // ... and the key really did stay a hook-running one
+        Document stored = Application.getInstance(services.TenantDatabaseResolver.class)
+                .systemCollection(models.ApiKeyDefinition.COLLECTION)
+                .find(new Document("id", ordinary.id()))
+                .first();
+        assertThat(stored, notNullValue());
+        assertThat(stored.getBoolean("bypassHooks", false), is(false));
     }
 
     private record CreatedKey(String id, String key) {}

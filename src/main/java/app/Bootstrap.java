@@ -143,6 +143,7 @@ public class Bootstrap implements MangooBootstrap {
                 On.delete().to("/api/meta/tenants/{tenantId}/users/{userId}").respondeWith("deleteUser"),
                 On.get().to("/api/meta/tenants/{tenantId}/api-keys").respondeWith("listApiKeys"),
                 On.post().to("/api/meta/tenants/{tenantId}/api-keys").respondeWith("createApiKey"),
+                On.patch().to("/api/meta/tenants/{tenantId}/api-keys/{keyId}").respondeWith("updateApiKey"),
                 On.post().to("/api/meta/tenants/{tenantId}/api-keys/{keyId}/revoke").respondeWith("revokeApiKey"),
                 On.delete().to("/api/meta/tenants/{tenantId}/api-keys/{keyId}").respondeWith("deleteApiKey")
         );

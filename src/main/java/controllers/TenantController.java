@@ -3,6 +3,7 @@ package controllers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import dtos.ApiKeyDto;
+import dtos.ApiKeyUpdateDto;
 import dtos.TenantDto;
 import dtos.TenantUpdateDto;
 import dtos.UserDto;
@@ -34,6 +35,13 @@ public class TenantController {
      * a field of the tenant's own users schema and is handed to the service as a custom field.
      */
     private static final Set<String> CORE_USER_FIELDS = Set.of("username", "email", "password");
+
+    /**
+     * API key fields that grant reach and are therefore fixed at creation. Naming one of them in
+     * an update is refused rather than ignored - see {@link #updateApiKey}.
+     */
+    private static final Set<String> IMMUTABLE_API_KEY_FIELDS =
+            Set.of("bypassRules", "bypassHooks", "name", "userId", "expiresAt");
 
     private final TenantService tenantService;
     private final TenantUserService tenantUserService;
@@ -213,7 +221,8 @@ public class TenantController {
                                 apiKeyDto.userId(),
                                 apiKeyDto.expiresAt(),
                                 Boolean.TRUE.equals(apiKeyDto.bypassRules()),
-                                Boolean.TRUE.equals(apiKeyDto.bypassHooks()));
+                                Boolean.TRUE.equals(apiKeyDto.bypassHooks()),
+                                apiKeyDto.allowedCidrs());
 
                         Map<String, Object> body = new LinkedHashMap<>(created.key());
                         body.put("key", created.plaintext());
@@ -223,6 +232,68 @@ public class TenantController {
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
+    }
+
+    /**
+     * Changes the source binding of an existing key - the only property of a key that may move
+     * after it has been handed out. {@code bypassRules} and {@code bypassHooks} grant reach and
+     * stay creation-only; {@code allowedCidrs} takes reach away, and the addresses it names
+     * change when a host does.
+     * <p>
+     * An unparsable range is a {@code 400}: accepting the request and quietly dropping the entry
+     * would leave the operator believing they had excluded a network they had not. So is a body
+     * that names one of the two bypass flags - answering {@code 204} to it would look like the
+     * flag had been set, and "the field was silently ignored" is not something a caller should
+     * have to infer from a subsequent read.
+     */
+    public Response updateApiKey(
+            String tenantId,
+            String keyId,
+            @NotNull(message = "Request body is required") @Valid ApiKeyUpdateDto apiKeyUpdateDto,
+            Request request) {
+
+        String immutable = immutableFieldIn(request);
+        if (immutable != null) {
+            return Response.badRequest().bodyJson(Map.of("error",
+                    immutable + " is set when the key is created and cannot be changed afterwards"));
+        }
+
+        try {
+            return tenantService.findById(tenantId)
+                    .filter(tenant -> apiKeyService.updateAllowedCidrs(
+                            tenant.id(), keyId, apiKeyUpdateDto.allowedCidrs()))
+                    .map(tenant -> Response.status(StatusCodes.NO_CONTENT))
+                    .orElseGet(Response::notFound);
+        } catch (IllegalArgumentException e) {
+            return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * The first creation-only API key field the body tries to touch, or {@code null}. Checked on
+     * the raw body rather than on the DTO because the DTO does not carry those fields at all -
+     * which is exactly why an unnoticed rename or a copied payload could otherwise slip through
+     * unanswered.
+     */
+    private String immutableFieldIn(Request request) {
+        String body = request.getBody();
+        if (StringUtils.isBlank(body)) {
+            return null;
+        }
+
+        try {
+            JsonNode node = JsonUtils.getMapper().readTree(body);
+            for (String field : IMMUTABLE_API_KEY_FIELDS) {
+                if (node.has(field)) {
+                    return field;
+                }
+            }
+        } catch (JsonProcessingException e) {
+            // An unreadable body fails on the DTO binding, which is where it belongs
+            return null;
+        }
+
+        return null;
     }
 
     /** Stops a key from authenticating but keeps its record, so it stays auditable. */

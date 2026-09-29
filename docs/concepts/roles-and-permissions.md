@@ -235,6 +235,12 @@ Consequences worth spelling out:
   touching anyone else, and see per key when it was last used. A revoked key keeps its record so
   it stays auditable; deleting a key removes that record too, for housekeeping. The request log records which key
   authenticated a request (id and name, never the key).
+- **A key can be bound to where it is used.**
+  [Allowed source ranges](/admin-ui/auth-settings#restricting-a-key-to-a-source) name the CIDR
+  ranges a key may be presented from; a key arriving from anywhere else is refused exactly like
+  an invalid one. Empty, the default, means anywhere. Unlike the two bypass flags this one is
+  editable: those hand out reach and must not move under a distributed credential, while this
+  one only ever takes reach away.
 
 ::: danger Security assumption
 **Whoever holds the key is the bound user** - including every permission that user's rules grant,

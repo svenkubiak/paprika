@@ -119,7 +119,7 @@ public class RequestLogService {
                 // Path only: query strings carry filter values, and those are user data.
                 .append("url", path)
                 .append("statusCode", statusCode)
-                .append("errorMessage", statusCode >= 400 ? errorMessage : null)
+                .append("errorMessage", statusCode >= 400 ? errorMessage(request, errorMessage) : null)
                 .append("timestamp", Instant.now().toString())
                 .append("execTimeMs", execTimeMs);
 
@@ -151,6 +151,23 @@ public class RequestLogService {
 
         resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS).insertOne(entry);
         maybePurgeExpired(ctx);
+    }
+
+    /**
+     * The message the log records for a failed request. Normally whatever the response said, with
+     * one exception: a key turned away because of its source answers the caller with the plain
+     * {@code Unauthorized} of an invalid key, and only here is it allowed to say what actually
+     * happened. Without that the operator reads "unauthorized" on a key they know is valid and
+     * goes looking for an expiry or a revocation that is not there.
+     */
+    private static String errorMessage(Request request, String responseMessage) {
+        if (!Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_SOURCE_REJECTED))) {
+            return responseMessage;
+        }
+
+        Object name = request.getAttribute(ApiKeys.ATTRIBUTE_REJECTED_NAME);
+        return "API key rejected: source address not in its allowedCidrs"
+                + (name instanceof String keyName && !keyName.isBlank() ? " (key: " + keyName + ")" : "");
     }
 
     /**

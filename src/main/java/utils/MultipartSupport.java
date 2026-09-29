@@ -120,7 +120,7 @@ public final class MultipartSupport {
     }
 
     public static Optional<Form> form(Request request) {
-        HttpServerExchange exchange = exchange(request);
+        HttpServerExchange exchange = Exchanges.of(request);
         if (exchange == null) {
             return Optional.empty();
         }
@@ -131,7 +131,7 @@ public final class MultipartSupport {
     }
 
     public static ParsedMultipart parseMultipart(Request request) throws IOException {
-        HttpServerExchange exchange = exchange(request);
+        HttpServerExchange exchange = Exchanges.of(request);
         Optional<Form> mangooForm = form(request);
         FormData formData = exchange != null ? exchange.getAttachment(FormDataParser.FORM_DATA) : null;
 
@@ -314,16 +314,6 @@ public final class MultipartSupport {
 
     private static byte[] readAll(InputStream inputStream) throws IOException {
         return inputStream.readAllBytes();
-    }
-
-    private static HttpServerExchange exchange(Request request) {
-        try {
-            Field field = Request.class.getDeclaredField("httpServerExchange");
-            field.setAccessible(true);
-            return (HttpServerExchange) field.get(request);
-        } catch (ReflectiveOperationException e) {
-            return null;
-        }
     }
 
     public record UploadedFile(String fileName, byte[] bytes, String mimeType) {

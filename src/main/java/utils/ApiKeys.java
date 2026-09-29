@@ -47,6 +47,21 @@ public final class ApiKeys {
      */
     public static final String ATTRIBUTE_BYPASS_HOOKS = "paprika.apikey.bypassHooks";
 
+    /**
+     * Set when a key was valid in every respect but presented from an address outside its
+     * {@code allowedCidrs}. Read by the request log only, and never by anything that shapes the
+     * response: the caller must not be able to tell this case from an unknown key, or they would
+     * learn that the secret they hold is real and only the place is wrong.
+     */
+    public static final String ATTRIBUTE_SOURCE_REJECTED = "paprika.apikey.sourceRejected";
+
+    /**
+     * The name of the key rejected that way. Kept apart from {@link #ATTRIBUTE_NAME}, which means
+     * "this key authenticated the request" - a rejected key authenticated nothing, and the admin
+     * UI renders that attribute as exactly that claim.
+     */
+    public static final String ATTRIBUTE_REJECTED_NAME = "paprika.apikey.rejectedName";
+
     private static final int SECRET_LENGTH = 40;
 
     /**

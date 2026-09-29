@@ -15,6 +15,7 @@ import models.TokenPair;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import utils.ApiKeys;
+import utils.Exchanges;
 
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
@@ -111,9 +112,26 @@ public class AuthService {
      * An API key yields the very same context an access token of the bound user yields, so nothing
      * downstream has to know which of the two authenticated the request. The key id and name are
      * put on the request so the request log can name it - the key itself never is.
+     * <p>
+     * A key bound to source ranges is checked against the peer of the TCP connection, which is
+     * read here because this is the only layer that sees the key at all. Deliberately not against
+     * {@code X-Forwarded-For}: that header is written by the caller, so a binding that honoured
+     * it could be lifted by the very party it is meant to keep out. A rejection is
+     * indistinguishable from an unknown key to the caller - same guest context, and therefore the
+     * same status, body and {@code WWW-Authenticate} header further up - and only the request log
+     * is told which of the two it was, so the operator does not go looking for a broken key.
      */
     private AuthContext resolveApiKey(String key, Request request) {
-        return apiKeyService.resolve(key)
+        ApiKeyService.ApiKeyResolution resolution =
+                apiKeyService.resolve(key, Exchanges.peerAddress(request));
+
+        if (resolution.sourceRejected()) {
+            request.addAttribute(ApiKeys.ATTRIBUTE_SOURCE_REJECTED, Boolean.TRUE);
+            request.addAttribute(ApiKeys.ATTRIBUTE_REJECTED_NAME, resolution.rejectedKeyName());
+            return AuthContext.guest();
+        }
+
+        return resolution.key()
                 .map(resolved -> {
                     request.addAttribute(ApiKeys.ATTRIBUTE_ID, resolved.keyId());
                     request.addAttribute(ApiKeys.ATTRIBUTE_NAME, resolved.keyName());
