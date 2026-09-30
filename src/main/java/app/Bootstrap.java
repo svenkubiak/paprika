@@ -1,6 +1,7 @@
 package app;
 
 import controllers.*;
+import handlers.PaprikaServerSentEventHandler;
 import io.mangoo.constants.Header;
 import io.mangoo.core.Server;
 import io.mangoo.interfaces.MangooBootstrap;
@@ -189,7 +190,7 @@ public class Bootstrap implements MangooBootstrap {
                 On.post().to("/api/admin/backup/import").respondeWith("importBackup")
         );
 
-        Bind.serverSentEvent().to("/api/realtime");
+        Bind.serverSentEvent().to("/api/realtime").withHandler(PaprikaServerSentEventHandler.class);
 
         Bind.controller(RealtimeController.class).withRoutes(
                 On.post().to("/api/realtime/subscribe").respondeWith("subscribe")

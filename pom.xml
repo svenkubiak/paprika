@@ -9,7 +9,7 @@
 	<packaging>jar</packaging>
 	<url>https://github.com/svenkubiak/paprika</url>
 	<properties>
-		<mangooio.version>10.13.0</mangooio.version>
+		<mangooio.version>10.13.1</mangooio.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<jdk.version>25</jdk.version>
 		<node.version>v24.21.0</node.version>

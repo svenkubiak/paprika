@@ -25,7 +25,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Singleton
 public class RealtimeService {
     private static final Logger LOG = LogManager.getLogger(RealtimeService.class);
-    private static final String REALTIME_PATH = "/api/realtime";
     private static final String PURGE_INTERVAL = "every 30s";
     private final Map<String, RealtimeClient> clients = new ConcurrentHashMap<>();
     private final RuleService ruleService;
@@ -325,10 +324,6 @@ public class RealtimeService {
                 data,
                 StringUtils.isBlank(eventName) ? null : eventName,
                 StringUtils.isBlank(id) ? null : id);
-    }
-
-    public boolean handlesPath(String requestUri) {
-        return REALTIME_PATH.equals(requestUri);
     }
 
     private record UndertowRealtimeConnection(
