@@ -699,7 +699,7 @@ export const realtimeEndpointDocs: ApiEndpointDoc[] = [
     method: 'POST',
     path: '/api/realtime/subscribe',
     summary:
-      'Authenticate the SSE client and register collection or record subscriptions. Until this succeeds, record events are not delivered. Events are also skipped when viewRule denies the subscriber.',
+      'Authenticate the SSE client and register collection or record subscriptions. Until this succeeds, record events are not delivered. Events are also skipped when viewRule denies the subscriber. The token is checked here and not again: the stream keeps the identity it was subscribed with until it disconnects, so reconnect and subscribe again after refreshing the token.',
     examples: [
       {
         title: 'Request',
