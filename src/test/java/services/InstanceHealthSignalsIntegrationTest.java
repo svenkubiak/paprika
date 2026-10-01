@@ -24,17 +24,10 @@ import java.time.temporal.ChronoUnit;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * The dashboard signals that replaced the two hardcoded "all green" indicators. Each one is only
- * worth showing if it can actually report a problem, so that is what is pinned here.
- */
 @ExtendWith({TestRunner.class})
 class InstanceHealthSignalsIntegrationTest {
 
-    /**
-     * Counted on an own tenant, not on the default one: the rest of the suite writes into that
-     * log all the time, so the expected number would depend on what ran before.
-     */
+    /** Counted on an own tenant: the rest of the suite keeps writing into the default tenant's log. */
     @Test
     void serverErrorsAreCountedForTheLastDayAndOnlyFrom500Up() {
         TenantService tenantService = Application.getInstance(TenantService.class);
@@ -47,7 +40,6 @@ class InstanceHealthSignalsIntegrationTest {
 
             logEntry(ctx, 500, Instant.now());
             logEntry(ctx, 503, Instant.now().minus(23, ChronoUnit.HOURS));
-            // A client being a client is not a server error, and yesterday is not today.
             logEntry(ctx, 404, Instant.now());
             logEntry(ctx, 200, Instant.now());
             logEntry(ctx, 500, Instant.now().minus(25, ChronoUnit.HOURS));
@@ -66,11 +58,7 @@ class InstanceHealthSignalsIntegrationTest {
         assertThat(requestLogService.countServerErrors24h(TenantContext.guest(null, null)), equalTo(0L));
     }
 
-    /**
-     * Reproduces what a restored archive does: duplicates are already in place when the unique
-     * index is created, so the index is not created and nothing enforces uniqueness any more.
-     * Until now the only trace of that was a line in the startup log.
-     */
+    /** Reproduces a restored archive: duplicates already exist, so the unique index cannot be created. */
     @Test
     void aTenantThatCannotCarryTheUniqueIndexIsReported() {
         TenantService tenantService = Application.getInstance(TenantService.class);
@@ -90,8 +78,7 @@ class InstanceHealthSignalsIntegrationTest {
 
             assertThat(tenantService.degradedIndexDatabaseNames(), hasItem(tenant.databaseName()));
 
-            // And it clears again once the duplicates are gone - the warning must not outlive
-            // the problem until the next restart.
+            // It clears once the duplicates are gone, not only at the next restart.
             metaCollections.deleteOne(new Document("name", "duplicate"));
             tenantService.initializeTenantDatabase(tenant);
 
@@ -120,10 +107,7 @@ class InstanceHealthSignalsIntegrationTest {
         assertThat(tenantService.degradedIndexDatabaseNames(), not(hasItem(tenant.databaseName())));
     }
 
-    /**
-     * The payload the dashboard is built from. The two removed fields are asserted on explicitly:
-     * they were hardcoded to true and must not come back as something the UI can render green.
-     */
+    /** The two removed fields were hardcoded to true and must not come back as something the UI renders green. */
     @Test
     void bootstrapPayloadCarriesTheSignalsAndNoLongerTheHardcodedOnes() {
         HttpCookie authentication = AdminTestUtils.loginAsAdmin();
@@ -146,10 +130,6 @@ class InstanceHealthSignalsIntegrationTest {
         assertThat(warnings.get("degradedIndexTenants").isArray(), is(true));
     }
 
-    /**
-     * The test instance has an SMTP host, so the mail warning has to stay silent no matter which
-     * recovery features a tenant switches on.
-     */
     @Test
     void noMailWarningWhileTheInstanceHasAnSmtpHost() {
         TenantService tenantService = Application.getInstance(TenantService.class);

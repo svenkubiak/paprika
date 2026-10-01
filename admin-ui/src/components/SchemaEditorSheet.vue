@@ -44,7 +44,7 @@ export interface SchemaRow {
   minLength?: number
   maxLength?: number
   pattern: string
-  /** STRING only: chooses the "Text" entry of the type list, i.e. options.multiline. */
+  /** STRING only: selects the "Text" entry, i.e. options.multiline. */
   stringMultiline: boolean
   numberMin?: number
   numberMax?: number
@@ -78,10 +78,7 @@ const { bootstrap } = useBootstrap()
 
 const fieldTypeItems = fieldTypeChoiceSelectItems()
 
-/**
- * "String" and "Text" are two entries over the same field type, so switching between them only
- * flips options.multiline - the type stays STRING and the length/pattern options keep their values.
- */
+/** "String" and "Text" share the STRING type; switching only flips options.multiline. */
 const typeChoice = computed<FieldTypeChoice>({
   get: () => fieldTypeChoice(props.row.type, props.row.stringMultiline),
   set: (choice) => {
@@ -167,11 +164,6 @@ function typeIcon(type: FieldDefinition['type'], multiline: boolean) {
   return fieldTypeChoiceIcon(type, multiline)
 }
 
-/**
- * A pattern is the one option here that fails silently: it is accepted as a string, and the
- * mistake only surfaces weeks later when a record is rejected - or worse, when one is not. The
- * sample box next to it costs one `RegExp` call and catches both cases while the field is open.
- */
 const patternSample = ref('')
 
 const patternError = computed(() => {
@@ -386,10 +378,6 @@ const jsonMaxBytesHint = computed(() => {
             >
               <UInput v-model="row.pattern" class="font-mono" placeholder="^[a-z-]+$" />
             </PField>
-            <!--
-              Only offered once there is a pattern to test: an empty sample box on every string
-              field would be one more thing to read past.
-            -->
             <PField
               v-if="row.pattern.trim() && !patternError"
               label="Sample value"

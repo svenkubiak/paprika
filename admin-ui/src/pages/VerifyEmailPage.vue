@@ -9,9 +9,8 @@ const state = ref<State>('working')
 const username = ref('')
 const error = ref('')
 
-// The link is opened from a mailbox, so the confirmation runs on its own without anything to
-// click: the token is lifted out of the fragment, spent right away and removed from the address
-// bar, so a bookmark or a shared screenshot of this page carries nothing usable.
+// The token is spent right away and removed from the address bar, so a bookmark or a screenshot
+// of this page carries nothing usable.
 onMounted(async () => {
   const token = new URLSearchParams(window.location.hash.slice(1)).get('token') || ''
   window.history.replaceState(window.history.state, '', '/verify-email')

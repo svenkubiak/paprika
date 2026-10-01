@@ -13,11 +13,9 @@ public class Module extends AbstractModule {
     @Override
     protected void configure() {
         bind(MangooBootstrap.class).to(Bootstrap.class);
-        // Binding this makes mangoo run it on every controller route - that is what gives the
-        // request log a start timestamp and a correlation id for routes nobody annotated.
+        // mangoo runs this on every controller route, giving the request log a start time and id.
         bind(OncePerRequestFilter.class).to(RequestLogFilter.class);
-        // Every controller response is rendered through the ResponseHandler, which is where the
-        // request log entry is written - once, for all routes.
+        // Every controller response passes the ResponseHandler, where the request log entry is written.
         bind(ResponseHandler.class).to(PaprikaResponseHandler.class);
     }
 }

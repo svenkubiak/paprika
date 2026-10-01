@@ -4,11 +4,8 @@ import auth.AuthContext;
 
 import java.util.Optional;
 
-/**
- * Outcome of a trusted token issue request. {@code USER_NOT_FOUND} covers an unknown id, an
- * inactive account, and a user of another tenant alike: telling them apart would turn the
- * endpoint into an enumeration oracle across tenant boundaries.
- */
+// USER_NOT_FOUND covers unknown, inactive and other-tenant users alike, so the endpoint cannot
+// enumerate users across tenants.
 public record TokenIssueResult(TokenIssueResult.Status status, Optional<AuthContext> auth) {
     public enum Status {
         SUCCESS,

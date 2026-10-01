@@ -8,11 +8,7 @@ import java.util.Set;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * The warnings decide what interrupts a superadmin on the dashboard, so the rule for each of them
- * is pinned here rather than only being reachable through the bootstrap payload - which cannot
- * produce the "no SMTP" case at all, because the test instance has one.
- */
+/** The bootstrap payload cannot produce the "no SMTP" case because the test instance has one. */
 class InstanceWarningsTest {
 
     @Test
@@ -56,10 +52,6 @@ class InstanceWarningsTest {
         assertThat(warnings.degradedIndexTenants(), contains("Restored"));
     }
 
-    /**
-     * A database name left over from a tenant that no longer exists must not produce a warning
-     * without a name to show for it.
-     */
     @Test
     void degradedIndexWarningIgnoresDatabasesWithoutATenant() {
         List<TenantDefinition> tenants = List.of(tenant("Healthy", false, false));

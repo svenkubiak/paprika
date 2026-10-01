@@ -23,12 +23,7 @@ public class RequestLogsController {
         this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
     }
 
-    /**
-     * With {@code since} set this answers only what was logged at or after that timestamp, which
-     * is what the admin UI's live mode polls for. Everything else - filters, tenant scope, the
-     * admin session check above - stays identical to the paged read, so live mode cannot show
-     * anything the normal list would not.
-     */
+    // since (live mode) only narrows the paged read, so it can never show more than the normal list.
     public Response list(Request request, int offset, int limit, String search, String status, String hook, String type, String since) {
         TenantContext ctx = TenantContextHolder.require(request);
 

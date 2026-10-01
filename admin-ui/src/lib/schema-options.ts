@@ -6,16 +6,14 @@ import { parseDefaultValue } from '@/lib/field-validation'
 export const MAX_IMAGE_WIDTHS = 4
 
 /**
- * Mirrors FieldOptions.DEFAULT_MAX_SIZE on the server: four million bytes, kept under the
- * 4 MiB the server accepts as a whole request body so that boundaries, part headers and the
- * other fields of the same upload still fit.
+ * Mirrors FieldOptions.DEFAULT_MAX_SIZE: kept under the server's 4 MiB request body limit so the
+ * multipart overhead and other fields of the upload still fit.
  */
 export const DEFAULT_FILE_MAX_SIZE = 4_000_000
 
 /** Mirrors FieldOptions.MAX_IMAGE_WIDTH on the server. */
 export const MAX_IMAGE_WIDTH = 4096
 
-/** Parses the comma/space separated widths of a file field into normalized, ascending numbers. */
 export function parseImageWidths(raw: string): number[] {
   return [
     ...new Set(
@@ -28,10 +26,6 @@ export function parseImageWidths(raw: string): number[] {
   ].sort((a, b) => a - b)
 }
 
-/**
- * Returns why the configured widths are rejected, or null when they are fine. The message names
- * both limits, so the editor tells the user what exactly failed - as maxSize and mimeTypes do.
- */
 export function validateImageWidths(raw: string): string | null {
   const widths = parseImageWidths(raw)
   if (widths.length === 0) {
@@ -91,8 +85,7 @@ export function schemaRowToOptions(row: SchemaRow): FieldOptions | null {
       minLength: row.minLength,
       maxLength: row.maxLength,
       pattern: row.pattern.trim() || undefined,
-      // Only STRING may carry it - the server rejects it on every other type, EMAIL and URL
-      // included, and they share this options row.
+      // Only STRING may carry it; the server rejects it on all other types, EMAIL and URL too.
       multiline: row.type === 'STRING' && row.stringMultiline ? true : undefined
     })
   }

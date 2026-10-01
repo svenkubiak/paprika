@@ -12,6 +12,7 @@ import enums.Role;
 import hooks.HookRequestUtils;
 import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.routing.bindings.Request;
+import io.mangoo.utils.CommonUtils;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -44,11 +45,8 @@ public class CollectionRecordService {
     private static final int MAX_LIMIT = 100;
     private static final int DUPLICATE_KEY_CODE = 11000;
 
-    // Without a sort MongoDB gives no order guarantee at all: a write between two page requests can
-    // make the same record show up twice or vanish from the result, and both look like a complete
-    // page to the client. _id is always indexed, is insertion-ordered, and is excluded from the
-    // projection anyway, so ordering by it changes the response shape not at all - only its
-    // stability across page boundaries.
+    // Without a sort MongoDB guarantees no order, so records could repeat or vanish across pages;
+    // _id is indexed and insertion-ordered
     private static final Bson DEFAULT_SORT = Sorts.ascending("_id");
 
     private static Bson recordProjection(String collection) {
@@ -84,7 +82,11 @@ public class CollectionRecordService {
         FieldDefaults.applyToDocument(document, definition);
 
         if (UserRecordUtils.isUsers(collection)) {
-            UserRecordUtils.applyOnCreate(document);
+            try {
+                UserRecordUtils.applyOnCreate(document, this::hashPassword);
+            } catch (MangooHashingException e) {
+                return RecordResult.tooManyRequests();
+            }
         }
 
         AuthContext auth = TenantContextHolder.auth(request);
@@ -108,9 +110,7 @@ public class CollectionRecordService {
             fileFieldService.rollbackUploads(ctx, uploadChanges);
             return RecordResult.error();
         } catch (RuntimeException | Error e) {
-            // Anything else that escapes this block leaves the request without a record, so the
-            // uploads it already stored belong to nobody. Rethrown unchanged - the rollback is the
-            // only thing happening here.
+            // Without a record the stored uploads belong to nobody; rethrown unchanged
             fileFieldService.rollbackUploads(ctx, uploadChanges);
             throw e;
         }
@@ -164,9 +164,8 @@ public class CollectionRecordService {
             int limit,
             String filter,
             String sort) {
-        // The auth filter is the only place a list rule gets evaluated. Without its decision, or
-        // without the scoping query that decision has to carry, there is no evidence this request
-        // was scoped at all - so refuse rather than fall back to listing everything.
+        // The auth filter is the only place a list rule is evaluated; without its scoping query,
+        // refuse rather than fall back to listing everything
         Bson ruleFilter = AuthorizationDecision.of(request)
                 .flatMap(AuthorizationDecision::listFilter)
                 .orElse(null);
@@ -186,15 +185,12 @@ public class CollectionRecordService {
             return RecordResult.badRequest(e.getMessage());
         }
 
-        // The client filter is only ever anded onto the rule filter - it can narrow the result, never
-        // replace or widen it. Both the page and the count use the same effective filter, so total
-        // can never reveal the unfiltered match count.
+        // The client filter can only narrow the rule filter; page and count share it, so total
+        // never reveals the unfiltered count
         Bson effectiveFilter = clientFilter == null ? ruleFilter : Filters.and(ruleFilter, clientFilter);
 
         int effectiveOffset = Math.max(offset, 0);
-        // "No limit given" and "limit above the maximum" are different requests: the first asks for
-        // the default page, the second asks for as much as possible. Answering the second with the
-        // default silently drops records a client has no way of noticing, so it is clamped instead.
+        // An oversized limit is clamped, not reset to the default, which would silently drop records
         int effectiveLimit = limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
 
         List<Document> items = new ArrayList<>();
@@ -225,12 +221,7 @@ public class CollectionRecordService {
         return RecordResult.ok(document);
     }
 
-    /**
-     * Single place that turns a stored record into the client-facing form: the read projection
-     * (which also excludes the users credential fields) plus the file-reference enrichment. Write
-     * responses go through here too, so a created or updated record is byte-for-byte what a
-     * subsequent read would return.
-     */
+    // Write responses go through here too, so they match a subsequent read exactly (incl. credential projection)
     private Document readRecord(TenantContext ctx, CollectionDefinition definition, String collection, String id) {
         Document document = tenantCollections.dataCollection(ctx, collection)
                 .find(eq("id", id))
@@ -284,7 +275,7 @@ public class CollectionRecordService {
                     return refused;
                 }
 
-                UserRecordUtils.applyOnUpdate(setDocument, unsetDocument);
+                UserRecordUtils.applyOnUpdate(setDocument, unsetDocument, this::hashPassword);
                 if (change.email()) {
                     UserRecordUtils.invalidateEmailBoundState(setDocument, unsetDocument);
                 }
@@ -377,6 +368,10 @@ public class CollectionRecordService {
         } catch (IOException e) {
             rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
             return RecordResult.error();
+        } catch (MangooHashingException e) {
+            // An overload, not a server error: nothing was written, the client may retry
+            rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
+            return RecordResult.tooManyRequests();
         } catch (RuntimeException | Error e) {
             rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
             throw e;
@@ -449,7 +444,6 @@ public class CollectionRecordService {
         }
     }
 
-    /** What a users update does to the credentials, judged against the stored record. */
     private record CredentialChange(Document current, boolean password, boolean email) {
         private static final CredentialChange NONE = new CredentialChange(null, false, false);
 
@@ -458,9 +452,7 @@ public class CollectionRecordService {
         }
     }
 
-    /**
-     * @return {@code null} when the user to update does not exist
-     */
+    /** {@code null} when the user to update does not exist. */
     private CredentialChange credentialChange(
             TenantContext ctx,
             String collection,
@@ -487,15 +479,8 @@ public class CollectionRecordService {
     }
 
     /**
-     * Password and email are the credentials of a users record, not profile fields: whoever holds
-     * them owns the account, since a password reset is mailed to that address. The update rule only
-     * decides who may edit the record, so a {@code peers} or {@code auth} rule would otherwise let
-     * any teammate or tenant user take over another account. The credentials therefore follow a
-     * fixed policy no rule can widen: an admin context may set them, the user themselves only by
-     * proving the current password - so a stolen access token cannot be turned into a permanent
-     * takeover either - and nobody else at all.
-     *
-     * @return {@code null} when the change may proceed, otherwise the response to give
+     * Password and email own the account, so a fixed policy no update rule can widen applies: admin
+     * context, or the user themselves with the current password. Returns {@code null} to proceed.
      */
     private RecordResult authorizeCredentialChange(
             CredentialChange change,
@@ -527,6 +512,11 @@ public class CollectionRecordService {
         }
 
         return null;
+    }
+
+    // Overridable so a test can refuse the way mangoo refuses when no Argon2 slot is free
+    String hashPassword(String password, String salt) {
+        return CommonUtils.hashArgon2(password, salt);
     }
 
     private boolean recordExists(TenantContext ctx, String collection, String id) {

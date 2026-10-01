@@ -18,10 +18,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * A superadmin bearer token carries the widest access in the system and lives for an hour, its
- * refresh token for a week. Deleting the account must take effect immediately rather than at the
- * end of that window, so every request has to revalidate that the account still exists - the same
- * guarantee the tenant user path already provides through {@code TenantUserService#resolveUser}.
+ * Superadmin tokens live an hour (refresh a week), so every request revalidates that the account
+ * still exists and a deletion takes effect immediately.
  */
 @ExtendWith({TestRunner.class})
 class SuperadminTokenRevalidationIntegrationTest {
@@ -29,28 +27,34 @@ class SuperadminTokenRevalidationIntegrationTest {
 
     @Test
     void deletingASuperadminInvalidatesItsBearerTokenImmediately() {
+        // "admin" must be a completed superadmin too, or deleting the test's account is refused as the last one
+        AdminTestUtils.prepareAdminPassword();
+
         SystemUserService systemUsers = Application.getInstance(SystemUserService.class);
         String username = "revalidate-admin-" + DbUtils.id().substring(0, 8);
         String adminId = String.valueOf(systemUsers.createSuperadmin(username, null, PASSWORD).get("id"));
 
-        TenantDefinition tenant = TenantTestUtils.defaultTenant();
-        String collection = "revalidation_" + DbUtils.id();
-        TenantTestUtils.seedCollection(collection, new CollectionRules("*", "*", "*", "*", "*", "owner"));
-        TenantTestUtils.seedRecord(collection, "RECORD");
+        try {
+            TenantDefinition tenant = TenantTestUtils.defaultTenant();
+            String collection = "revalidation_" + DbUtils.id();
+            TenantTestUtils.seedCollection(collection, new CollectionRules("*", "*", "*", "*", "*", "owner"));
+            TenantTestUtils.seedRecord(collection, "RECORD");
 
-        String token = tenantScopedToken(username, tenant.id());
+            String token = tenantScopedToken(username, tenant.id());
 
-        // While the account exists the token works
-        assertThat(dataPlaneCall(collection, token).getStatusCode(), equalTo(200));
-        assertThat(switchTenant(token, tenant.id()).getStatusCode(), equalTo(200));
+            assertThat(dataPlaneCall(collection, token).getStatusCode(), equalTo(200));
+            assertThat(switchTenant(token, tenant.id()).getStatusCode(), equalTo(200));
 
-        assertThat(systemUsers.deleteSuperadmin(adminId), equalTo(SystemUserService.DeleteOutcome.DELETED));
+            assertThat(systemUsers.deleteSuperadmin(adminId), equalTo(SystemUserService.DeleteOutcome.DELETED));
 
-        // ... and stops working the moment it is gone, without waiting for the token to expire
-        assertThat("a deleted superadmin must not reach the data plane",
-                dataPlaneCall(collection, token).getStatusCode(), anyOf(equalTo(401), equalTo(403)));
-        assertThat("a deleted superadmin must not be able to mint fresh tokens",
-                switchTenant(token, tenant.id()).getStatusCode(), anyOf(equalTo(401), equalTo(403)));
+            assertThat("a deleted superadmin must not reach the data plane",
+                    dataPlaneCall(collection, token).getStatusCode(), anyOf(equalTo(401), equalTo(403)));
+            assertThat("a deleted superadmin must not be able to mint fresh tokens",
+                    switchTenant(token, tenant.id()).getStatusCode(), anyOf(equalTo(401), equalTo(403)));
+        } finally {
+            // A no-op after a successful run; after a failure a leftover would break the tests that count superadmins
+            AdminTestUtils.removeSuperadmin(adminId);
+        }
     }
 
     private static TestResponse dataPlaneCall(String collection, String token) {
@@ -67,10 +71,7 @@ class SuperadminTokenRevalidationIntegrationTest {
                 .execute();
     }
 
-    /** Signs in for an API token and binds it to a tenant, as the admin UI does. */
     private static String tenantScopedToken(String username, String tenantId) {
-        AdminTestUtils.prepareAdminPassword();
-
         TestResponse login = TestRequest.post("/api/admin/token")
                 .withStringBody("{\"username\":\"" + username + "\",\"password\":\"" + PASSWORD + "\"}")
                 .withContentType("application/json")

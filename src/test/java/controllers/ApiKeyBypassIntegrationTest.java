@@ -39,13 +39,7 @@ import java.util.concurrent.TimeUnit;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * Covers rule-bypassing API keys: the credential a trusted backend service uses to work on a
- * tenant's data across user boundaries, which the four rule presets cannot express.
- * <p>
- * The two guarantees that make the bypass defensible are tested here as well: it does not reach
- * the management API, and it does not skip the hooks.
- */
+/** Rule-bypassing API keys must neither reach the management API nor skip the hooks. */
 @ExtendWith({TestRunner.class})
 class ApiKeyBypassIntegrationTest {
 
@@ -86,8 +80,7 @@ class ApiKeyBypassIntegrationTest {
                 .execute();
         assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
 
-        // A create answers 201 without a body, so the id comes from reading the collection back -
-        // which a locked collection only allows for the bypass key in the first place.
+        // A create answers 201 without a body, so the id comes from reading the collection back.
         TestResponse afterCreate = list(collection, key);
         assertThat(afterCreate.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(afterCreate.getContent(), containsString("written by service"));
@@ -150,7 +143,7 @@ class ApiKeyBypassIntegrationTest {
         String boundId = userId(userService.createUser("bypass-default-user", null, "secret-password-123"));
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
 
-        // Body without the field at all: the previous shape of this request must keep its meaning
+        // A body without the field must keep its previous meaning
         TestResponse created = AdminTestUtils.postWithAdminCookies(
                 "/api/meta/tenants/" + tenant.id() + "/api-keys",
                 adminCookies(),
@@ -196,9 +189,7 @@ class ApiKeyBypassIntegrationTest {
                     response.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
         }
 
-        // The writing counterparts matter more than the reading ones: schema import reshapes a
-        // tenant, backup import replaces the whole instance. They are listed explicitly because a
-        // GET-only loop would not notice a route that forgot its filter on the POST side.
+        // Listed explicitly: a GET-only loop would miss a route that forgot its filter on the POST side.
         for (String path : List.of(
                 "/api/meta/schema/import",
                 "/api/admin/backup/import")) {
@@ -214,11 +205,7 @@ class ApiKeyBypassIntegrationTest {
         }
     }
 
-    /**
-     * The scheme of an {@code Authorization} header is case-insensitive, so spelling it in lower
-     * case must not make a key look like an absent credential - which on the admin API would mean
-     * falling through to the cookie branch instead of being rejected outright.
-     */
+    /** A lowercase scheme must not make a key look absent and fall through to the cookie branch. */
     @Test
     void lowercaseBearerSchemeIsTreatedAsAKeyAsWell() {
         UserService userService = Application.getInstance(UserService.class);
@@ -264,8 +251,7 @@ class ApiKeyBypassIntegrationTest {
             collections.dataCollection(foreignCtx, foreignCollection)
                     .insertOne(new Document().append("id", DbUtils.id()).append("title", "foreign secret"));
 
-            // Unknown collection names stay a 404 even with a bypass - the key is scoped to its
-            // own tenant, where this collection simply does not exist.
+            // The key is scoped to its own tenant, where this collection does not exist.
             TestResponse response = list(foreignCollection, key);
             assertThat(response.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
             assertThat(response.getContent(), not(containsString("foreign secret")));
@@ -302,14 +288,11 @@ class ApiKeyBypassIntegrationTest {
                     .withContentType("application/json")
                     .execute();
 
-            // A blocking hook stops a bypass key just like any other caller: the rules are
-            // skipped, the business logic in the hooks is not.
             assertThat(create.getStatusCode(), equalTo(422));
             assertThat(create.getContent(), containsString("Blocked by hook"));
 
             String payload = payloads.poll(10, TimeUnit.SECONDS);
             assertThat(payload, notNullValue());
-            // The envelope describes the bound tenant user, not an admin
             assertThat(payload, containsString("\"id\":\"" + boundId + "\""));
             assertThat(payload, containsString("\"role\":\"user\""));
         } finally {
@@ -341,9 +324,7 @@ class ApiKeyBypassIntegrationTest {
                 "application/json");
         assertThat(rejected.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
-        // The one field an existing key exposes for editing is its source binding; naming the
-        // flag here is refused outright rather than accepted and ignored, because a 204 would
-        // read as "the flag is set now".
+        // The flag is refused rather than ignored, so a 204 can never read as "the flag is set now".
         CreatedKey ordinary = createKey("bypass-immutable-key", boundId, false);
         String path = "/api/meta/tenants/" + tenant.id() + "/api-keys/" + ordinary.id();
         TestResponse patched = AdminTestUtils.patchWithAdminCookies(
@@ -355,7 +336,6 @@ class ApiKeyBypassIntegrationTest {
         assertThat(list.getContent(), containsString("\"name\":\"bypass-immutable-key\""));
         assertThat(list.getContent(), not(containsString("\"name\":\"bypass-elevated\"")));
 
-        // ... and the key really is still an ordinary one afterwards
         Document stored = Application.getInstance(services.TenantDatabaseResolver.class)
                 .systemCollection(models.ApiKeyDefinition.COLLECTION)
                 .find(new Document("id", ordinary.id()))
@@ -369,9 +349,7 @@ class ApiKeyBypassIntegrationTest {
         UserService userService = Application.getInstance(UserService.class);
         String boundId = userId(userService.createUser("bypass-list-user", null, "secret-password-123"));
 
-        // Both classifications are created here on purpose: the assertions below would otherwise
-        // be satisfied by a key some other test left in the tenant, which makes this test pass or
-        // fail depending on the order Surefire happens to pick.
+        // Both are created here so the assertions cannot be satisfied by another test's key.
         createKey("bypass-list-privileged", boundId, true);
         createKey("bypass-list-ordinary", boundId, false);
 

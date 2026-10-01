@@ -53,39 +53,21 @@ public class SystemUserService {
     private static final String TWO_FACTOR_FAILURES = "twoFactorFailures";
     private static final String TWO_FACTOR_LOCKED_UNTIL = "twoFactorLockedUntil";
 
-    /**
-     * How many wrong TOTP codes are tolerated before the second factor is locked for a while.
-     * <p>
-     * A six digit code is one in a million per 30 second window, which sounds like plenty until
-     * nothing limits how often it may be guessed: at a handful of attempts per second the odds of
-     * hitting it pass 50% inside two days of sustained guessing, and behind that code sits the one
-     * identity that can do everything. A budget per user is what turns "eventually" back into
-     * "never" - the proxy's rate limit cannot, because it counts requests per address and an
-     * attacker can bring more addresses.
-     */
+    // Per-user guess budget for TOTP codes: the proxy rate limit counts per address, and an
+    // attacker with many addresses would otherwise brute-force the six digits within days.
     private static final int MAX_TWO_FACTOR_FAILURES = 5;
 
-    /**
-     * Absolute, not sliding: the lock is stamped once when the budget runs out and is not pushed
-     * further by later attempts. A lock that renewed itself on every try would let an attacker who
-     * cannot guess the code keep the rightful superadmin out for as long as they keep guessing.
-     */
+    // Absolute, not sliding: a lock renewed on every try would let an attacker keep the
+    // rightful superadmin out indefinitely.
     private static final Duration TWO_FACTOR_LOCK_TTL = Duration.ofMinutes(15);
 
-    /** How long a locked second factor stays locked, for the {@code Retry-After} header. */
     public static long twoFactorLockSeconds() {
         return TWO_FACTOR_LOCK_TTL.toSeconds();
     }
 
-    /**
-     * How many devices a superadmin is remembered on. The list only exists to tell a login from a
-     * device this account has used before apart from one that has not, so it is bounded: the oldest
-     * entry drops out rather than growing the user document without end. Dropping an entry is
-     * harmless - the next login from that device counts as new and sends one more alert.
-     */
+    // Bounded so the user document cannot grow without end; a dropped device only causes one extra alert.
     private static final int MAX_AUTH_ORIGINS = 20;
 
-    /** Everything the profile page shows about the signed-in superadmin. */
     public record SuperadminProfile(
             String id,
             String username,
@@ -97,7 +79,6 @@ public class SystemUserService {
             String avatarVersion) {
     }
 
-    /** A stored profile picture, decoded and ready to be written to the response. */
     public record Avatar(byte[] data, String contentType, String version) {
     }
 
@@ -108,7 +89,6 @@ public class SystemUserService {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
     }
 
-    /** For callers that only care whether the credentials were right, not why they were not. */
     public Optional<AuthContext> authenticateSuperadmin(String username, String password) {
         return verifyPassword(username, password).auth();
     }
@@ -131,7 +111,7 @@ public class SystemUserService {
                 .append("email", normalizeEmail(email))
                 .append("role", Role.SUPERADMIN)
                 .append("passwordSalt", salt)
-                .append("passwordHash", CommonUtils.hashArgon2(password, salt));
+                .append("passwordHash", hashPassword(password, salt));
 
         DbWrites.rejectDuplicateAs("Username already exists",
                 () -> resolver.systemCollection(CollectionName.USERS).insertOne(user));
@@ -142,16 +122,14 @@ public class SystemUserService {
     public void ensureSuperadminSetup(String username) {
         validateUsername(username);
 
-        // If any superadmin with a password exists, setup is already complete.
-        // Checking by role rather than by config username prevents re-triggering
-        // setup when the user chose a different username during onboarding.
+        // Checked by role, not by config username, so a different username chosen during
+        // onboarding does not re-trigger setup.
         if (findCompletedSuperadmin() != null) {
             return;
         }
 
-        // A still-active token is deliberately replaced instead of kept: only its hash is
-        // stored, so an existing token can never be printed again. Keeping it would leave a
-        // restart before setup completion with no reachable link until the token expires.
+        // An active token is replaced, not kept: only its hash is stored, so it could never be
+        // printed again after a restart.
         Document user = findByUsername(username.trim());
 
         String token;
@@ -211,7 +189,7 @@ public class SystemUserService {
                 combine(
                         set("username", username.trim()),
                         set("passwordSalt", salt),
-                        set("passwordHash", CommonUtils.hashArgon2(password, salt)),
+                        set("passwordHash", hashPassword(password, salt)),
                         unset("setupTokenHash"),
                         unset("setupTokenExpiresAt"),
                         unset("passwordChangeRequired")
@@ -224,13 +202,8 @@ public class SystemUserService {
         return Optional.of(AuthContext.of(user.getString("id"), Role.SUPERADMIN, null));
     }
 
-    /**
-     * Result of a superadmin deletion attempt. {@code LAST_ADMIN} means the target is the only
-     * remaining superadmin with a completed account and must not be removed.
-     */
     public enum DeleteOutcome { DELETED, NOT_FOUND, LAST_ADMIN }
 
-    /** Lists every superadmin, completed accounts and pending invites alike. */
     public List<Map<String, Object>> listSuperadmins() {
         List<Map<String, Object>> superadmins = new ArrayList<>();
         for (Document user : resolver.systemCollection(CollectionName.USERS)
@@ -247,18 +220,10 @@ public class SystemUserService {
         return superadmins;
     }
 
-    /**
-     * Creates a pending superadmin invite and returns its one-time setup token. The invitee
-     * completes the account through the same {@code /setup} flow as the initial superadmin.
-     */
     public String inviteSuperadmin(String username, String email) {
         return createSuperadminSetup(username, email);
     }
 
-    /**
-     * Removes a superadmin by id. A pending invite can always be revoked; a completed account can
-     * only be deleted while at least one other completed superadmin remains.
-     */
     public DeleteOutcome deleteSuperadmin(String id) {
         Document user = findById(id);
         if (user == null || !Role.SUPERADMIN.equals(user.getString("role"))) {
@@ -294,10 +259,6 @@ public class SystemUserService {
         return user == null ? Optional.empty() : Optional.of(toPublicMap(user));
     }
 
-    // ------------------------------------------------------------------------------------------
-    // Profile of the signed-in superadmin
-    // ------------------------------------------------------------------------------------------
-
     public Optional<SuperadminProfile> findProfile(String userId) {
         Document user = findById(userId);
         if (user == null) {
@@ -315,14 +276,7 @@ public class SystemUserService {
                 avatarVersion(user)));
     }
 
-    /**
-     * Stores a new address for this superadmin and issues the one-time token that confirms it. The
-     * address counts as unconfirmed until that token comes back, so everything that mails the
-     * superadmin stays switched off in the meantime.
-     * <p>
-     * Re-saving the address that is already confirmed is a no-op and returns no token: it would
-     * otherwise throw away a confirmation for nothing.
-     */
+    /** Re-saving the already confirmed address is a no-op, so it does not discard the confirmation. */
     public Optional<String> setEmail(String userId, String email) {
         String normalized = normalizeEmail(email);
         if (normalized == null) {
@@ -346,8 +300,7 @@ public class SystemUserService {
                         set(EMAIL_VERIFIED, false),
                         set(EMAIL_TOKEN_HASH, AuthTokens.hash(token)),
                         set(EMAIL_TOKEN_EXPIRES_AT, AuthTokens.expiresAt()),
-                        // An address that is not confirmed cannot receive the alert, so leaving the
-                        // switch on would claim a protection that is not in place.
+                        // An unconfirmed address cannot receive the alert.
                         set(LOGIN_ALERT_ENABLED, false)
                 )
         );
@@ -355,7 +308,6 @@ public class SystemUserService {
         return Optional.of(token);
     }
 
-    /** A fresh confirmation token for the address already on the account, or empty when there is none to confirm. */
     public Optional<String> renewEmailVerificationToken(String userId) {
         Document user = findById(userId);
         if (user == null || StringUtils.isBlank(user.getString(EMAIL)) || isEmailVerified(user)) {
@@ -374,7 +326,6 @@ public class SystemUserService {
         return Optional.of(token);
     }
 
-    /** Removes the address, its pending confirmation and everything that depends on it. */
     public void clearEmail(String userId) {
         resolver.systemCollection(CollectionName.USERS).updateOne(
                 eq("id", userId),
@@ -388,14 +339,7 @@ public class SystemUserService {
         );
     }
 
-    /**
-     * Confirms an address from the token that was mailed to it and returns the account it belongs
-     * to, or empty when the token is unknown, already used or expired.
-     * <p>
-     * Finding the token and clearing it is a single operation for the same reason the tenant side
-     * does it that way: two requests arriving together would otherwise both pass the check before
-     * either one consumes the token.
-     */
+    /** Finding and clearing the token is one atomic operation so concurrent requests cannot both consume it. */
     public Optional<SuperadminProfile> confirmEmailVerification(String token) {
         if (StringUtils.isBlank(token)) {
             return Optional.empty();
@@ -417,11 +361,7 @@ public class SystemUserService {
         return findProfile(claimed.getString("id"));
     }
 
-    /**
-     * Stores the profile picture. The bytes are kept Base64 encoded on the user document itself:
-     * a superadmin lives in the system database, which has no file storage of its own, and this
-     * way the picture travels with the instance backup like the rest of the account does.
-     */
+    /** Stored Base64 on the user document: the system database has no file storage of its own. */
     public void setAvatar(String userId, byte[] data, String contentType) {
         Objects.requireNonNull(data, "data must not be null");
 
@@ -465,13 +405,8 @@ public class SystemUserService {
     }
 
     /**
-     * Records that this account was used from the given origin and reports whether that origin had
-     * never been seen before - which is what decides if a login is worth an alert.
-     * <p>
-     * The insert only matches documents that do not carry the fingerprint yet, so two logins racing
-     * on the same new device produce exactly one "new" answer and therefore exactly one alert.
-     * Nothing about the device itself is stored: the fingerprint is a hash, and the user agent and
-     * IP address it was derived from are used for the mail and then dropped.
+     * Returns whether the origin is new. The push only matches documents without the fingerprint,
+     * so two racing logins from the same new device yield exactly one alert.
      */
     public boolean rememberAuthOrigin(String userId, String fingerprint) {
         if (StringUtils.isBlank(userId) || StringUtils.isBlank(fingerprint)) {
@@ -503,10 +438,7 @@ public class SystemUserService {
         return Boolean.TRUE.equals(user.getBoolean(EMAIL_VERIFIED));
     }
 
-    /**
-     * Identifies the stored bytes so the browser can cache the picture and still pick up a new one
-     * immediately: it is part of the avatar URL and doubles as the ETag.
-     */
+    // Part of the avatar URL and doubles as the ETag.
     private String avatarVersion(Document user) {
         Document avatar = user.get(AVATAR, Document.class);
         String encoded = avatar == null ? null : avatar.getString(AVATAR_DATA);
@@ -525,7 +457,7 @@ public class SystemUserService {
                 eq("id", userId),
                 combine(
                         set("passwordSalt", salt),
-                        set("passwordHash", CommonUtils.hashArgon2(newPassword, salt)),
+                        set("passwordHash", hashPassword(newPassword, salt)),
                         unset("passwordChangeRequired"),
                         unset("setupTokenHash"),
                         unset("setupTokenExpiresAt")
@@ -559,11 +491,7 @@ public class SystemUserService {
         return Optional.of(secret);
     }
 
-    /**
-     * Generates a new long, single-use fallback code for signing in when the superadmin's
-     * authenticator is unavailable, and stores its hash. The plaintext code is only ever
-     * returned here and must be shown to the user immediately, as it cannot be retrieved again.
-     */
+    /** Only the hash is stored; the plaintext returned here cannot be retrieved again. */
     public String generateTotpFallbackCode(String userId) {
         String fallbackCode = CommonUtils.randomString(FALLBACK_CODE_LENGTH);
         resolver.systemCollection(CollectionName.USERS).updateOne(
@@ -573,21 +501,13 @@ public class SystemUserService {
         return fallbackCode;
     }
 
-    /**
-     * Verifies a fallback code and, if valid, consumes it so it cannot be used again.
-     */
     public boolean consumeTotpFallbackCode(String userId, String code) {
         if (StringUtils.isBlank(code) || StringUtils.isBlank(userId)) {
             return false;
         }
 
-        // Matching the code and clearing it has to be one operation. Two logins racing on the same
-        // fallback code would otherwise both pass the check before either clears it, which would
-        // turn a one-time code into a reusable one for as long as the race window lasts.
-        //
-        // The comparison happens inside the query on the stored hash rather than in memory: an
-        // attacker cannot derive the code from timing differences on a SHA-256 hash lookup, and
-        // atomicity is worth more here than the constant time comparison it replaces.
+        // Match and clear in one atomic operation so racing logins cannot reuse the one-time code.
+        // Comparing hashes in the query instead of in constant time leaks nothing useful.
         Document claimed = resolver.systemCollection(CollectionName.USERS).findOneAndUpdate(
                 and(eq("id", userId), eq("totpFallbackCodeHash", hashFallbackCode(code.trim()))),
                 new Document("$unset", new Document("totpFallbackCodeHash", "")),
@@ -596,10 +516,7 @@ public class SystemUserService {
         return claimed != null;
     }
 
-    /**
-     * Whether the second factor of this user is currently locked out. Read before a code is
-     * checked, so that a locked account costs an attacker a refused request instead of a guess.
-     */
+    // Checked before the code, so a locked account costs an attacker a refused request, not a guess.
     public boolean isTwoFactorLocked(String userId) {
         if (StringUtils.isBlank(userId)) {
             return false;
@@ -614,14 +531,8 @@ public class SystemUserService {
     }
 
     /**
-     * Counts one wrong code and stamps the lock once the budget is used up.
-     * <p>
-     * Counting and locking are one atomic operation: several guesses arriving together would
-     * otherwise each read the same counter, and a budget that only counts every n-th attempt is
-     * not a budget. The counter is reset at the same time as the lock is set, so the next window
-     * starts from a clean slate rather than locking again on the first attempt after it expires.
-     *
-     * @return the instant the lock runs out, or empty when there is still budget left
+     * The counter is incremented atomically so concurrent guesses are all counted, and is reset
+     * when the lock is set so the next window does not lock again on its first attempt.
      */
     public Optional<Instant> recordTwoFactorFailure(String userId) {
         if (StringUtils.isBlank(userId)) {
@@ -660,7 +571,6 @@ public class SystemUserService {
         return Optional.of(until);
     }
 
-    /** Clears budget and lock after a code was accepted. */
     public void clearTwoFactorFailures(String userId) {
         if (StringUtils.isBlank(userId)) {
             return;
@@ -676,7 +586,6 @@ public class SystemUserService {
         return value instanceof Number number ? number.intValue() : 0;
     }
 
-    /** {@link Instant#EPOCH} when there is no lock, so callers can compare without a null check. */
     private static Instant lockedUntil(Document user) {
         String value = user.getString(TWO_FACTOR_LOCKED_UNTIL);
         if (StringUtils.isBlank(value)) {
@@ -693,18 +602,9 @@ public class SystemUserService {
     }
 
     /**
-     * Verifies a superadmin password.
-     * <p>
-     * A username that does not belong to a superadmin never reaches a hash on this path - unlike
-     * the tenant login, which hashes anyway so that its response time does not give account
-     * existence away. That difference is intentional: this endpoint sits behind the admin IP
-     * gate, and the single superadmin username is not a secret worth an Argon2 computation.
-     * <p>
-     * mangoo caps how many of those run at once and rejects with a
-     * {@link MangooHashingException} when no slot becomes free in time. That is an overload and
-     * not a wrong password, so it is reported apart from one - answering 401 here would tell the
-     * rightful owner their password is wrong and would tell an attacker their guess failed when
-     * it was never checked.
+     * Unknown usernames deliberately skip the hash (unlike the tenant login): this endpoint sits
+     * behind the admin IP gate. A {@link MangooHashingException} is an overload, not a wrong
+     * password, so it is reported separately instead of as 401.
      */
     public SuperadminPasswordResult verifyPassword(String username, String password) {
         if (StringUtils.isBlank(username) || password == null) {
@@ -717,12 +617,34 @@ public class SystemUserService {
         }
 
         try {
-            return matchesPassword(password, user)
-                    ? SuperadminPasswordResult.match(AuthContext.of(user.getString("id"), Role.SUPERADMIN, null))
-                    : SuperadminPasswordResult.noMatch();
+            if (!matchesPassword(password, user)) {
+                return SuperadminPasswordResult.noMatch();
+            }
         } catch (MangooHashingException e) {
             LOG.warn("Refused a superadmin password verification, no Argon2 slot became free", e);
             return SuperadminPasswordResult.atCapacity();
+        }
+
+        rehashIfOutdated(user, password);
+        return SuperadminPasswordResult.match(AuthContext.of(user.getString("id"), Role.SUPERADMIN, null));
+    }
+
+    // Best effort; only applied while the old hash is still stored. See TenantUserService#rehashIfOutdated.
+    private void rehashIfOutdated(Document user, String password) {
+        String stored = user.getString("passwordHash");
+        if (StringUtils.isBlank(stored) || !CommonUtils.needsRehash(stored)) {
+            return;
+        }
+
+        try {
+            String salt = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
+            resolver.systemCollection(CollectionName.USERS).updateOne(
+                    and(eq("id", user.getString("id")), eq("passwordHash", stored)),
+                    combine(
+                            set("passwordSalt", salt),
+                            set("passwordHash", hashPassword(password, salt))));
+        } catch (MangooHashingException e) {
+            LOG.info("Postponed rehashing an outdated superadmin password hash, no Argon2 slot became free");
         }
     }
 
@@ -738,6 +660,11 @@ public class SystemUserService {
 
     private Document findByUsername(String username) {
         return resolver.systemCollection(CollectionName.USERS).find(eq("username", username)).first();
+    }
+
+    // Overridable so a test can refuse the way mangoo refuses when no Argon2 slot is free
+    String hashPassword(String password, String salt) {
+        return CommonUtils.hashArgon2(password, salt);
     }
 
     boolean matchesPassword(String password, Document user) {
@@ -825,11 +752,7 @@ public class SystemUserService {
         }
     }
 
-    /**
-     * Superadmin addresses are stored the same way as tenant user addresses: trimmed and
-     * lowercased. They are only used to send invites today, but keeping both paths identical avoids
-     * the case sensitive lookup trap the tenant side had, should this address ever be looked up.
-     */
+    // Same normalization as tenant addresses, so a future lookup is not case sensitive.
     private String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {
             return null;

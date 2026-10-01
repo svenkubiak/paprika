@@ -1,11 +1,3 @@
-/**
- * Turns what the schema already knows about a field into the two lines the record editor shows
- * for it: the constraint line under the control and the counter beside it.
- *
- * All of this is in `FieldDefinition.options` and was, until now, only visible in the schema
- * editor - the one place where the value is *not* being typed. The rules do not change here, they
- * are only stated where they apply.
- */
 import type { FieldDefinition } from '@/types'
 import { formatByteSize } from '@/lib/utils'
 
@@ -97,11 +89,6 @@ export type FieldCounter = {
   exceeded: boolean
 }
 
-/**
- * The counter is only shown where there is a limit to count towards - a running number under
- * every field would be noise, and a limit nobody sees until the save fails is the thing this is
- * meant to prevent.
- */
 export function fieldCounter(field: FieldDefinition, value: unknown): FieldCounter | undefined {
   const opts = options(field)
 

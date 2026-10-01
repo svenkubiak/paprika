@@ -30,11 +30,7 @@ public final class RuleService {
         this.membershipResolver = Objects.requireNonNull(membershipResolver, "membershipResolver must not be null");
     }
 
-    /**
-     * For unit tests and any caller that evaluates the presets which need nothing but the rule
-     * itself. The membership presets deny in such an instance, because the lookup they depend on
-     * has no database to run against.
-     */
+    // Membership presets always deny in this instance: there is no database for the lookup
     public RuleService() {
         this(MembershipResolver.denying());
     }
@@ -49,15 +45,7 @@ public final class RuleService {
         return RuleMode.EXPRESSION;
     }
 
-    /**
-     * Resolution for a collection whose records point at their owner - every collection but
-     * {@code users}.
-     * <p>
-     * The collection travels as an optional trailing argument rather than through a new parameter
-     * on every signature: only the {@code owner} preset cares about it, the callers that know the
-     * collection are few (the data-plane auth filter and the realtime delivery check), and this
-     * way every other caller - including the rule unit tests - keeps working unchanged.
-     */
+    // For collections whose records point at their owner, i.e. every collection but users
     public String normalizeRule(String rule, String ownerField) {
         return normalizeRule(rule, ownerField, null);
     }
@@ -74,8 +62,7 @@ public final class RuleService {
             return "auth.id != null";
         }
         if ("owner".equalsIgnoreCase(trimmed)) {
-            // See OwnerFieldUtils#isSelfOwnedCollection: on the users collection the own record is
-            // the caller's own account, not a relation pointing at it
+            // On the users collection the own record is the caller's account, not a relation to it
             return OwnerFieldUtils.isSelfOwnedCollection(collection)
                     ? "record.id = auth.id"
                     : "record." + ownerField + " = auth.id";
@@ -83,12 +70,7 @@ public final class RuleService {
         return trimmed;
     }
 
-    /**
-     * Whether a rule is decided by a membership lookup instead of by the expression engine. These
-     * two presets never reach {@link RuleParser}: a subquery into a second collection is not
-     * something the rule language can express, so {@link #canAccess} and {@link #listFilter}
-     * answer them before any parsing happens.
-     */
+    // These presets never reach RuleParser: the rule language cannot express a subquery
     public static boolean isMembershipRule(String rule) {
         return isGroupRule(rule) || isPeersRule(rule);
     }
@@ -129,16 +111,8 @@ public final class RuleService {
         validateRules(rules, null);
     }
 
-    /**
-     * Validates the rule values and, for the membership presets, the configuration they cannot
-     * work without. An incompletely configured {@code group} or {@code peers} rule is rejected
-     * here rather than silently treated as locked at request time: a collection whose rules do not
-     * mean what they say is worse than a save that fails.
-     * <p>
-     * Whether the configured collection and fields actually exist is checked by
-     * {@code TenantCollectionService#validateDefinition(TenantContext, CollectionDefinition)},
-     * which is the layer that can look at the other collections of the tenant.
-     */
+    // An incomplete group/peers configuration fails the save rather than silently locking at
+    // request time. Existence of the referenced collection/fields is checked in TenantCollectionService.
     public void validateRules(CollectionRules rules, String collection) {
         if (rules == null) {
             return;
@@ -169,8 +143,7 @@ public final class RuleService {
         }
 
         if (collection != null) {
-            // "peers" compares the record id against the members; only a collection whose records
-            // are the users themselves has an id to compare. "group" is the opposite case.
+            // "peers" compares the record id against member ids, so it only fits the users collection
             if (usesPeers && !OwnerFieldUtils.isSelfOwnedCollection(collection)) {
                 throw new RuleParseException(
                         "The \"peers\" rule is only available on the users collection; use \"group\" here.");
@@ -197,11 +170,8 @@ public final class RuleService {
                     "the field of this collection carrying the group"));
         }
 
-        // groupRecordField "id" means the record is the group itself. A "group" create rule could
-        // then never be satisfied: "id" is read-only on write, so the body cannot name the group -
-        // and nobody is a member of a group that does not exist yet. A rule that always denies
-        // without saying so is worse than a refused save; who may create a group is decided by a
-        // different preset ("auth" or "owner").
+        // With groupRecordField "id" the record is the group itself, so a "group" create rule could
+        // never be satisfied ("id" is read-only on write); refuse the save instead of always denying.
         if (isGroupRule(rules.createRule())
                 && SystemFields.ID.equals(StringUtils.trimToEmpty(rules.groupRecordField()))) {
             throw new RuleParseException(
@@ -255,18 +225,13 @@ public final class RuleService {
             return true;
         }
 
-        // Reached without a tenant context and without the collection's rules, so the membership
-        // lookup cannot run. Deny rather than fall through to the parser, which would not know
-        // these values either.
+        // No tenant context or rules here, so the membership lookup cannot run: deny
         if (isMembershipRule(rule)) {
             return false;
         }
 
-        // A create on a self-owned collection has no record yet whose id could equal the caller's,
-        // so "own records" can never be satisfied there. Deciding it here rather than letting the
-        // expression decide keeps a client-supplied id out of the question: sending one's own id in
-        // the body must not turn into permission to insert a second record under that identity.
-        // Sign-up goes through POST /api/auth/register.
+        // Decided here so a client-supplied own id in the body cannot grant inserting a second
+        // record under that identity. Sign-up goes through POST /api/auth/register.
         if (record == null && isOwnerRule(rule) && OwnerFieldUtils.isSelfOwnedCollection(collection)) {
             return false;
         }
@@ -285,12 +250,8 @@ public final class RuleService {
         return RuleEvaluator.evaluate(node, RuleEvaluationContext.of(auth, effectiveRecord, effectiveBody));
     }
 
-    /**
-     * The full decision, including the presets that need a lookup in a second collection. Callers
-     * that can supply the tenant context and the collection's rules - the data-plane auth filter
-     * and the realtime delivery check - use this one, so that both answer a membership rule the
-     * same way. Anything a client cannot get through the API it must not get through the stream.
-     */
+    // Used by both the data-plane auth filter and realtime delivery, so a client gets nothing
+    // through the stream that it cannot get through the API.
     public boolean canAccess(
             String rule,
             CollectionRules rules,
@@ -323,8 +284,7 @@ public final class RuleService {
         MembershipResolver.Membership membership = membershipResolver.membership(ctx, rules, auth);
 
         if (isPeersRule(rule)) {
-            // There is no record yet whose identity could be checked, so create is never granted -
-            // sign-up goes through POST /api/auth/register, exactly as with "owner".
+            // Create is never granted; sign-up goes through POST /api/auth/register
             if (record == null) {
                 return false;
             }
@@ -338,8 +298,7 @@ public final class RuleService {
         }
 
         if (record == null) {
-            // CREATE: the client says which group the record joins, and it has to be one of the
-            // caller's. A body without the field is rejected - nothing is filled in here.
+            // CREATE: the body must name only groups of the caller; nothing is filled in here
             return body != null && membership.inEveryGroup(MembershipResolver.valuesOf(body.get(recordField)));
         }
 
@@ -347,8 +306,7 @@ public final class RuleService {
             return false;
         }
 
-        // An update may not move a record out of the caller's reach - or into a group the caller
-        // does not belong to. Only a body that actually carries the field is checked.
+        // An update must not move a record into a group the caller does not belong to
         if (body != null && body.containsKey(recordField)) {
             return membership.inEveryGroup(MembershipResolver.valuesOf(body.get(recordField)));
         }
@@ -369,8 +327,7 @@ public final class RuleService {
             return Filters.empty();
         }
 
-        // Without tenant context and rules the membership cannot be resolved; a null filter is
-        // refused by the caller, which is the only safe answer here.
+        // Membership cannot be resolved here; a null filter is refused by the caller
         if (isMembershipRule(rule)) {
             return null;
         }
@@ -380,10 +337,7 @@ public final class RuleService {
         return RuleToMongoConverter.toFilter(node, auth);
     }
 
-    /**
-     * The scoping query for a list, including the membership presets. The result is anded onto the
-     * client's filter by {@code CollectionRecordService#list}, never used in its place.
-     */
+    // ANDed onto the client's filter, never used in its place
     public Bson listFilter(
             String rule,
             CollectionRules rules,
@@ -407,8 +361,6 @@ public final class RuleService {
         MembershipResolver.Membership membership = membershipResolver.membership(ctx, rules, auth);
 
         if (isPeersRule(rule)) {
-            // Always contains the caller's own id, so a user without any membership still sees
-            // their own record - and nothing else.
             return Filters.in("id", membership.peers());
         }
 
@@ -418,9 +370,7 @@ public final class RuleService {
 
         Set<String> groups = membership.groups();
         if (groups.isEmpty()) {
-            // No membership means no records. An empty Filters.in() would match nothing as well,
-            // but saying it explicitly keeps the one mistake that opens the whole collection -
-            // answering with Filters.empty() - from ever looking like an option here.
+            // Explicit IMPOSSIBLE: Filters.empty() would open the whole collection
             return RuleToMongoConverter.IMPOSSIBLE;
         }
 

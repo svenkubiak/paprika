@@ -43,17 +43,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Covers hook-free API keys: the exemption for the one service a hook itself calls.
- * <p>
- * A global beforeRequest hook used as an external authorizer asks a service on every request. When
- * that service asks Paprika back with its own key, each of its lookups re-enters the hook it came
- * from - a roundtrip whose outcome is fixed before it starts, and which under load eats the very
- * time budget the outer request is waiting on. {@code bypassHooks} takes that key out of the loop.
- * <p>
- * What the tests hold on to: the exemption reaches all three routes that run hooks, it is a
- * property of one key rather than of API keys in general, it cannot be acquired after the fact,
- * and the request log says out loud that it applied - otherwise a missing hook entry is
- * indistinguishable from a hook that failed to run.
+ * {@code bypassHooks} exempts the key of the service an authorizer hook itself calls, whose lookups
+ * would otherwise re-enter the hook and eat the outer request's time budget.
  */
 @ExtendWith({TestRunner.class})
 class ApiKeyHookBypassIntegrationTest {
@@ -122,10 +113,7 @@ class ApiKeyHookBypassIntegrationTest {
         }
     }
 
-    /**
-     * The file routes carry their own hook filter, and a download that skipped the authorizer on
-     * one route but not the other would be the worse surprise of the two.
-     */
+    /** The file routes carry their own hook filter. */
     @Test
     void aHookFreeKeyRunsNoHookOnAFileRoute() throws IOException {
         String boundId = user("hookfree-file");
@@ -164,7 +152,6 @@ class ApiKeyHookBypassIntegrationTest {
         }
     }
 
-    /** The auth routes run the global hooks through a filter of their own. */
     @Test
     void aHookFreeKeyRunsNoHookOnAnAuthRoute() throws IOException {
         String boundId = user("hookfree-auth");
@@ -195,10 +182,7 @@ class ApiKeyHookBypassIntegrationTest {
         }
     }
 
-    /**
-     * Without this marker the entry of a hook-free request looks exactly like one whose hook
-     * silently did not run, and telling the two apart is what the log is for during an incident.
-     */
+    /** Without the marker a hook-free request is indistinguishable from one whose hook silently did not run. */
     @Test
     void theRequestLogMarksAHookFreeRequest() {
         String boundId = user("hookfree-log");
@@ -219,7 +203,6 @@ class ApiKeyHookBypassIntegrationTest {
                 ordinaryEntry.getBoolean("hooksBypassed"), nullValue());
     }
 
-    /** The two exemptions are independent: neither implies the other. */
     @Test
     void theTwoBypassFlagsAreIndependent() throws IOException {
         String boundId = user("hookfree-independent");
@@ -237,13 +220,11 @@ class ApiKeyHookBypassIntegrationTest {
         insertHook(hook);
 
         try {
-            // Rules bypassed, hooks not: the hook still decides, and it says no
             TestResponse ruleBypassing = list(collection, rulesOnly);
             assertThat(ruleBypassing.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
             assertThat(ruleBypassing.getContent(), containsString("device not trusted"));
             assertThat(calls.get(), equalTo(1));
 
-            // Hooks bypassed, rules not: no hook runs, and the locked collection still holds
             TestResponse hookFree = list(collection, hooksOnly);
             assertThat(hookFree.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
             assertThat(hookFree.getContent(), not(containsString("locked record")));
@@ -259,9 +240,7 @@ class ApiKeyHookBypassIntegrationTest {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
         String boundId = user("hookfree-immutable");
 
-        // Both classifications are created here on purpose: the assertions below would otherwise
-        // be satisfied by a key some other test left in the tenant, which makes this test pass or
-        // fail depending on the order Surefire happens to pick.
+        // Both are created here so the assertions cannot be satisfied by another test's key.
         createKey("hookfree-list-exempt", boundId, true);
         CreatedKey ordinary = createKey("hookfree-list-ordinary", boundId, false);
 
@@ -271,8 +250,7 @@ class ApiKeyHookBypassIntegrationTest {
         assertThat(list.getContent(), containsString("\"bypassHooks\":true"));
         assertThat(list.getContent(), containsString("\"bypassHooks\":false"));
 
-        // The update route exists for the source binding only; naming the flag is refused
-        // rather than silently dropped, so a 204 can never be read as "the flag is set now".
+        // The flag is refused rather than dropped, so a 204 can never read as "the flag is set now".
         TestResponse patched = AdminTestUtils.patchWithAdminCookies(
                 "/api/meta/tenants/" + tenant.id() + "/api-keys/" + ordinary.id(),
                 adminCookies(),
@@ -280,7 +258,6 @@ class ApiKeyHookBypassIntegrationTest {
                 "application/json");
         assertThat(patched.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
-        // ... and the key really did stay a hook-running one
         Document stored = Application.getInstance(services.TenantDatabaseResolver.class)
                 .systemCollection(models.ApiKeyDefinition.COLLECTION)
                 .find(new Document("id", ordinary.id()))

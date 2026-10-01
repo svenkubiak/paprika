@@ -41,7 +41,6 @@ class TenantAuthRecoveryIntegrationTest {
         assertThat(login(username, OLD_PASSWORD).getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
         assertThat(login(username, NEW_PASSWORD).getStatusCode(), equalTo(StatusCodes.OK));
 
-        // The token is single-use: replaying it fails.
         assertThat(resetRequest(token, "another-secret-password-1").getStatusCode(),
                 equalTo(StatusCodes.BAD_REQUEST));
     }
@@ -50,11 +49,10 @@ class TenantAuthRecoveryIntegrationTest {
     void forgotIsUniformAndResetRejectedWhenDisabled() {
         setFlags(false, null, null);
 
-        // Disabled, unknown tenant, unknown account: always the same answer, no enumeration.
+        // Disabled, unknown tenant, unknown account: always the same answer, no enumeration
         assertThat(forgot("default", "whoever@example.com").getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(forgot("does-not-exist", "whoever@example.com").getStatusCode(), equalTo(StatusCodes.OK));
 
-        // With the feature off, reset is rejected regardless of the token.
         assertThat(resetRequest("any-token", NEW_PASSWORD).getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
     }
 
@@ -78,10 +76,8 @@ class TenantAuthRecoveryIntegrationTest {
                 .token();
 
         assertThat(confirm(token).getStatusCode(), equalTo(StatusCodes.OK));
-        // Single-use: the same token cannot be confirmed twice.
         assertThat(confirm(token).getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
-        // With verification disabled, confirm is rejected.
         setFlags(null, false, null);
         String other = Application.getInstance(TenantUserService.class)
                 .issueEmailVerificationToken(TenantTestUtils.defaultTenant(), email)
@@ -97,7 +93,6 @@ class TenantAuthRecoveryIntegrationTest {
         String email = username + "@example.com";
         Application.getInstance(UserService.class).createUser(username, email, OLD_PASSWORD);
 
-        // Correct credentials, but the tenant requires a verified email and this user has none yet.
         assertThat(login(username, OLD_PASSWORD).getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
 
         String token = Application.getInstance(TenantUserService.class)
@@ -108,7 +103,7 @@ class TenantAuthRecoveryIntegrationTest {
 
         assertThat(login(username, OLD_PASSWORD).getStatusCode(), equalTo(StatusCodes.OK));
 
-        // Leave the shared default tenant clean for other tests.
+        // Leave the shared default tenant clean for other tests
         setFlags(null, false, null);
     }
 
@@ -120,8 +115,7 @@ class TenantAuthRecoveryIntegrationTest {
         tenantService.update(tenant.id(), null, null, null, null, null, true, true, null, null, null);
         assertThat(tenantService.findById(tenant.id()).orElseThrow().emailVerificationRequired(), is(true));
 
-        // Disabling verification implicitly drops the login requirement too - it can never be
-        // satisfied once the verify endpoints are gated off.
+        // The login requirement could never be satisfied once the verify endpoints are gated off
         tenantService.update(tenant.id(), null, null, null, null, null, false, null, null, null, null);
         assertThat(tenantService.findById(tenant.id()).orElseThrow().emailVerificationRequired(), is(false));
 

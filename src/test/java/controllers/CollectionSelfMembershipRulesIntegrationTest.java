@@ -26,13 +26,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
 /**
- * The {@code group} preset on the membership collection itself: {@code groupCollection} is this
- * very collection, so the caller's own membership records name the groups and every membership
- * record of those groups is visible. That is how an application shows the <em>member list</em> of
- * a group without an external service.
- * <p>
- * The lookup is not circular: the resolver reads the memberships once, past the rules, and the
- * result only scopes the query that follows.
+ * The {@code group} preset with the membership collection as its own groupCollection (a group's
+ * member list). Not circular: the resolver reads memberships once past the rules, then scopes the query.
  */
 @ExtendWith({TestRunner.class})
 class CollectionSelfMembershipRulesIntegrationTest {
@@ -76,7 +71,6 @@ class CollectionSelfMembershipRulesIntegrationTest {
         addMembership(WRITABLE_MEMBERSHIPS, userB, CREW_B, "writable membership of b");
     }
 
-    /** The point of the setup: the member list of the caller's own group, not only their own row. */
     @Test
     void listReturnsEveryMembershipOfTheCallersGroups() {
         TestResponse listA = list(tokenA);
@@ -116,11 +110,7 @@ class CollectionSelfMembershipRulesIntegrationTest {
         assertThat(view(tokenC, membershipA).getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
     }
 
-    /**
-     * Writes are locked here, and a locked rule stays locked whatever the caller encodes the body
-     * as. A multipart request must not walk past the rule just because mangoo reports its body as
-     * empty.
-     */
+    /** mangoo reports a multipart body as empty, which must not let it walk past the rule. */
     @Test
     void aLockedUpdateIsRefusedForJsonAndMultipartAlike() {
         TestResponse json = TestRequest.patch("/api/collections/" + MEMBERSHIPS + "/" + membershipA)
@@ -146,12 +136,7 @@ class CollectionSelfMembershipRulesIntegrationTest {
         assertThat(stored(membershipA).getString("crew"), equalTo(CREW_A));
     }
 
-    /**
-     * Where the collection does allow updates, the group of a membership is the very field the
-     * resolver reads - so moving a record into a foreign crew hands the caller a group they were
-     * never a member of. It has to be refused through both encodings; a multipart body that the
-     * rules never see would make the check decorative.
-     */
+    /** The group of a membership is the field the resolver reads, so moving it would grant a foreign group. */
     @Test
     void aMembershipCannotBeMovedIntoAForeignCrewThroughEitherEncoding() {
         TestResponse json = TestRequest.patch(url(WRITABLE_MEMBERSHIPS, writableMembershipA))
@@ -167,7 +152,6 @@ class CollectionSelfMembershipRulesIntegrationTest {
         assertThat(multipart.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
         assertThat(stored(WRITABLE_MEMBERSHIPS, writableMembershipA).getString("crew"), equalTo(CREW_A));
 
-        // A write that stays inside the own crew still goes through on both paths
         TestResponse allowed = patchMultipart(
                 WRITABLE_MEMBERSHIPS, writableMembershipA, tokenA, "note", "renamed via multipart");
         assertThat(allowed.getContent(), allowed.getStatusCode(), equalTo(StatusCodes.OK));
@@ -218,18 +202,12 @@ class CollectionSelfMembershipRulesIntegrationTest {
                 .execute();
     }
 
-    /**
-     * The collection scopes itself: groupCollection is MEMBERSHIPS, and the group of a membership
-     * record is the same field the resolver reads. Writes stay locked - who joins a group is the
-     * application's decision, not this test's subject.
-     */
     static CollectionRules selfMembershipRules() {
         return new CollectionRules(
                 "group", "group", null, null, null,
                 "owner", MEMBERSHIPS, "user", "crew", "crew");
     }
 
-    /** The same self-scoping collection, but with updates allowed for members of the crew. */
     static CollectionRules writableSelfMembershipRules() {
         return new CollectionRules(
                 "group", "group", null, "group", null,

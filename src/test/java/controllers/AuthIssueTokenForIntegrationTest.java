@@ -29,10 +29,6 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * Covers the {@code issueTokenFor} shape of the blocking beforeLogin/beforeRegister hook response
- * contract: {@code {"continue": false, "issueTokenFor": {"userId": "..."}}}.
- */
 @ExtendWith({TestRunner.class})
 class AuthIssueTokenForIntegrationTest {
 
@@ -130,8 +126,7 @@ class AuthIssueTokenForIntegrationTest {
                     .withContentType("application/json")
                     .execute();
 
-            // issueTokenFor is only recognized for beforeLogin; on beforeRegister the pre-existing
-            // continue:false handling applies unchanged and rejects the registration.
+            // issueTokenFor is only recognized for beforeLogin; here continue:false rejects.
             assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
             TestResponse login = TestRequest.post("/api/auth/login")
@@ -241,10 +236,7 @@ class AuthIssueTokenForIntegrationTest {
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/hook";
     }
 
-    /**
-     * The test hook server binds to a loopback port, which HookService now blocks by default (SSRF
-     * guard) unless the tenant's webhook allowlist explicitly permits it.
-     */
+    /** HookService blocks loopback hosts (SSRF guard) unless the tenant's allowlist permits them. */
     private static void allowWebhookHost(HttpServer server) {
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
         Application.getInstance(TenantService.class).update(

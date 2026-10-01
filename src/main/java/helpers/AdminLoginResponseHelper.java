@@ -16,9 +16,6 @@ public final class AdminLoginResponseHelper {
     private AdminLoginResponseHelper() {
     }
 
-    /**
-     * Response mapping for the form based Web UI sign-in, which navigates instead of returning JSON.
-     */
     public static Response toRedirectResponse(AdminLoginResult result) {
         return switch (result.status()) {
             case SUCCESS -> Response.redirect("/");
@@ -29,9 +26,6 @@ public final class AdminLoginResponseHelper {
         };
     }
 
-    /**
-     * Response mapping for the cookie based JSON sign-in endpoints.
-     */
     public static Response toJsonResponse(AdminLoginResult result) {
         return switch (result.status()) {
             case SUCCESS -> Response.ok().bodyJson(SUCCESS_BODY);
@@ -40,9 +34,6 @@ public final class AdminLoginResponseHelper {
         };
     }
 
-    /**
-     * Response mapping for the endpoints that hand out an API token pair.
-     */
     public static Response toTokenResponse(AdminLoginResult result) {
         return switch (result.status()) {
             case SUCCESS -> Application.getInstance(AuthResponseService.class).toTokenResponse(result.tokens());
@@ -57,8 +48,7 @@ public final class AdminLoginResponseHelper {
                     .bodyJson(Map.of("error", "Invalid username or password"))
                     .end();
             case NO_PENDING_LOGIN -> Response.badRequest().bodyJson(Map.of("error", "No pending sign-in")).end();
-            // 429 rather than 403: the code was not rejected on its merits, the account is out of
-            // attempts for now. Retry-After is in seconds, as the header requires.
+            // 429, not 403: the code was not rejected on its merits, the account is out of attempts.
             case TWO_FACTOR_LOCKED -> Response.status(StatusCodes.TOO_MANY_REQUESTS)
                     .header("Retry-After", String.valueOf(SystemUserService.twoFactorLockSeconds()))
                     .bodyJson(Map.of("error", "Too many incorrect codes, the second factor is locked temporarily"))
@@ -66,8 +56,7 @@ public final class AdminLoginResponseHelper {
             case INVALID_CODE -> Response.badRequest()
                     .bodyJson(Map.of("error", "Invalid verification code"))
                     .end();
-            // The same answer every caller gets from the tenant login: a statement about the
-            // instance, never about the account that was named.
+            // A statement about the instance, never about the named account.
             case AT_CAPACITY -> Response.status(StatusCodes.TOO_MANY_REQUESTS)
                     .header("Retry-After", "1")
                     .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"))

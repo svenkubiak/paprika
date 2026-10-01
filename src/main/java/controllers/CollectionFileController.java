@@ -13,9 +13,7 @@ import services.CollectionFileService;
 
 import java.util.Objects;
 
-// The hook filter runs last on purpose: a beforeRequest hook acting as an external authorizer
-// needs the resolved auth context (context.auth.id/role) in the envelope, just like on the
-// collection routes.
+// The hook filter runs last: an authorizer hook needs the resolved auth context in the envelope.
 @FilterWith({TenantContextFilter.class, ApiAuthFilter.class, ApiFileRouteHookFilter.class})
 public class CollectionFileController {
     private final CollectionFileService collectionFileService;
@@ -33,8 +31,7 @@ public class CollectionFileController {
         return respondWithFile(collection, id, field, fileId, request);
     }
 
-    // Not named download*: the framework resolves routes to controller methods by name, so an
-    // overload of a route method would be a candidate for the route itself.
+    // Not named download*: mangoo resolves routes by method name, so an overload could match the route.
     private Response respondWithFile(String collection, String id, String field, String fileId, Request request) {
         Integer width;
         try {

@@ -55,8 +55,7 @@ function onTenantChange(value: string) {
       >
         <AppLogo show-text>
           <template v-if="bootstrap?.version" #subtitle>
-            <!-- Monospaced and selectable because the first thing a bug report needs is this
-                 string; swallowing the click keeps select-all from also navigating away. -->
+            <!-- Selectable for bug reports; swallowing the click keeps it from navigating. -->
             <div class="text-xs text-muted" title="Paprika version" @click.prevent.stop>
               <span class="select-all font-mono">v{{ bootstrap.version }}</span>
             </div>

@@ -5,11 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/**
- * The character set of collection and field names. What is rejected here is rejected on both
- * ways into a schema - the meta API and the schema import - because both run through
- * {@code TenantCollectionService#validateDefinition}.
- */
+/** Both ways into a schema (meta API and schema import) run through TenantCollectionService#validateDefinition. */
 class SchemaNamesTest {
 
     @Test

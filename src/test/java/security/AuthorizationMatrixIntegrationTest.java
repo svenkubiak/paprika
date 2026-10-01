@@ -30,23 +30,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Executable specification of Paprika's access rules.
- * <p>
- * Instead of testing single scenarios, this walks the full matrix of
- * rule × caller × operation × record ownership and asserts the outcome of every combination.
- * Access rules are the central promise a BaaS makes to its users, so every combination is spelled
- * out here rather than left to be inferred from a handful of examples.
- * <p>
- * The record ownership dimension deliberately includes an <em>ownerless</em> record: records
- * created through the admin UI carry no owner field, and an {@code owner} rule used to evaluate to
- * true for them when the caller was a guest, because {@code null == null} compared equal
- * (see {@link rules.RuleEvaluator}). Any rule must deny access to a record it cannot prove
- * ownership of.
- * <p>
- * Assertions are written against the security outcome (granted vs. denied, and which records became
- * visible) rather than exact status codes, so that a denial may stay free to be expressed as 401,
- * 403 or 404 without weakening what is being verified. For denied writes the persisted state is
- * checked as well: a denial that still mutates data would not be a denial.
+ * Full matrix of rule x caller x operation x ownership. Includes an ownerless record because a rule
+ * must deny any record it cannot prove ownership of. Denials may be 401/403/404; denied writes must not mutate.
  */
 @ExtendWith({TestRunner.class})
 class AuthorizationMatrixIntegrationTest {
@@ -58,7 +43,6 @@ class AuthorizationMatrixIntegrationTest {
 
 
 
-    /** The rule values a user can configure per operation in the admin UI. */
     private enum Rule {
         LOCKED(null),
         PUBLIC("*"),
@@ -72,7 +56,6 @@ class AuthorizationMatrixIntegrationTest {
         }
     }
 
-    /** Who is calling: unauthenticated, the owner, a different tenant user, or the admin UI. */
     private enum Caller {
         ANONYMOUS,
         USER_A,
@@ -95,7 +78,7 @@ class AuthorizationMatrixIntegrationTest {
     void enforcesRuleForEveryOperationAndRecordOwnership(Rule rule, Caller caller) {
         Fixture fixture = new Fixture(rule, caller);
 
-        // LIST first: it is the only read that must not leak records the caller may not view
+        // LIST first: the only read that must not leak records the caller may not view
         assertListVisibility(fixture);
 
         // VIEW before any write, so the record state is still the seeded one
@@ -115,16 +98,11 @@ class AuthorizationMatrixIntegrationTest {
         }
     }
 
-    /**
-     * A file route reuses the record rules of its collection: downloading maps to VIEW and deleting
-     * a file maps to UPDATE. Verified separately, as it is the second place a route parameter
-     * decides which rule applies.
-     */
+    /** File routes reuse the collection rules: download maps to VIEW, file delete to UPDATE. */
     @ParameterizedTest(name = "caller={0}")
     @MethodSource("callers")
     void fileRoutesUseViewAndUpdateRules(Caller caller) {
         String collection = "matrix_files_" + DbUtils.id();
-        // view is open, update is locked: a file download must pass, a file delete must not
         TenantTestUtils.seedCollection(
                 collection,
                 new CollectionRules("*", "*", "*", null, "*", "owner"),
@@ -150,11 +128,6 @@ class AuthorizationMatrixIntegrationTest {
         return Stream.of(Caller.values()).map(Arguments::of);
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Expectations
-    // ---------------------------------------------------------------------------------------
-
-    /** Whether the caller may read or write a record with the given owner under the given rule. */
     private static boolean allows(Rule rule, Caller caller, String recordTitle) {
         if (caller == Caller.ADMIN_COOKIE) {
             // The admin UI session is the tenant operator and bypasses the collection rules
@@ -165,7 +138,7 @@ class AuthorizationMatrixIntegrationTest {
             case LOCKED -> false;
             case PUBLIC -> true;
             case AUTH -> caller != Caller.ANONYMOUS;
-            // Ownership must be proven: an ownerless record belongs to nobody, never to the caller
+            // An ownerless record belongs to nobody, never to the caller
             case OWNER -> switch (caller) {
                 case USER_A -> OWNED_BY_A.equals(recordTitle);
                 case USER_B -> OWNED_BY_B.equals(recordTitle);
@@ -174,7 +147,6 @@ class AuthorizationMatrixIntegrationTest {
         };
     }
 
-    /** Whether the caller may create a record at all. */
     private static boolean allowsCreate(Rule rule, Caller caller) {
         if (caller == Caller.ADMIN_COOKIE) {
             return true;
@@ -183,21 +155,16 @@ class AuthorizationMatrixIntegrationTest {
         return switch (rule) {
             case LOCKED -> false;
             case PUBLIC -> true;
-            // owner also implies an authenticated caller, as the record is owned by whoever creates it
+            // owner implies an authenticated caller, as the record is owned by whoever creates it
             case AUTH, OWNER -> caller != Caller.ANONYMOUS;
         };
     }
 
-    /** Which of the seeded records a LIST must return for the caller. */
     private static List<String> visibleInList(Rule rule, Caller caller) {
         return Stream.of(OWNED_BY_A, OWNED_BY_B, OWNERLESS)
                 .filter(title -> allows(rule, caller, title))
                 .toList();
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Assertions per operation
-    // ---------------------------------------------------------------------------------------
 
     private void assertListVisibility(Fixture fixture) {
         TestResponse response = fixture.execute(
@@ -205,8 +172,7 @@ class AuthorizationMatrixIntegrationTest {
 
         List<String> expected = visibleInList(fixture.rule, fixture.caller);
         if (expected.isEmpty()) {
-            // Either the request is denied outright or the list is scoped down to nothing,
-            // both are a valid way of not leaking anything
+            // Denied outright or scoped down to nothing: both leak nothing
             boolean denied = isDenied(response);
             boolean empty = response.getStatusCode() == 200 && response.getContent().contains("\"total\":0");
             assertThat("LIST must not expose records the caller may not view: " + response.getContent(),
@@ -292,14 +258,9 @@ class AuthorizationMatrixIntegrationTest {
 
     private static boolean isDenied(TestResponse response) {
         int status = response.getStatusCode();
-        // 404 counts as denied on purpose: rules hide the existence of a record rather than
-        // confirming it with a 403
+        // 404 counts as denied: rules hide a record's existence rather than confirming it with 403
         return status == 401 || status == 403 || status == 404;
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Fixture
-    // ---------------------------------------------------------------------------------------
 
     private final class Fixture {
         private final String collection;
@@ -330,7 +291,6 @@ class AuthorizationMatrixIntegrationTest {
                     : null;
         }
 
-        /** Fixture for a pre-seeded collection, used by the file route test. */
         private Fixture(String collection, Caller caller) {
             this.collection = collection;
             this.rule = Rule.PUBLIC;
@@ -372,10 +332,6 @@ class AuthorizationMatrixIntegrationTest {
             case ANONYMOUS, ADMIN_COOKIE -> null;
         };
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Data helpers
-    // ---------------------------------------------------------------------------------------
 
     private static List<FieldDefinition> schemaFields() {
         return List.of(
@@ -419,7 +375,6 @@ class AuthorizationMatrixIntegrationTest {
         return TenantTestUtils.defaultTenantContext();
     }
 
-    /** Creates the user on first use and returns its id. */
     private static String userId(String username, String password) {
         Document existing = collections().dataCollection(context(), "users")
                 .find(eq("username", username))

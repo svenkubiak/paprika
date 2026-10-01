@@ -8,8 +8,6 @@ public record AdminSettingsResult(AdminSettingsResult.Status status, Map<String,
         BAD_REQUEST,
         UNAUTHORIZED,
         NOT_FOUND,
-
-        /** A password had to be re-entered, but the instance had no capacity to verify it. */
         AT_CAPACITY
     }
 

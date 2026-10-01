@@ -20,7 +20,6 @@ const toast = useAppToast()
 const { load, bootstrap } = useBootstrap()
 
 const users = ref<TenantUser[]>([])
-/** The fields this tenant added to its users schema - empty for a tenant that uses only the core. */
 const customFields = ref<FieldDefinition[]>([])
 const loading = ref(false)
 const editorOpen = ref(false)
@@ -32,8 +31,7 @@ const deleting = ref(false)
 const deletingUser = ref<TenantUser | null>(null)
 const bulkDeleteOpen = ref(false)
 const search = ref('')
-// A custom field of the users schema is a valid sort key too, so this cannot be narrowed to the
-// core fields of TenantUser.
+// Custom fields are valid sort keys too, so this cannot be narrowed to the keys of TenantUser.
 const sortField = ref<string>('updatedAt')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 const page = ref(1)
@@ -54,8 +52,6 @@ const form = ref<UserEditorForm>({
 const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 const activeTenant = computed(() => bootstrap.value?.activeTenant ?? null)
 
-// The custom fields sit between the core fields and the timestamps, the same order the record
-// table of a regular collection uses.
 const columns = computed(() => [
   { id: 'select', header: '' },
   { id: 'userId', accessorKey: 'id', header: 'ID' },
@@ -87,12 +83,10 @@ function cellText(user: TenantUser, field: FieldDefinition): string {
   return formatCellValue(user[field.name], field.type)
 }
 
-// The users endpoint hands out the full list in one response, so searching, sorting and paging all
-// happen here instead of going back to the server for every keystroke or page change.
+// The users endpoint returns the full list, so search, sort and paging happen client-side.
 const filteredUsers = computed(() => {
   const query = search.value.trim().toLowerCase()
-  // Searching over the serialized record covers the custom fields without having to know their
-  // types here.
+  // Searching the serialized record covers custom fields without knowing their types.
   const items = query
     ? users.value.filter((user) => JSON.stringify(user).toLowerCase().includes(query))
     : [...users.value]
@@ -125,8 +119,7 @@ const summary = computed(() => {
   return `${from}–${to} of ${count} users`
 })
 
-// A shrinking result set (search, page size, deletions) can leave the current page beyond the end,
-// which would render an empty table with rows still to be shown.
+// A shrinking result set can leave the current page beyond the end.
 watch([pageCount, pageSize], () => {
   if (page.value > pageCount.value) {
     page.value = pageCount.value
@@ -152,10 +145,7 @@ onMounted(async () => {
   }
 })
 
-/**
- * The custom fields come from the users schema of the active tenant. A failure here must not take
- * the user list down with it: without the schema the editor simply falls back to the core fields.
- */
+/** A failure must not take the user list down: the editor falls back to the core fields. */
 async function loadCustomFields() {
   try {
     const definition = await api.getCollectionDefinition('users')
@@ -265,9 +255,8 @@ async function saveUser() {
     return
   }
 
-  // The custom fields go through the same conversion and the same client-side checks as a record
-  // of any other collection, so the editor cannot send something /api/collections/users would
-  // refuse afterwards.
+  // Same conversion and client-side checks as any record, so the editor cannot send what
+  // /api/collections/users would refuse.
   let custom: Record<string, unknown>
   try {
     custom = serializeRecordForm(
@@ -321,7 +310,7 @@ async function saveUser() {
   }
 }
 
-/** FILE fields cannot be edited in this sheet, so they are not part of what it sends either. */
+/** FILE fields cannot be edited in this sheet, so they are not sent either. */
 function editableCustomFields(): FieldDefinition[] {
   return customFields.value.filter((field) => field.type !== 'FILE')
 }

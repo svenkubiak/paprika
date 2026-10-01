@@ -9,14 +9,9 @@ import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.util.Objects;
+import java.util.function.BinaryOperator;
 import java.util.Set;
 
-/**
- * Credential handling for the tenant users collection when it is accessed through the generic
- * data-plane ({@code /api/collections/users}). Ensures password hashes are never exposed or
- * client-writable, that the {@code role} field cannot be set through the data-plane, and that the
- * virtual write-only {@code password} field is turned into an Argon2 hash.
- */
 public final class UserRecordUtils {
     public static final String USERNAME = "username";
     public static final String EMAIL = "email";
@@ -31,24 +26,20 @@ public final class UserRecordUtils {
     public static final String VERIFY_TOKEN_HASH = "verifyTokenHash";
     public static final String VERIFY_TOKEN_EXPIRES_AT = "verifyTokenExpiresAt";
 
-    /** Fields the data-plane must never expose (credentials and single-use auth tokens). */
     public static final Set<String> CREDENTIAL_FIELDS = Set.of(
             PASSWORD_HASH, PASSWORD_SALT,
             RESET_TOKEN_HASH, RESET_TOKEN_EXPIRES_AT,
             VERIFY_TOKEN_HASH, VERIFY_TOKEN_EXPIRES_AT);
 
-    /** Fields the data-plane must never let a client write (but {@code emailVerified} stays readable). */
     private static final Set<String> WRITE_PROTECTED_FIELDS = Set.of(
             PASSWORD_HASH, PASSWORD_SALT, ROLE, EMAIL_VERIFIED,
             RESET_TOKEN_HASH, RESET_TOKEN_EXPIRES_AT,
             VERIFY_TOKEN_HASH, VERIFY_TOKEN_EXPIRES_AT);
 
-    /** Single-use tokens that were issued for the current email address. */
     private static final Set<String> EMAIL_BOUND_TOKEN_FIELDS = Set.of(
             RESET_TOKEN_HASH, RESET_TOKEN_EXPIRES_AT,
             VERIFY_TOKEN_HASH, VERIFY_TOKEN_EXPIRES_AT);
 
-    /** Names that are system-managed and must never appear in the editable users schema. */
     public static final Set<String> INTERNAL_FIELDS = Set.of(
             PASSWORD_HASH, PASSWORD_SALT, EMAIL_VERIFIED,
             RESET_TOKEN_HASH, RESET_TOKEN_EXPIRES_AT,
@@ -64,10 +55,10 @@ public final class UserRecordUtils {
     }
 
     /**
-     * Prepares a user document for insertion through the data-plane: strips any client-supplied
-     * credential fields, forces the role to {@link Role#USER} and turns {@code password} into a hash.
+     * @param hasher (password, salt) to hash; may throw {@code MangooHashingException} when no
+     *               Argon2 slot is free
      */
-    public static void applyOnCreate(Document document) {
+    public static void applyOnCreate(Document document, BinaryOperator<String> hasher) {
         for (String field : WRITE_PROTECTED_FIELDS) {
             document.remove(field);
         }
@@ -76,15 +67,11 @@ public final class UserRecordUtils {
         document.put(ROLE, Role.USER);
 
         if (password instanceof String raw && StringUtils.isNotBlank(raw)) {
-            hashInto(document, raw);
+            hashInto(document, raw, hasher);
         }
     }
 
-    /**
-     * Sanitizes the {@code $set}/{@code $unset} documents of a data-plane update: removes credential
-     * and role mutations and turns a supplied {@code password} into a hash.
-     */
-    public static void applyOnUpdate(Document setDocument, Document unsetDocument) {
+    public static void applyOnUpdate(Document setDocument, Document unsetDocument, BinaryOperator<String> hasher) {
         for (String field : WRITE_PROTECTED_FIELDS) {
             setDocument.remove(field);
             unsetDocument.remove(field);
@@ -95,22 +82,15 @@ public final class UserRecordUtils {
 
         Object password = setDocument.remove(PASSWORD);
         if (password instanceof String raw && StringUtils.isNotBlank(raw)) {
-            hashInto(setDocument, raw);
+            hashInto(setDocument, raw, hasher);
         }
     }
 
-    /**
-     * Whether a data-plane update sets a new password. Must be asked before
-     * {@link #applyOnUpdate}, which turns the plaintext into a hash.
-     */
+    // Must be called before applyOnUpdate, which replaces the plaintext with a hash
     public static boolean changesPassword(Document setDocument) {
         return setDocument.get(PASSWORD) instanceof String raw && StringUtils.isNotBlank(raw);
     }
 
-    /**
-     * Whether an update replaces or clears the stored email. Resending the current address is not
-     * a change, so a client that writes back the whole profile is not treated as one.
-     */
     public static boolean changesEmail(Document current, Document setDocument, Document unsetDocument) {
         Object stored = current.get(EMAIL);
         if (unsetDocument.containsKey(EMAIL)) {
@@ -119,12 +99,8 @@ public final class UserRecordUtils {
         return setDocument.containsKey(EMAIL) && !Objects.equals(setDocument.get(EMAIL), stored);
     }
 
-    /**
-     * Applies what a new email address implies: it is not verified, and the reset and
-     * verification tokens mailed to the previous address stop working - a pending verification
-     * token would otherwise mark the new address as verified. Call after {@link #applyOnUpdate},
-     * which strips {@code emailVerified} from client input.
-     */
+    // Tokens mailed to the old address must die, or a pending verification would verify the new one.
+    // Call after applyOnUpdate, which strips emailVerified from client input.
     public static void invalidateEmailBoundState(Document setDocument, Document unsetDocument) {
         setDocument.put(EMAIL_VERIFIED, false);
         for (String field : EMAIL_BOUND_TOKEN_FIELDS) {
@@ -133,7 +109,6 @@ public final class UserRecordUtils {
         }
     }
 
-    /** Verifies a plaintext password against the hash stored on a raw user document. */
     public static boolean matchesPassword(String password, Document user) {
         String salt = user.getString(PASSWORD_SALT);
         String hash = user.getString(PASSWORD_HASH);
@@ -143,7 +118,6 @@ public final class UserRecordUtils {
         return CommonUtils.matchArgon2(password, salt, hash);
     }
 
-    /** Removes credential fields from a document that may be returned to a client or a hook. */
     public static void stripCredentials(Document document) {
         if (document == null) {
             return;
@@ -153,16 +127,15 @@ public final class UserRecordUtils {
         }
     }
 
-    /** Projection that excludes the Mongo {@code _id} and the never-exposed credential/token fields. */
     public static Bson recordProjection() {
         return Projections.fields(
                 Projections.excludeId(),
                 Projections.exclude(new java.util.ArrayList<>(CREDENTIAL_FIELDS)));
     }
 
-    private static void hashInto(Document document, String password) {
+    private static void hashInto(Document document, String password, BinaryOperator<String> hasher) {
         String salt = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
         document.put(PASSWORD_SALT, salt);
-        document.put(PASSWORD_HASH, CommonUtils.hashArgon2(password, salt));
+        document.put(PASSWORD_HASH, hasher.apply(password, salt));
     }
 }

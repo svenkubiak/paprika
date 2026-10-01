@@ -26,12 +26,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
 /**
- * The {@code group} preset on the group collection itself: {@code groupRecordField} is
- * {@code "id"}, so the record <em>is</em> the group and every member of it reaches it. No second
- * field duplicating the record's own id is involved.
- * <p>
- * Create is deliberately a different preset here - a "group" create rule could never be satisfied
- * and is refused while the collection is saved (see MetaMembershipRulesValidationIntegrationTest).
+ * The {@code group} preset with {@code groupRecordField = "id"}: the record is the group. Create
+ * uses another preset, since a "group" create rule could never be satisfied and is refused on save.
  */
 @ExtendWith({TestRunner.class})
 class CollectionGroupCollectionRulesIntegrationTest {
@@ -70,7 +66,7 @@ class CollectionGroupCollectionRulesIntegrationTest {
 
         addMembership(userA, teamA);
         addMembership(userB, teamB);
-        // Joined team A without having created it - the case "owner" would not cover.
+        // Joined team A without having created it - the case "owner" would not cover
         addMembership(member, teamA);
     }
 
@@ -87,7 +83,6 @@ class CollectionGroupCollectionRulesIntegrationTest {
         assertThat(listB.getContent(), not(containsString("Team A")));
     }
 
-    /** No membership means an empty list, never the whole collection of groups. */
     @Test
     void aCallerWithoutAnyMembershipSeesNoGroup() {
         TestResponse list = list(tokenC);
@@ -113,10 +108,6 @@ class CollectionGroupCollectionRulesIntegrationTest {
         assertThat(own.getContent(), containsString("Team A"));
     }
 
-    /**
-     * Every member may edit the group, not only whoever created it. An application that wants it
-     * narrower configures "owner" - that is its decision, not the preset's.
-     */
     @Test
     void aMemberMayUpdateTheGroupItDidNotCreate() {
         TestResponse updated = TestRequest.patch("/api/collections/" + TEAMS + "/" + teamA)
@@ -141,11 +132,7 @@ class CollectionGroupCollectionRulesIntegrationTest {
                 .updateOne(eq("id", teamA), new Document("$set", new Document("name", "Team A")));
     }
 
-    /**
-     * A record cannot be relabelled as another group. The membership check refuses the body first
-     * (the auth filter runs before validation); a body naming the caller's own group would then
-     * still be refused by validation, because "id" is read-only on write. Either way nothing moves.
-     */
+    /** The membership check refuses the body first; validation would still refuse it, as "id" is read-only. */
     @Test
     void aGroupRecordCannotBeRelabelledAsAnotherGroup() {
         TestResponse moved = TestRequest.patch("/api/collections/" + TEAMS + "/" + teamA)
@@ -159,11 +146,7 @@ class CollectionGroupCollectionRulesIntegrationTest {
         assertThat(stored(teamB).getString("id"), equalTo(teamB));
     }
 
-    /**
-     * The same write as {@link #aGroupRecordCannotBeRelabelledAsAnotherGroup}, sent as multipart.
-     * The content type must not decide whether the membership check sees the body - otherwise the
-     * whole preset is bypassed by switching the encoding.
-     */
+    /** The content type must not decide whether the membership check sees the body. */
     @Test
     void aGroupRecordCannotBeRelabelledAsAnotherGroupWithAMultipartBody() {
         TestResponse moved = patchMultipart(teamA, tokenA, "id", teamB);
@@ -173,7 +156,6 @@ class CollectionGroupCollectionRulesIntegrationTest {
         assertThat(stored(teamB).getString("id"), equalTo(teamB));
     }
 
-    /** Multipart reaches the own group and stops at a foreign one, exactly like JSON does. */
     @Test
     void aMultipartUpdateReachesTheOwnGroupOnly() {
         TestResponse own = patchMultipart(teamA, tokenMember, "name", "Team A via multipart");

@@ -22,19 +22,15 @@ const router = createRouter({
       name: 'setup',
       component: () => import('@/pages/SetupPage.vue'),
       meta: { public: true, title: 'Initial setup' },
-      // The token only ever travels in the fragment, so it is also the only thing that tells a
-      // real invite apart from someone just opening /setup - the server never sees it and can
-      // not make this call. Whether the initial setup is done is deliberately not the criterion:
-      // superadmin invites reuse this flow long after that point.
+      // The fragment token is the only thing that tells a real invite apart; the server never sees
+      // it. Setup completion is not the criterion: superadmin invites reuse this flow.
       beforeEnter: (to) => {
         const token = new URLSearchParams(to.hash.slice(1)).get('token')
         return token ? true : { name: 'login' }
       }
     },
     {
-      // Opened from a mailbox, so it has to work without a session. The token travels in the
-      // fragment for the same reason it does on /setup: it never reaches the server as part of a
-      // URL, so no access log or proxy can end up holding it.
+      // Works without a session; the fragment keeps the token out of access logs and proxies.
       path: '/verify-email',
       name: 'verify-email',
       component: () => import('@/pages/VerifyEmailPage.vue'),
@@ -131,8 +127,6 @@ const router = createRouter({
       meta: { title: 'Logs' }
     },
     {
-      // The tenant users collection now uses the generic collection views (Data/Schema/Rules/
-      // Hooks/API). The Data tab renders the dedicated user management UI.
       path: '/admin/users',
       redirect: '/admin/collections/users/data'
     },
@@ -144,37 +138,27 @@ const router = createRouter({
 })
 
 /**
- * Every route component is a lazy import, so a navigation error is - short of a bug in a route
- * guard - always a chunk this build can no longer get hold of. Matching the browser's wording
- * to decide that was tried first and kept missing cases: Safari's "Load failed", the MIME type
- * complaint a proxy's HTML error page produces, a plain network error from a connection that
- * died with the old process. Each miss left the navigation aborted, and on the first navigation
- * of a tab that is an empty #app - a white page. So recovery no longer depends on the wording;
- * the message is only used to pick what the notice says.
+ * Every route component is lazy, so a navigation error is (barring a guard bug) a chunk this build
+ * can no longer load. Recovery must not depend on the browser's wording; it varies too much.
  */
 router.onError((error, to) => {
   if (reloadForStaleBuild(to.fullPath)) {
     return
   }
 
-  // The reload already happened and the chunk is still not there, so this is not going to fix
-  // itself. Say so instead of leaving whatever the failed navigation left behind - on the first
-  // navigation of a tab that is an empty #app, i.e. a white page.
+  // Reloaded already and the chunk is still missing; show the notice instead of a blank page.
   renderStaleBuildNotice(error)
 })
 
-// Vite raises this for a modulepreload that failed, which happens before the router ever gets to
-// import the chunk. It is deliberately not preventDefault()ed: if the reload is used up, the
-// error has to keep propagating so it reaches onError above.
+// Raised for a failed modulepreload, before the router imports the chunk. Not preventDefault()ed:
+// if the reload is used up, the error must still reach onError above.
 window.addEventListener('vite:preloadError', () => {
   reloadForStaleBuild(window.location.pathname + window.location.search)
 })
 
 /**
- * Any request that comes back without a session ends up here. This is a router navigation and not
- * a full page load on purpose - the page load used to race the navigation the guard below starts
- * for the very same reason, and whichever one lost left the app unmounted. Everything the old
- * session put in memory is dropped explicitly instead.
+ * A router navigation, not a full page load: a page load raced the guard's navigation and left the
+ * app unmounted. Everything the old session put in memory is dropped explicitly instead.
  */
 onSessionExpired(() => {
   const { reset } = useBootstrap()
@@ -194,9 +178,8 @@ onSessionExpired(() => {
 const NETWORK_RETRY_DELAYS_MS = [400, 1200, 2500]
 
 /**
- * Until the first navigation has settled there is nothing on screen but the placeholder, so an
- * aborted navigation is a blank page and the notice has to take over. Afterwards the app is
- * rendered and must not be wiped - aborting leaves the user on the page they were on.
+ * Before the first navigation settles, an aborted one is a blank page and the notice takes over;
+ * afterwards the rendered app must not be wiped.
  */
 let firstNavigationSettled = false
 router.afterEach(() => {
@@ -205,10 +188,7 @@ router.afterEach(() => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/**
- * A restart takes the server away for a few seconds. Retrying the bootstrap call over that
- * window is what keeps an open tab from being thrown out of a session that is still valid.
- */
+/** Retried over a restart window so an open tab is not thrown out of a still-valid session. */
 async function loadBootstrap(): Promise<BootstrapData | null> {
   const { load } = useBootstrap()
 
@@ -233,8 +213,7 @@ router.beforeEach(async (to) => {
   try {
     const data = await loadBootstrap()
     if (!data?.authenticated) {
-      // `reason` is left off here: a guard that runs before anything was ever loaded cannot tell
-      // an expired session apart from a bookmark opened in a fresh browser.
+      // No `reason`: before anything loaded, an expired session looks like a bookmark opened fresh.
       return { name: 'login', query: { redirect: to.fullPath } }
     }
 
@@ -248,9 +227,8 @@ router.beforeEach(async (to) => {
 
     return true
   } catch (error) {
-    // Only an answer from the application can mean "not signed in". A request that never got
-    // one means the server is gone, and sending the user to a login page they cannot use (the
-    // login call would fail the same way) hides that behind a wrong explanation.
+    // Only an application answer can mean "not signed in"; with the server gone the login page
+    // would fail the same way and give the wrong explanation.
     if (isNetworkError(error)) {
       if (!firstNavigationSettled) {
         renderServerUnreachableNotice()

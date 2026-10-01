@@ -39,9 +39,7 @@ public class ApiBeforeRequestHookFilter implements PerRequestFilter {
 
         request.addAttribute(TenantContext.REQUEST_ATTRIBUTE, ctx);
 
-        // The resolved tenant context above is not a hook concern - login resolves its tenant from
-        // the body and the routes behind this filter need that either way - so only the hook run
-        // itself is skipped for a hook-free key. Downstream sees a request no hook ever touched.
+        // Only the hook run is skipped for a hook-free key; the tenant context above is needed anyway.
         if (ApiKeys.bypassesHooks(request)) {
             return response;
         }

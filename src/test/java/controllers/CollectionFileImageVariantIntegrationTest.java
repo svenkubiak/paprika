@@ -36,10 +36,6 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
-/**
- * The download side of the image variants: an exact hit, the fallback chain, the header naming
- * what was delivered, and the rejection of a width that is not a width at all.
- */
 @ExtendWith({TestRunner.class})
 class CollectionFileImageVariantIntegrationTest {
 
@@ -59,7 +55,6 @@ class CollectionFileImageVariantIntegrationTest {
         assertThat(header(larger, "X-Image-Width"), is("300"));
         assertThat(widthOf(larger.body()), is(300));
 
-        // Wider than every variant: the original, and the header says so.
         HttpResponse<byte[]> original = download(collection, recordId, "?width=5000");
         assertThat(header(original, "X-Image-Width"), is("original"));
         assertThat(widthOf(original.body()), is(800));
@@ -141,7 +136,7 @@ class CollectionFileImageVariantIntegrationTest {
         return collection;
     }
 
-    /** Uploads an image and waits for its variants, which are produced after the response. */
+    /** Variants are produced after the response, so this waits for them. */
     private static String upload(String collection, byte[] png) throws Exception {
         String recordId = uploadBytes(collection, png, "picture.png", "image/png");
         assertThat("the variant queue did not drain",
@@ -154,10 +149,7 @@ class CollectionFileImageVariantIntegrationTest {
         return uploadBytes(collection, content.getBytes(StandardCharsets.UTF_8), "note.txt", "text/plain");
     }
 
-    /**
-     * Posts the multipart body over a raw HTTP client: the payload is binary, so it cannot go
-     * through the string-based test request without being mangled by the charset round-trip.
-     */
+    /** A raw HTTP client, since the string-based test request would mangle the binary payload. */
     private static String uploadBytes(String collection, byte[] content, String fileName, String mimeType)
             throws Exception {
 

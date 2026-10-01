@@ -29,11 +29,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
-/**
- * Realtime delivery has to reach the same verdict as the API. If a group rule were only enforced
- * on the request path, a subscribed client would receive through the stream exactly the records a
- * GET refuses it.
- */
+/** A group rule enforced only on the request path would leak through the stream what a GET refuses. */
 @ExtendWith({TestRunner.class})
 class RealtimeGroupRulesIntegrationTest {
     private static final String MEMBERSHIPS = "rt_memberships";

@@ -132,11 +132,7 @@ class TenantCollectionServiceTest {
         assertThrows(RuleParseException.class, () -> service.validateDefinition(definition));
     }
 
-    /**
-     * A field name is a key in every document of the collection and in the {@code $set} of every
-     * update. A dot there means "nested path", so the write would land somewhere else than the
-     * schema says - and a rule or an index naming that field would mean a third thing again.
-     */
+    /** A dot means "nested path" in documents and $set, so the write would land elsewhere than the schema says. */
     @Test
     void validateDefinitionRejectsAFieldNameWithADot() {
         TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
@@ -152,7 +148,7 @@ class TenantCollectionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
     }
 
-    /** A dollar sign starts a MongoDB operator; the write fails with a 500 instead of a 400. */
+    /** A dollar sign starts a MongoDB operator; the write would fail with a 500 instead of a 400. */
     @Test
     void validateDefinitionRejectsAFieldNameWithADollarSign() {
         TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
@@ -168,7 +164,7 @@ class TenantCollectionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
     }
 
-    /** {@code _id} is MongoDB's own primary key - a field of that name collides with it. */
+    /** {@code _id} is MongoDB's own primary key. */
     @Test
     void validateDefinitionRejectsAFieldNameStartingWithAnUnderscore() {
         TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
@@ -184,7 +180,6 @@ class TenantCollectionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.validateDefinition(definition));
     }
 
-    /** The name becomes a MongoDB collection, so the same character set applies. */
     @Test
     void validateDefinitionRejectsACollectionNameWithMongoSyntax() {
         TenantCollectionService service = Application.getInstance(TenantCollectionService.class);
@@ -201,11 +196,8 @@ class TenantCollectionServiceTest {
     }
 
     /**
-     * Every write to a definition addresses it by id - replace, delete, and the schema import
-     * replacing what it found. Two definitions sharing an id means such a write lands on
-     * whichever of them Mongo picks, so a collection can change its schema because a different
-     * one was saved. The API never produces that state; a restored archive can, which is why the
-     * database says no rather than the code that happens to write.
+     * Writes address a definition by id, so a duplicate id lets saving one collection change another.
+     * Only a restored archive can produce it, hence the database refuses rather than the code.
      */
     @Test
     void twoDefinitionsCannotShareAnId() {

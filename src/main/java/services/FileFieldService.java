@@ -57,10 +57,6 @@ public class FileFieldService {
                         FileFieldUtils.referencesFromRecord(record.get(field.name()), field);
                 boolean appends = appendMulti && field.optionsOrDefault().maxSelectOrDefault() > 1;
 
-                // The files that survive this write are what the limit applies to, so an append
-                // has to be checked against what the record already holds. Checking only the
-                // uploaded count let a field that was already full accept more and drop them
-                // without a word - see validateUploads.
                 validateUploads(field, files, appends ? existing.size() : 0);
 
                 List<FileReference> references = new ArrayList<>();
@@ -71,9 +67,8 @@ public class FileFieldService {
                 }
 
                 for (MultipartSupport.UploadedFile upload : files) {
-                    // The id is recorded before the first byte is written, not after the upload
-                    // succeeded: storeUpload can fail once the original is already in storage,
-                    // and the cleanup below can only delete what it was told about.
+                    // Recorded before writing: storeUpload can fail after the original is stored,
+                    // and the cleanup can only delete ids it knows about
                     String fileId = DbUtils.id();
                     storedIds.add(fileId);
                     references.add(storeUpload(ctx, fileId, upload));
@@ -84,19 +79,13 @@ public class FileFieldService {
             }
             return new UploadChanges(List.copyOf(storedIds), List.copyOf(replacedIds), List.copyOf(variantJobs));
         } catch (RuntimeException | IOException | Error e) {
-            // Error is in the list deliberately: whatever ends this loop early, the bytes already
-            // written have no record pointing at them. The throwable is rethrown untouched: this
-            // cleans up after a hard failure, it does not pretend to recover from one.
+            // Error included deliberately: whatever ends the loop, written bytes have no record; rethrown untouched
             storage.deleteAll(ctx, storedIds);
             throw e;
         }
     }
 
-    /**
-     * Completes an upload once the record pointing at it is written: the files it replaced go, and
-     * the variants of the new ones are queued. Not earlier - a rolled back upload would otherwise
-     * have queued a decode for a file that is about to be deleted.
-     */
+    // Only after the record is written, so a rolled-back upload never queues a variant decode
     public void commitUploads(TenantContext ctx, UploadChanges changes) {
         if (changes != null) {
             storage.deleteAll(ctx, changes.replacedFileIds());
@@ -163,13 +152,8 @@ public class FileFieldService {
     }
 
     /**
-     * Reads the variant of {@code reference} that serves {@code requestedWidth} best: the exact
-     * width when it exists, otherwise the next <em>larger</em> one. A too small image is a visible
-     * quality defect, a too large one only costs bandwidth - so the fallback goes upwards, and
-     * ends at the original.
-     *
-     * @return the bytes and the width they were produced at, or a delivery of the original when no
-     *         variant fits; {@code null} when the file itself is gone
+     * Falls back to the next larger variant, then the original: too small is a visible defect, too
+     * large only costs bandwidth. {@code null} when the file itself is gone.
      */
     public VariantDelivery readFile(TenantContext ctx, FileReference reference, Integer requestedWidth)
             throws IOException {
@@ -196,9 +180,7 @@ public class FileFieldService {
         return bytes == null ? null : VariantDelivery.original(bytes);
     }
 
-    /**
-     * @param width the width the delivered bytes were scaled to, or {@code null} for the original
-     */
+    /** {@code width} is {@code null} for the original. */
     public record VariantDelivery(byte[] bytes, Integer width) {
         static VariantDelivery original(byte[] bytes) {
             return new VariantDelivery(bytes, null);
@@ -244,12 +226,6 @@ public class FileFieldService {
         return new FileReference(fileId, upload.fileName(), upload.mimeType(), upload.bytes().length);
     }
 
-    /**
-     * The configured scaled copies of an upload, produced by {@link ImageVariantQueue} after the
-     * record is written. Only downscales: an original that is already narrower than a configured
-     * width gets no variant for it and falls back to a wider variant, or to the original, on
-     * download - which is also what a download sees until the variants are there.
-     */
     private static Optional<ImageVariantQueue.Job> variantJob(
             FieldDefinition field,
             String fileId,
@@ -269,12 +245,8 @@ public class FileFieldService {
     }
 
     /**
-     * @param keptCount how many files already on the record this write keeps - the existing ones
-     *                  for an append, zero when the field is replaced. Part of the limit because
-     *                  {@code maxSelect} bounds what the field ends up holding, not what arrived
-     *                  in one request: an append onto a field that is already full used to pass
-     *                  this check and then silently store none of the uploads while answering
-     *                  200, which is the one outcome a caller has no way of noticing.
+     * {@code keptCount} counts toward the limit because {@code maxSelect} bounds what the field ends
+     * up holding; otherwise an append onto a full field would silently drop the uploads.
      */
     private void validateUploads(
             FieldDefinition field,
@@ -306,17 +278,7 @@ public class FileFieldService {
         }
     }
 
-    /**
-     * Refuses an image whose declared dimensions are larger than what may be decoded.
-     * <p>
-     * Deliberately here rather than next to the decode: this runs before the first byte is written
-     * to storage. {@code applyUploads} can only roll back the files it has already recorded, so a
-     * rejection that happened during {@code storeUpload} would leave the original behind - and the
-     * whole point is to refuse before anything expensive or persistent happens.
-     * <p>
-     * Only checked when the field actually produces variants. Without {@code imageWidths} nothing
-     * decodes the upload, and an image is then just bytes like any other file.
-     */
+    // Checked before anything is stored rather than at decode time, so a refusal leaves nothing behind
     private void rejectOversizedImage(FieldDefinition field, MultipartSupport.UploadedFile upload) {
         if (!ImageVariants.isSupported(upload.mimeType())) {
             return;
@@ -330,8 +292,7 @@ public class FileFieldService {
                 throw new IllegalArgumentException("Image is too large to process for field " + field.name());
             }
         } catch (IOException e) {
-            // Header unreadable: not a reason to refuse. The decode fails harmlessly later, and a
-            // file that no reader will open never reaches the allocation this guards.
+            // Not a refusal reason: an unreadable file never reaches the decode allocation this guards
             LOG.debug("Could not read the image header for field {}: {}", field.name(), e.getMessage());
         }
     }

@@ -30,7 +30,6 @@ class MetaUsersSchemaIntegrationTest {
         try {
             AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
 
-            // Attempt to wipe the core fields and index, adding only a custom field.
             TestResponse patch = AdminTestUtils.patchWithAdminCookies(
                     "/api/meta/collections/users/" + original.id(),
                     cookies,
@@ -76,9 +75,7 @@ class MetaUsersSchemaIntegrationTest {
         try {
             AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
 
-            // The schema editor sends the whole definition back and derives index names from the
-            // field name, so the unique username index arrives as "idx_username" rather than
-            // under its canonical name.
+            // The schema editor derives index names from the field, so the username index arrives as "idx_username".
             TestResponse patch = AdminTestUtils.patchWithAdminCookies(
                     "/api/meta/collections/users/" + original.id(),
                     cookies,

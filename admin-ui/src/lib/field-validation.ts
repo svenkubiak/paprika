@@ -1,9 +1,7 @@
 import type { FieldDefinition } from '@/types'
 
-/** Sentinel for optional boolean fields without a value in the record editor. */
 export const BOOLEAN_UNSET = '__boolean_unset__'
 
-/** Sentinel for optional select fields without a value in the record editor. */
 export const SELECT_UNSET = '__select_unset__'
 
 /** Mirrors LocalDate.parse of DateFieldValidator. */
@@ -16,7 +14,6 @@ const ISO_TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?$/
 const ISO_OFFSET_DATETIME =
   /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/
 
-/** True when the yyyy-MM-dd text is also a real calendar date, as LocalDate.parse requires. */
 function isRealDate(text: string): boolean {
   const [year, month, day] = text.split('-').map(Number)
   const date = new Date(Date.UTC(year, month - 1, day))
@@ -274,18 +271,16 @@ export function serializeBooleanFieldValue(
 }
 
 /**
- * What an emptied field sends: `null` clears it on update, `undefined` omits it on create.
- * Never `''` - an empty string reaches the type validators and is rejected there, while a missing
- * value is correctly treated as "not set" (ValidationService only checks `required` for it).
+ * `null` clears on update, `undefined` omits on create. Never '': the type validators reject it,
+ * while a missing value only goes through the `required` check.
  */
 export function unsetFieldValue(field: FieldDefinition, mode: 'new' | 'edit'): null | undefined {
   return mode === 'edit' && !field.required ? null : undefined
 }
 
 /**
- * Items for a select field: an optional single-select gets the same "No value" entry a boolean
- * field has, because otherwise a value once chosen can never be taken back through the form.
- * A required field does not get it, and a multi-select clears by deselecting everything.
+ * An optional single-select gets a "No value" entry, otherwise a chosen value could never be taken
+ * back; a multi-select clears by deselecting everything.
  */
 export function selectFieldSelectItems(field: FieldDefinition) {
   const items = (field.options?.values || []).map((value) => ({ label: value, value }))

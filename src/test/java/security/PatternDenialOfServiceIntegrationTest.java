@@ -22,11 +22,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 /**
- * The end-to-end shape of the pattern problem: a tenant admin configures a pattern that
- * backtracks, and from then on any caller who may create a record decides how long a worker
- * thread is busy. With a public create rule that caller is unauthenticated, and a handful of
- * requests is enough to take the instance down for every tenant - which no rate limit in front
- * of it prevents, because the requests themselves are perfectly ordinary.
+ * A backtracking pattern plus a public create rule lets an unauthenticated caller pin worker threads
+ * with ordinary requests that no rate limit stops.
  */
 @ExtendWith({TestRunner.class})
 class PatternDenialOfServiceIntegrationTest {
@@ -49,10 +46,7 @@ class PatternDenialOfServiceIntegrationTest {
                         FieldOptions.forString(null, 64, CATASTROPHIC_PATTERN))));
     }
 
-    /**
-     * Within the configured maxLength, so nothing but the match budget can stop this one. 40
-     * characters is roughly 2^40 backtracking steps - the request would never come back.
-     */
+    /** Within maxLength, so only the match budget can stop it: 40 chars is roughly 2^40 steps. */
     @Test
     void aValueThatMakesThePatternBacktrackIsAnsweredInsteadOfHangingTheWorker() {
         String value = "a".repeat(40) + "b";
@@ -63,7 +57,6 @@ class PatternDenialOfServiceIntegrationTest {
                 response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
     }
 
-    /** Beyond maxLength the value never reaches the engine at all. */
     @Test
     void aValueBeyondMaxLengthIsRejectedWithoutRunningThePattern() {
         String value = "a".repeat(100_000) + "b";
@@ -74,10 +67,9 @@ class PatternDenialOfServiceIntegrationTest {
         assertThat(response.getContent(), org.hamcrest.Matchers.containsString("maxLength"));
     }
 
-    /** A value the pattern accepts still goes through - the guard is not a blanket refusal. */
     @Test
     void aMatchingValueIsStillAccepted() {
-        // "aa" splits into a group of one "a" plus the backreference, so this one matches.
+        // "aa" splits into one "a" plus the backreference, so this one matches.
         TestResponse response = assertTimeoutPreemptively(BUDGET, () -> create("aa"));
 
         assertThat(response.getContent(), response.getStatusCode(), equalTo(StatusCodes.CREATED));

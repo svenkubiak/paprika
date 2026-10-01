@@ -1,18 +1,6 @@
 package hooks;
 
-/**
- * What one hook call cost and how it ended. Deliberately metadata only: neither the envelope nor
- * the hook's response body is kept, because both carry the record's payload - and that is the
- * user's personal data, not diagnostic information.
- *
- * @param name     the configured hook name
- * @param event    the hook event, e.g. {@code beforeCreate}
- * @param target   host (and port) of the hook URL, without path or query
- * @param status   the HTTP status the hook answered with, {@code null} if it never answered
- * @param duration wall clock time of the call in milliseconds
- * @param outcome  one of {@code continued}, {@code blocked}, {@code issuedToken}, {@code failed},
- *                 {@code failedOpen}
- */
+// Metadata only: envelope and response body carry the record's personal data, not diagnostics.
 public record HookInvocation(
         String name,
         String event,

@@ -33,20 +33,10 @@ public record HookDefinition(
         Boolean applyToAllCollections,
         List<String> targetCollections,
 
-        /*
-         * Additional incoming request headers this hook wants to see in the envelope, on top of
-         * the fixed non-sensitive allowlist. Opt-in per hook because every entry is sent to an
-         * externally configured URL; blocked headers are rejected on save.
-         */
+        // Opt-in per hook because every entry is sent to an external URL; blocked headers fail on save.
         List<String> forwardHeaders,
 
-        /*
-         * Whether this beforeRequest hook also guards the file routes
-         * (/api/collections/{collection}/{id}/files/{field}[/{fileId}]). Opt-in and off by
-         * default: an existing hook was written for collection and auth routes only, and a guard
-         * that rejects what it does not know would otherwise block every download after an
-         * upgrade. Costs one hook roundtrip per file request.
-         */
+        // Opt-in: a guard written for collection/auth routes would otherwise block every download.
         Boolean includeFileRoutes
 ) {
     public boolean appliesToAllCollections() {

@@ -61,9 +61,7 @@ public class MetaSchemaController {
             SchemaImportResult result = schemaService.importSchema(ctx, schema);
             return Response.ok().bodyJson(JsonUtils.getMapper().writeValueAsString(result));
         } catch (IllegalArgumentException e) {
-            // A file the import refuses to apply is the caller's problem, not a server fault, and
-            // the message names what to fix. Built through a map so that a quote in a collection
-            // name cannot break out of the JSON.
+            // Built through a map so a quote in a collection name cannot break out of the JSON.
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return Response.internalServerError().bodyJson(Map.of("error", String.valueOf(e.getMessage())));

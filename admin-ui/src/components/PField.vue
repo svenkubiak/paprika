@@ -1,49 +1,26 @@
 <script setup lang="ts">
-/**
- * The field wrapper every form in the admin uses.
- *
- * It fixes the anatomy of a field so that the same decisions do not get made again at every call
- * site: an icon and the label on top, "optional" instead of a required marker, one sentence of
- * help below the control, the rest of the explanation behind a toggle, and a footer for whatever
- * the schema already knows (a limit, a counter, a parsed value).
- *
- * Everything is built on `UFormField`, which already provides the pieces that matter for
- * accessibility and for the error state: it labels the control, it wires up the description, and
- * it turns the input red through the form-field injection as soon as `error` is set. The wrapper
- * only adds conventions on top.
- */
 import { computed, ref } from 'vue'
 
 const props = withDefaults(
   defineProps<{
     label?: string
-    /** Icon in front of the label - the field type for schema fields, the subject otherwise. */
     icon?: string
     /**
-     * Marks the field as not required. Required fields carry no marker on purpose: in our forms
-     * they are the majority, which makes the exception the more useful thing to point out.
-     *
-     * Set it where a form mixes required and optional fields and leaving one empty is a decision
-     * - a record field the schema does not require, an email nobody has to give. Leave it off in
-     * blocks that are options throughout, such as the constraints of the schema editor: marking
-     * all of them says nothing, and "empty means no limit" is what the help line is for.
+     * Required fields carry no marker since they are the majority. Set this where leaving the field
+     * empty is a decision; leave it off in blocks that are optional throughout.
      */
     optional?: boolean
     /** One sentence, always visible below the control. */
     help?: string
-    /** The rest of the explanation, revealed by the info toggle beside the label. */
+    /** The rest of the explanation, behind the info toggle beside the label. */
     details?: string
-    /** Validation message. Takes the place of the help line while it is set. */
     error?: string
-    /** 'vertical' = label above the control (sheets), 'horizontal' = label beside it (pages). */
+    /** 'vertical' for sheets, 'horizontal' for pages. */
     orientation?: 'vertical' | 'horizontal'
-    /** Control width: 'sm' for numbers and flags, 'md' for identifiers and dates, 'full' for text. */
+    /** 'sm' for numbers and flags, 'md' for identifiers and dates, 'full' for text. */
     width?: 'sm' | 'md' | 'full'
-    /** Left half of the footer: a constraint, an example, a parsed value. */
     hint?: string
-    /** Right half of the footer, e.g. a character counter. */
     counter?: string
-    /** Renders the counter as exceeded. */
     counterExceeded?: boolean
   }>(),
   {
@@ -64,9 +41,8 @@ const hasFooter = computed(() => Boolean(props.hint || props.counter))
 const hasHelpArea = computed(() => Boolean(props.help || props.details || hasFooter.value))
 
 /**
- * The horizontal variant of the Nuxt UI theme is a plain `flex justify-between`, which would put
- * a long label and its control on one line on a phone as well. The label column only splits off
- * once there is room for it.
+ * The horizontal Nuxt UI variant is a plain `flex justify-between`, which would put label and
+ * control on one line on a phone too; the label column only splits off once there is room.
  */
 const fieldUi = computed(() => ({
   root:
@@ -114,9 +90,8 @@ const fieldUi = computed(() => ({
     </div>
 
     <!--
-      The help and the error slot carry the same trailing block: the details panel stays open
-      across a failed save, and a counter is at its most useful exactly when the value is too
-      long. `UFormField` renders one or the other, never both, so the block has to exist twice.
+      UFormField renders either the help or the error slot, never both, so the trailing block
+      (details panel, counter) has to exist in each.
     -->
     <template v-if="hasHelpArea" #help>
       <span v-if="help" class="block">{{ help }}</span>
@@ -134,10 +109,7 @@ const fieldUi = computed(() => ({
       </div>
     </template>
 
-    <!--
-      Only declared when there is a message: `UFormField` renders its error block as soon as an
-      error *slot* exists, so an unconditional one would take the place of the help line for good.
-    -->
+    <!-- Only declared when set: UFormField shows its error block whenever the slot exists. -->
     <template v-if="error" #error="{ error: message }">
       <span class="block">{{ message }}</span>
       <p

@@ -4,10 +4,8 @@ export function isSystemCollection(name: string): boolean {
   return (SYSTEM_COLLECTIONS as readonly string[]).includes(name)
 }
 
-// Core, server-owned fields of the users collection. They are re-injected by the backend and
-// cannot be renamed, retyped, or removed; the UI renders them as read-only. The internal
-// passwordHash/passwordSalt fields never appear in the schema but are guarded here too so admins
-// cannot re-add a field with those names.
+// Server-owned users fields: re-injected by the backend, so they cannot be renamed, retyped or
+// removed. passwordHash/passwordSalt never appear in the schema but must not be re-added either.
 export const PROTECTED_USER_FIELDS = [
   'username',
   'email',

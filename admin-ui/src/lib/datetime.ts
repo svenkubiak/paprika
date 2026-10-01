@@ -1,11 +1,6 @@
 /**
- * Conversion between the value of an `<input type="datetime-local">` and the string a DATETIME
- * field stores. The picker never shows or accepts a zone offset, while DateTimeFieldValidator
- * parses with OffsetDateTime and rejects everything without one - so the offset has to be added
- * here, and it has to be the offset of the *picked* moment: deriving it from "now" would give a
- * January appointment the summer-time offset of the day it was entered.
- *
- * Both functions are pure so the arithmetic stays testable and does not vanish into a component.
+ * The picker has no zone offset, but DateTimeFieldValidator requires one. The offset added here
+ * must be that of the picked moment, not of now - otherwise DST shifts the stored time.
  */
 
 function pad(value: number, length = 2): string {
@@ -28,30 +23,19 @@ function formatTimePart(date: Date): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-/**
- * The current local date as the value of an `<input type="date">` (`yyyy-MM-dd`). Used to
- * pre-fill DATE fields of a new record; the editor keeps a way to clear it again.
- */
 export function currentDateInputValue(now: Date = new Date()): string {
   return formatDatePart(now)
 }
 
-/** The current local time as the value of an `<input type="time">` (`HH:mm:ss`). */
 export function currentTimeInputValue(now: Date = new Date()): string {
   return formatTimePart(now)
 }
 
-/** The current local moment as the value of an `<input type="datetime-local">`. */
 export function currentDateTimeInputValue(now: Date = new Date()): string {
   return `${formatDatePart(now)}T${formatTimePart(now)}`
 }
 
-/**
- * Stored value -> value for the picker (`yyyy-MM-ddTHH:mm:ss`, local time of this browser).
- * A stored value with a foreign offset is converted into the local zone; null, undefined and
- * anything unparsable yield an empty string, which leaves the picker blank instead of showing a
- * value nobody can edit.
- */
+/** Converted into the local zone; null and unparsable values yield '' so the picker stays blank. */
 export function toDateTimeInputValue(stored: unknown): string {
   if (typeof stored !== 'string') {
     return ''
@@ -71,10 +55,8 @@ export function toDateTimeInputValue(stored: unknown): string {
 }
 
 /**
- * Picker value -> value to store, always with an offset. An empty input yields `undefined` (never
- * `''`, which would run into the validator and be rejected). An input the browser never produces
- * and that cannot be parsed is passed through unchanged, so validation reports it instead of the
- * conversion silently inventing a timestamp.
+ * An empty input yields `undefined`, never '' (the validator rejects it). Unparsable input passes
+ * through unchanged so validation reports it instead of a timestamp being invented.
  */
 export function toDateTimeStoredValue(input: string): string | undefined {
   if (typeof input !== 'string') {

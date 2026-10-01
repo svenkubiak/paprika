@@ -12,14 +12,8 @@ import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.Matchers.nullValue;
 
 /**
- * What a value out of {@code X-Forwarded-For} may become in the request log.
- * <p>
- * The header is written by the caller - nginx appends the peer to the list the client sent, so
- * the leftmost entry, the one naming the original client, is the client's own text. This used to
- * go into {@code InetAddress.getByName}, which resolves anything that is not a literal: one
- * blocking DNS lookup per logged request against a nameserver the caller picks, and the address
- * that came back was then stored as if the caller had come from there. Only literals are parsed
- * now, and everything else is dropped.
+ * The leftmost X-Forwarded-For entry is caller text, so only IP literals are parsed: resolving a name
+ * would be a blocking DNS lookup against a caller-chosen nameserver, logged as the caller's address.
  */
 class ClientIpsTest {
 
@@ -48,11 +42,7 @@ class ClientIpsTest {
         assertThat(ClientIps.truncate(address), equalTo(expected));
     }
 
-    /**
-     * The defect. {@code localhost} resolves everywhere, without a network and without a
-     * nameserver, so it is the one host name that used to come back as a stored address
-     * ({@code 127.0.0.0}) with complete certainty. It has to be refused now, like any other name.
-     */
+    /** localhost resolves everywhere without a nameserver, so it reliably shows that names are not resolved. */
     @Test
     void aResolvableHostNameIsNotAnAddressAndIsDropped() {
         assertThat(ClientIps.truncate("localhost"), nullValue());
@@ -81,12 +71,7 @@ class ClientIpsTest {
         assertThat(ClientIps.truncate(value), nullValue());
     }
 
-    /**
-     * Not a timing assertion on the truncation itself - it is a handful of shifts - but on the
-     * absence of the lookup behind it. A resolver round trip is milliseconds even when it
-     * succeeds and seconds when the nameserver stalls; a thousand parses that never leave the
-     * process are comfortably under a second, and nothing that does I/O per call would be.
-     */
+    /** Asserts the absence of a DNS lookup: a thousand parses without I/O finish well under a second. */
     @Test
     void parsingNeverReachesTheResolver() {
         long started = System.nanoTime();

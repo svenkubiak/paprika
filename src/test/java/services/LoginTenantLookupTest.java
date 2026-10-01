@@ -15,13 +15,8 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
-/**
- * The projected lookup of active tenants, which resolving the default tenant relies on: it has to
- * stay limited, carry what it promises, and leave out tenants that cannot be logged into.
- */
 @ExtendWith({TestRunner.class})
 class LoginTenantLookupTest {
-    /** The lookup reads three fields, not whole tenant documents, and respects its limit. */
     @Test
     void theLookupIsLimitedAndCarriesOnlyItsThreeFields() {
         TenantService tenantService = Application.getInstance(TenantService.class);
@@ -35,7 +30,6 @@ class LoginTenantLookupTest {
         assertThat(all.stream().map(TenantService.TenantLookup::databaseName).toList(), everyItem(notNullValue()));
     }
 
-    /** A suspended tenant cannot be logged into, so it is not part of the lookup either. */
     @Test
     void anInactiveTenantIsNotPartOfTheLookup() {
         TenantService tenantService = Application.getInstance(TenantService.class);

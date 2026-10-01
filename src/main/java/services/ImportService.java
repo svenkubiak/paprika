@@ -32,7 +32,7 @@ import java.util.zip.ZipInputStream;
 public class ImportService {
     private static final Logger LOG = LogManager.getLogger(ImportService.class);
     private static final String SUPPORTED_VERSION = "1";
-    private static final long MAX_UNCOMPRESSED_BYTES = 512L * 1024 * 1024; // 512 MB
+    private static final long MAX_UNCOMPRESSED_BYTES = 512L * 1024 * 1024;
     private static final int MAX_ENTRY_COUNT = 10_000;
     private static final int READ_BUFFER_SIZE = 8192;
     private static final String MANIFEST = "manifest.json";
@@ -62,22 +62,9 @@ public class ImportService {
     }
 
     /**
-     * Restores a backup archive in two phases.
-     * <p>
-     * Phase one reads and parses everything the archive is supposed to contain and rejects it as
-     * a whole if anything is missing or unreadable - without touching the databases. This is the
-     * difference between a bad archive and a destroyed instance: the restore used to drop the
-     * system database and every tenant database first and find out about the missing entry
-     * afterwards, which left the instance without superadmins and therefore without a way into
-     * the admin UI.
-     * <p>
-     * Phase two takes a snapshot of the current state, writes it next to the file storage, and
-     * only then applies the parsed archive. Whatever fails from there on - a lost connection, a
-     * half-written tenant - the state from before the import is on disk and its path is part of
-     * the answer.
-     *
-     * @throws IllegalArgumentException when the archive is incomplete or unreadable; nothing has
-     *                                  been written in that case
+     * Parses and validates the whole archive before any write, so a bad archive cannot destroy the
+     * instance (IllegalArgumentException, nothing written). Then a snapshot of the current state
+     * is saved to disk before the archive is applied.
      */
     public ImportResult importAll(byte[] zipData) throws IOException {
         Map<String, byte[]> entries = readZipEntries(zipData);
@@ -94,12 +81,6 @@ public class ImportService {
         }
     }
 
-    // ---------------------------------------------------------------- phase one: read and check
-
-    /**
-     * Everything the archive promises, parsed. Runs before the first write, and reports the
-     * first problem it finds by name - an archive is either applied completely or not at all.
-     */
     private BackupPlan parseAndValidate(Map<String, byte[]> entries) {
         Map<String, Object> manifest = readManifest(entries);
 
@@ -172,11 +153,7 @@ public class ImportService {
         return new TenantPlan(tenant, metaCollections, metaHooks, data, entries.get(prefix + "meta/collections.json"));
     }
 
-    /**
-     * A backup that cannot put a superadmin back is the one that locks the instance out: the
-     * admin UI would be unreachable, and the only way back is restarting the process to get a
-     * fresh setup token out of the log.
-     */
+    // A backup without a usable superadmin would lock everyone out of the admin UI
     private static void requireUsableSuperadmin(List<Document> users) {
         boolean usable = users.stream().anyMatch(user ->
                 Role.SUPERADMIN.equals(user.getString("role"))
@@ -205,13 +182,7 @@ public class ImportService {
         }
     }
 
-    // ------------------------------------------------------------------- phase two: the writes
-
-    /**
-     * The state of the instance as it is right now, written next to the file storage. Taking it
-     * is not optional: a restore is run in an incident, and it must not be the operation that
-     * destroys the last copy of what is currently there.
-     */
+    // Mandatory: a restore runs during an incident and must not destroy the last copy of the current state
     private String writeSafetySnapshot() throws IOException {
         Path directory = fileStorageService.root().resolve(SNAPSHOT_DIRECTORY);
         Path target = directory.resolve("pre-import-" + Instant.now().toString().replace(':', '-') + ".zip");
@@ -316,10 +287,7 @@ public class ImportService {
         restoreCollection(db, CollectionName.USERS, plan.users());
         restoreCollection(db, CollectionName.SETTINGS, plan.settings());
 
-        // Every collection above was dropped and rebuilt, and a dropped collection takes its
-        // indexes with it. Rebuilding them here through the service that owns them, rather than
-        // from a second list kept in this class: the two lists drift, and the way that shows is
-        // a uniqueness rule that is simply not enforced any more - silently, until a restart.
+        // Dropping took the indexes with it; rebuilt by their owning service so no second list can drift
         systemCollections.ensureSystemStructure();
     }
 
@@ -327,10 +295,8 @@ public class ImportService {
         TenantDefinition tenant = plan.tenant();
         MongoDatabase db = resolver.tenantDatabase(tenant.databaseName());
 
-        // Not db.drop(): the database stays in place and every collection is replaced from the
-        // parsed archive, so there is no window in which the tenant exists but holds nothing.
-        // Collections the backup does not know are removed afterwards, which is what dropping
-        // the database was there for.
+        // Not db.drop(): avoids a window in which the tenant exists but is empty; unknown
+        // collections are removed afterwards instead
         restoreCollection(db, CollectionName.META_COLLECTIONS, plan.metaCollections());
         restoreCollection(db, CollectionName.META_HOOKS, plan.metaHooks());
 
@@ -343,11 +309,7 @@ public class ImportService {
 
         dropCollectionsNotIn(db, plan);
 
-        // Same reason as in the system database, and the same fix: this is the method that says
-        // what a healthy tenant database contains, so the restored one is handed to it instead
-        // of getting a hand-maintained subset of its indexes. It brings back the unique index on
-        // usernames, the one on collection names - whose absence lets two admins create the same
-        // collection at once - and the request log infrastructure the archive does not carry.
+        // Restores the unique indexes and request log infrastructure through their owning service
         tenantService.initializeTenantDatabase(tenant);
 
         restoreUserDefinedIndexes(db, plan.metaCollectionsJson());
@@ -357,7 +319,6 @@ public class ImportService {
         return new TenantRestoreResult(collections, documents, files);
     }
 
-    /** What a {@code db.drop()} used to take care of, without the window of an empty tenant. */
     private static void dropCollectionsNotIn(MongoDatabase db, TenantPlan plan) {
         Set<String> restored = new HashSet<>(plan.data().keySet());
         restored.add(CollectionName.META_COLLECTIONS);
@@ -463,17 +424,9 @@ public class ImportService {
         return count;
     }
 
-    /**
-     * @param snapshot Where the state from before the import was saved. Reported rather than only
-     *                 logged: it is what an operator needs when the restored backup turns out to
-     *                 have been the wrong one.
-     */
+    /** {@code snapshot} is returned, not only logged, for when the restored backup was the wrong one. */
     public record ImportResult(int tenants, int collections, int documents, int files, String snapshot) {}
 
-    /**
-     * @param tenantDocuments the raw rows of the system tenants collection, restored as they are
-     * @param tenants         the tenants the manifest asks for, with their parsed databases
-     */
     private record BackupPlan(
             List<Document> tenantDocuments,
             List<Document> users,

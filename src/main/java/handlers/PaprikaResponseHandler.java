@@ -12,12 +12,8 @@ import services.RequestLogService;
 
 import java.util.Objects;
 
-/**
- * The single place every controller response passes through, and therefore the only place where
- * the request log can cover all routes without each controller having to remember to log itself.
- * Writing the entry here also means the measured time contains everything the request really
- * cost: filters, hooks, the action, and the response rendering that follows.
- */
+// Every controller response passes here, so the request log covers all routes and the measured
+// time includes filters, hooks, the action and rendering.
 @Singleton
 public class PaprikaResponseHandler extends ResponseHandler {
     private final RequestLogService requestLogService;

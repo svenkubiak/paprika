@@ -104,7 +104,7 @@ class AuthIssueTokenEndpointIntegrationTest {
         userService.createUser("issue-endpoint-default-caller", null, "secret-password-123");
         Map<String, Object> target = userService.createUser("issue-endpoint-default-target", null, "secret-password-123");
 
-        // The default for every existing tenant: nobody may issue tokens.
+        // The default: nobody may issue tokens
         resetTokenIssuers();
         String callerToken = accessTokenFor("issue-endpoint-default-caller");
 
@@ -220,12 +220,10 @@ class AuthIssueTokenEndpointIntegrationTest {
 
             assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
 
-            // The caller's own login fires afterLogin as well, and that delivery is async, so the
-            // first payload that arrives is not necessarily the one under test.
+            // The caller's own login fires afterLogin asynchronously, so the first payload may be another one
             String payload = pollFor(payloads, "/api/auth/issue-token");
             assertThat(payload, notNullValue());
-            // The hook describes the target user, not the caller: recordId and the body's userId
-            // both carry the id the session was issued for.
+            // The hook describes the target user, not the caller
             assertThat(payload, containsString("\"recordId\":\"" + targetId + "\""));
             assertThat(payload, containsString("\"userId\":\"" + targetId + "\""));
         } finally {

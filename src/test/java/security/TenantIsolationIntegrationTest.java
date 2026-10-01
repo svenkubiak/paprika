@@ -32,19 +32,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Tenant isolation is the core promise of a multi-tenant BaaS: no matter which route is called,
- * a caller bound to one tenant must never observe or modify anything of another.
- * <p>
- * Rather than testing a hand-picked list of paths, this walks every request route the application
- * registers in {@code Bootstrap#initializeRoutes} via {@link Router#getRequestRoutes()} and calls it
- * with the credentials of tenant A while every route parameter points at tenant B. A route added in
- * the future is therefore covered automatically and has to prove it does not leak, instead of being
- * silently untested (default deny by test).
- * <p>
- * The setup is intentionally hostile to the application: both tenants use the <em>same</em>
- * collection name, the same record id and the same username, and the shared collection is fully
- * public ({@code *} rules). Nothing but the tenant scoping itself can prevent a leak here - if
- * isolation were implemented through the access rules by accident, this test would fail.
+ * Walks every registered request route as tenant A with tenant B parameters, so new routes are covered
+ * by default. Both tenants share collection name, record id and username with public rules, so only
+ * tenant scoping itself can prevent a leak.
  */
 @ExtendWith({TestRunner.class})
 class TenantIsolationIntegrationTest {
@@ -55,7 +45,6 @@ class TenantIsolationIntegrationTest {
     private static final String TENANT_A_RECORD = "TENANT-A-RECORD";
     private static final String TENANT_B_SECRET = "TENANT-B-SECRET";
 
-    /** Route parameters are substituted with tenant B values, so any echo of them is a leak. */
     private static final String PLACEHOLDER_FIELD = "attachment";
     private static final String PLACEHOLDER_FILE_ID = "iso-file-id";
 
@@ -75,7 +64,6 @@ class TenantIsolationIntegrationTest {
 
         sharedRecordId = DbUtils.id();
 
-        // Same collection name, same record id, fully public rules in both tenants
         seedCollection(contextOf(tenantA));
         seedCollection(contextOf(tenantB));
         seedRecord(contextOf(tenantA), TENANT_A_RECORD);
@@ -85,8 +73,7 @@ class TenantIsolationIntegrationTest {
         users.createUser(tenantA, SHARED_USERNAME, null, PASSWORD_A);
         tenantBUserId = String.valueOf(users.createUser(tenantB, SHARED_USERNAME, null, PASSWORD_B).get("id"));
 
-        // A key of tenant B, so the API key routes are exercised against another tenant's key -
-        // and so the plaintext becomes a leak marker of its own
+        // A key of tenant B, so API key routes hit another tenant's key and its plaintext is a leak marker
         ApiKeyService.CreatedApiKey keyB = Application.getInstance(ApiKeyService.class)
                 .create(tenantB, "iso-b-key", tenantBUserId, null);
         tenantBApiKeyId = String.valueOf(keyB.key().get("id"));
@@ -95,10 +82,6 @@ class TenantIsolationIntegrationTest {
         tokenA = login(tenantA.slug(), PASSWORD_A);
     }
 
-    /**
-     * Every registered request route, called as tenant A with tenant B parameters.
-     * A route that leaks any tenant B value fails, and a route added later is included by default.
-     */
     @Test
     void noRegisteredRouteLeaksAnotherTenant() {
         List<RequestRoute> routes = Router.getRequestRoutes().toList();
@@ -123,20 +106,17 @@ class TenantIsolationIntegrationTest {
                             + response.getStatusCode() + "): " + abbreviate(response.getContent()));
                 }
 
-                // Logout revokes the caller's tokens - every route after it would only see a 401
-                // and pass without proving anything
+                // Logout revokes the caller's tokens; every later route would only see a 401 and prove nothing
                 if ("/api/auth/logout".equals(route.getUrl())) {
                     tokenA = login(tenantA.slug(), PASSWORD_A);
                 }
             }
         }
 
-        // Every registered route has to be covered: if a route cannot be called here, it is not
-        // being proven tenant-safe, and silently skipping it would defeat the purpose of this test
+        // A route that cannot be called here is not proven tenant-safe, so skipping it must fail
         assertThat("every registered route must be exercised", exercised, hasSize(routes.size()));
         assertThat(String.join(System.lineSeparator(), leaks), leaks, is(empty()));
 
-        // Tenant B data must have survived every call made as tenant A
         assertThat("a call as tenant A must never delete a tenant B record",
                 recordOf(tenantB), notNullValue());
         assertThat("a call as tenant A must never modify a tenant B record",
@@ -145,9 +125,7 @@ class TenantIsolationIntegrationTest {
 
     @Test
     void dataPlaneReadsAreScopedToTheCallersTenant() {
-        // The route sweep above calls every route, DELETE included, and only restores before a
-        // call - so whether the fixture still exists afterwards depends on which route happened
-        // to come last. Restoring here keeps this test independent of that order.
+        // The sweep includes DELETE and only restores before a call, so restore to stay order-independent.
         restoreRecords();
 
         TestResponse list = call("GET", "/api/collections/" + SHARED_COLLECTION + "?offset=0&limit=25");
@@ -188,7 +166,6 @@ class TenantIsolationIntegrationTest {
 
     @Test
     void credentialsAreBoundToTheirTenant() {
-        // Same username in both tenants: the password of tenant A must not open tenant B
         TestResponse crossTenant = TestRequest.post("/api/auth/login")
                 .withStringBody(TenantTestUtils.loginBody(tenantB.slug(), SHARED_USERNAME, PASSWORD_A))
                 .withContentType("application/json")
@@ -196,7 +173,6 @@ class TenantIsolationIntegrationTest {
         assertThat(crossTenant.getStatusCode(), not(equalTo(200)));
         assertThat(crossTenant.getContent(), not(containsString("accessToken")));
 
-        // A token issued for tenant B must only ever resolve tenant B data
         String tokenB = login(tenantB.slug(), PASSWORD_B);
         TestResponse asB = TestRequest.get("/api/collections/" + SHARED_COLLECTION + "?offset=0&limit=25")
                 .withHeader("Authorization", "Bearer " + tokenB)
@@ -204,7 +180,6 @@ class TenantIsolationIntegrationTest {
         assertThat(asB.getContent(), containsString(TENANT_B_SECRET));
         assertThat(asB.getContent(), not(containsString(TENANT_A_RECORD)));
 
-        // /api/auth/me must return the identity of the token's own tenant
         TestResponse meA = call("GET", "/api/auth/me");
         assertThat(meA.getStatusCode(), equalTo(200));
         assertThat(meA.getContent(), not(containsString(tenantBUserId)));
@@ -212,8 +187,7 @@ class TenantIsolationIntegrationTest {
 
     @Test
     void metaApiIsUnreachableWithATenantBearerToken() {
-        // The meta API is reserved for the admin UI session; a tenant token must not reach it,
-        // otherwise a tenant user could read or reshape schemas and hooks
+        // The meta API is reserved for the admin UI session; a tenant token must not read or reshape schemas and hooks
         for (String uri : List.of(
                 "/api/meta/collections/" + SHARED_COLLECTION,
                 "/api/meta/tenants",
@@ -234,8 +208,7 @@ class TenantIsolationIntegrationTest {
             assertThat(uri + " must not leak tenant B data", findLeak(response.getContent()), nullValue());
         }
 
-        // The writing counterparts of the two exports, listed explicitly: an import reshapes a
-        // tenant or replaces the whole instance, so it is the last route that may answer a token
+        // Imports listed explicitly: they reshape a tenant or replace the instance
         for (String uri : List.of("/api/meta/schema/import", "/api/admin/backup/import")) {
             TestResponse response = call("POST", uri);
             assertThat(uri + " must not be reachable with a tenant token",
@@ -244,11 +217,6 @@ class TenantIsolationIntegrationTest {
         }
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
-
-    /** Values that only exist inside tenant B and must never show up in a tenant A response. */
     private static String findLeak(String content) {
         if (content == null || content.isBlank()) {
             return null;
@@ -279,7 +247,6 @@ class TenantIsolationIntegrationTest {
         return methods.isEmpty() ? List.of("GET") : methods;
     }
 
-    /** Fills every route template parameter with a value pointing at tenant B. */
     private static String concreteUri(String url) {
         return url
                 .replace("{collection}", SHARED_COLLECTION)
@@ -325,7 +292,6 @@ class TenantIsolationIntegrationTest {
                 .insertOne(new Document().append("id", sharedRecordId).append("title", title));
     }
 
-    /** Re-establishes the seeded state, as public rules allow the calls under test to mutate it. */
     private static void restoreRecords() {
         restoreRecord(contextOf(tenantA), TENANT_A_RECORD);
         restoreRecord(contextOf(tenantB), TENANT_B_SECRET);

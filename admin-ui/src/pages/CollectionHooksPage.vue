@@ -32,9 +32,7 @@ const columns = [
   { id: 'actions', header: '' }
 ]
 
-// Reloading on a collection change as well as on mount: a deep link or the browser's
-// back button can move straight from one collection's tab to another's, which reuses
-// this component and would otherwise leave the previous collection on screen.
+// Also reload on a collection change: navigating between collections reuses this component.
 onMounted(loadHooks)
 watch(collection, loadHooks)
 
@@ -170,9 +168,8 @@ async function runTableTest(hook: HookDefinition, event: Event) {
   try {
     testResult.value = await api.testHook(collection.value, {
       ...hookToForm(hook),
-      // hookToForm() joins the headers into the comma separated string the editor's text input
-      // needs. The API takes the list, and sending the string instead does not merely type
-      // wrong: the server cannot deserialize it into List<String>, so the test never ran.
+      // The API takes a list; hookToForm() joined it into a string, which the server cannot
+      // deserialize into List<String>.
       forwardHeaders: hook.forwardHeaders ?? [],
       id: hook.id
     })

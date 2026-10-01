@@ -232,9 +232,7 @@ class ValidationServiceTest {
 
     @Test
     void rejectsRelationWhenTargetRecordDoesNotExist() throws Exception {
-        // Ids are unique per definition, and these two tests both store one: sharing an id would
-        // leave the tenant with two collections under one id, which every write that resolves a
-        // definition by id (a schema import replacing it, for one) then applies to the wrong one.
+        // Both tests store a definition; sharing an id would let id-based writes hit the wrong one.
         CollectionDefinition authors = new CollectionDefinition(
                 "relation-missing-authors-id",
                 "relation_missing_authors",

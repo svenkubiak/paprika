@@ -22,21 +22,12 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 
-/**
- * A schema file is an exchange artifact: it travels between environments, comes out of a
- * repository, arrives from a customer. It must therefore not be able to produce a configuration
- * that the meta API itself refuses - an import is a second door into the same state, not a
- * second set of rules.
- */
+/** An import must not produce a configuration that the meta API itself refuses. */
 @ExtendWith({TestRunner.class})
 class SchemaImportValidationIntegrationTest {
     private static final String IMPORT_URI = "/api/meta/schema/import";
 
-    /**
-     * Rules are a closed allowlist. A free expression would be parsed at request time instead:
-     * {@code "true"} converts to an empty Mongo filter, which hands the whole collection to
-     * anonymous callers.
-     */
+    /** A free expression like {@code "true"} would become an empty Mongo filter open to anonymous callers. */
     @Test
     void anUnsupportedRuleIsRejectedAndNothingIsWritten() {
         String intact = "schemaval_intact_" + DbUtils.id();
@@ -44,8 +35,7 @@ class SchemaImportValidationIntegrationTest {
 
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
 
-        // The valid entry comes first: without an up-front check it would already be written by
-        // the time the rejected one is reached.
+        // The valid entry comes first: without an up-front check it would already be written.
         String schema = """
                 {"version":"1","collections":[
                   {"name":"%s","fields":[{"name":"title","type":"STRING","required":true}],"indexes":[],
@@ -66,7 +56,6 @@ class SchemaImportValidationIntegrationTest {
                 definition(intact), nullValue());
     }
 
-    /** Reserved field names would collide with the system fields of every record. */
     @Test
     void aReservedFieldNameIsRejected() {
         String collection = "schemaval_reserved_" + DbUtils.id();
@@ -89,9 +78,8 @@ class SchemaImportValidationIntegrationTest {
     }
 
     /**
-     * A blocking hook holds the request thread for as long as its timeout allows, so the 30s cap
-     * is a liveness guarantee for the whole instance. The hooks of the tenant are dropped before
-     * they are re-inserted, which is why the check has to happen before the first write.
+     * The 30s cap bounds how long a blocking hook holds a request thread. The tenant's hooks are
+     * dropped before re-insert, so the check must run before the first write.
      */
     @Test
     void aHookWithAnExcessiveTimeoutIsRejectedAndTheExistingHooksSurvive() {
@@ -121,7 +109,6 @@ class SchemaImportValidationIntegrationTest {
         assertThat(hooks.getContent(), org.hamcrest.Matchers.not(containsString("Endless hook")));
     }
 
-    /** Without a secret the signature cannot be built, and every dispatch fails at runtime. */
     @Test
     void aHookWithoutASigningSecretIsRejected() {
         String collection = "schemaval_hooksecret_" + DbUtils.id();
@@ -143,9 +130,6 @@ class SchemaImportValidationIntegrationTest {
         assertThat(response.getContent(), containsString("secret"));
     }
 
-    /**
-     * An auth event outside the users collection would never fire, so the meta API refuses it.
-     */
     @Test
     void anAuthHookOutsideTheUsersCollectionIsRejected() {
         String collection = "schemaval_authhook_" + DbUtils.id();
@@ -167,11 +151,7 @@ class SchemaImportValidationIntegrationTest {
         assertThat(response.getContent(), containsString("users collection"));
     }
 
-    /**
-     * The users collection owns its credential fields and the unique username index. An import
-     * that leaves them out must not be able to remove them - duplicate usernames in a tenant is
-     * not a state the application can recover from.
-     */
+    /** Duplicate usernames in a tenant are not recoverable, so an import must not drop the index. */
     @Test
     void theUsersCollectionKeepsItsCoreFieldsAndUniqueUsernameIndex() {
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
@@ -206,11 +186,7 @@ class SchemaImportValidationIntegrationTest {
         }
     }
 
-    /**
-     * The regression the up-front validation invites: a membership rule is checked against the
-     * collections of the tenant, but a full schema file brings its membership collection with it.
-     * Validating against the database alone would refuse every fresh import of a group setup.
-     */
+    /** Validating membership rules against the database alone would refuse every fresh group-setup import. */
     @Test
     void aMembershipRuleMayPointAtACollectionFromTheSameFile() {
         String memberships = "schemaval_members_" + DbUtils.id();
@@ -218,8 +194,7 @@ class SchemaImportValidationIntegrationTest {
 
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
 
-        // The collection that carries the rule comes first, so the file order cannot be what
-        // makes this work.
+        // The collection carrying the rule comes first, so file order cannot be what makes this work.
         String schema = """
                 {"version":"1","collections":[
                   {"name":"%s","fields":[
@@ -245,7 +220,6 @@ class SchemaImportValidationIntegrationTest {
         assertThat(definition(memberships), org.hamcrest.Matchers.notNullValue());
     }
 
-    /** A membership rule pointing nowhere is still refused. */
     @Test
     void aMembershipRulePointingAtAnUnknownCollectionIsRejected() {
         String posts = "schemaval_orphan_" + DbUtils.id();
@@ -272,10 +246,7 @@ class SchemaImportValidationIntegrationTest {
         assertThat(definition(posts), nullValue());
     }
 
-    /**
-     * Two entries for the same collection cannot both be applied: the second insert collides
-     * with the unique name index, and by then the first one is already stored.
-     */
+    /** The second insert would collide with the unique name index after the first was already stored. */
     @Test
     void aDuplicateCollectionEntryIsRejected() {
         String collection = "schemaval_dupe_" + DbUtils.id();
@@ -299,12 +270,7 @@ class SchemaImportValidationIntegrationTest {
         assertThat(definition(collection), nullValue());
     }
 
-    /**
-     * A field name ends up as a key in every document and in the {@code $set} of every update. A
-     * dot addresses a nested path there, so the write would go somewhere else than the schema
-     * says; a dollar sign starts an operator and turns a write into a 500. The meta API refuses
-     * both, so the import has to as well.
-     */
+    /** In a {@code $set} a dot addresses a nested path and a dollar sign starts an operator. */
     @Test
     void aFieldNameWithMongoSyntaxIsRejectedAndNothingIsWritten() {
         String dotted = "schemaval_dotted_" + DbUtils.id();
@@ -334,7 +300,6 @@ class SchemaImportValidationIntegrationTest {
         assertThat(definition(dollar), nullValue());
     }
 
-    /** The collection name becomes a MongoDB collection, so it is held to the same characters. */
     @Test
     void aCollectionNameWithMongoSyntaxIsRejected() {
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();

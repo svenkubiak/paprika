@@ -1,16 +1,7 @@
 <script setup lang="ts">
 /**
- * The input widget for one schema field, shared by the record editor and the user editor.
- *
- * The model value is the *form* representation of the field as produced by `buildRecordFormState`
- * (text for most types, the select sentinels for BOOLEAN/SELECT, the picker format for dates, and
- * the raw text for JSON) - not the value that is stored. Converting back is the job of
- * `serializeRecordForm`, so both editors send the same thing for the same input.
- *
- * Everything around the control - label, constraint line, error, counter - belongs to `PField`.
- * What lives here is only what depends on the field *type*.
- *
- * FILE fields are not handled here: their value is a file the parent has to collect and upload.
+ * The model value is the form representation from `buildRecordFormState`, not the stored value;
+ * `serializeRecordForm` converts back. FILE fields are uploaded by the parent, not handled here.
  */
 import { computed } from 'vue'
 import type { FieldDefinition } from '@/types'
@@ -58,21 +49,12 @@ function update(value: unknown) {
   emit('update:modelValue', value)
 }
 
-/**
- * "No value" reads as the exception, so it goes last - the two answers to the question come
- * first. A required boolean has no third option and is a plain true/false pair.
- */
 const booleanItems = computed(() => {
   const items = booleanFieldSelectItems(props.field)
   const unset = items.filter((item) => item.value === BOOLEAN_UNSET)
   return [...items.filter((item) => item.value !== BOOLEAN_UNSET), ...unset]
 })
 
-/**
- * Whether the text in a JSON field parses, checked while it is typed. This is a `JSON.parse` in
- * the browser - the editor used to accept anything and let the save fail, which meant retyping a
- * missing brace after a round trip to the server.
- */
 const jsonStatus = computed(() => {
   if (props.field.type !== 'JSON') return undefined
   const text = typeof props.modelValue === 'string' ? props.modelValue.trim() : ''
@@ -90,7 +72,7 @@ function formatJson() {
   try {
     update(JSON.stringify(JSON.parse(text), null, 2))
   } catch {
-    // Unparseable text cannot be formatted - the status line beside the button already says so.
+    // Unparseable text cannot be formatted; the status line beside the button already says so.
   }
 }
 </script>
@@ -149,10 +131,6 @@ function formatJson() {
     @update:model-value="update($event)"
   />
 
-  <!--
-    Three states, all of them visible: a select would hide true and false behind a menu, and the
-    "No value" entry in it looked like one more option rather than the absence of one.
-  -->
   <SegmentedControl
     v-else-if="field.type === 'BOOLEAN'"
     :model-value="(modelValue as string) ?? BOOLEAN_UNSET"
@@ -171,10 +149,8 @@ function formatJson() {
   />
 
   <!--
-    The clear button sits beside the picker, not in its trailing slot: a date, time or datetime
-    input paints the browser's own calendar/clock indicator at its right edge, and an overlay there
-    covers exactly the control the user reaches for. It keeps its place when there is nothing to
-    clear, so setting a value does not resize the input next to it.
+    The clear button sits beside the picker: the browser paints its calendar/clock indicator in the
+    trailing slot. It keeps its place when empty so the input does not resize.
   -->
   <div v-else-if="isDateLike(field)" class="flex w-full items-center gap-2">
     <UInput

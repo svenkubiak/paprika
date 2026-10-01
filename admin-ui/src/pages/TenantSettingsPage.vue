@@ -18,7 +18,6 @@ async function handleSchemaImport(event: Event) {
     const preserved = result.rulesPreserved
     toast.add({
       title: `Schema imported: ${result.collectionsCreated} created, ${result.collectionsUpdated} updated, ${result.hooksRestored} hooks restored`,
-      // Only mentioned when it actually happened, so a normal import stays a one-liner.
       description: preserved > 0
         ? `${preserved} existing ${preserved === 1 ? 'collection' : 'collections'} kept their current rules — the file did not contain any.`
         : undefined,

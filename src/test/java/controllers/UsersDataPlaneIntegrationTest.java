@@ -39,7 +39,6 @@ class UsersDataPlaneIntegrationTest {
 
             String accessToken = login("dp-bootstrap", "secret-password-123");
 
-            // Create a user through the data-plane, attempting to escalate the role.
             TestResponse create = TestRequest.post("/api/collections/users")
                     .withHeader("Authorization", "Bearer " + accessToken)
                     .withStringBody("""
@@ -50,9 +49,7 @@ class UsersDataPlaneIntegrationTest {
                     .execute();
             assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
 
-            // Listing must never leak credential fields, and the escalated role must be forced to
-            // "user". The users collection is shared by the whole suite, so the record is looked up
-            // by name instead of relying on it landing on the first page.
+            // The users collection is shared by the suite, so the record is looked up by name
             TestResponse list = TestRequest.get("/api/collections/users?offset=0&limit=25&filter=username:eq:dp-created")
                     .withHeader("Authorization", "Bearer " + accessToken)
                     .execute();
@@ -62,11 +59,9 @@ class UsersDataPlaneIntegrationTest {
             assertThat(list.getContent(), not(containsString("passwordSalt")));
             assertThat(list.getContent(), not(containsString("superadmin")));
 
-            // The password set through the data-plane must be a valid, hashed credential.
             String createdToken = login("dp-created", "another-secret-123");
             assertThat(createdToken.isBlank(), equalTo(false));
 
-            // A user cannot escalate their own role through an update either.
             TestResponse update = TestRequest.patch("/api/collections/users/" + bootstrapId)
                     .withHeader("Authorization", "Bearer " + accessToken)
                     .withStringBody("{\"role\":\"superadmin\"}")
@@ -80,7 +75,6 @@ class UsersDataPlaneIntegrationTest {
             assertThat(afterUpdate.getContent(), containsString("\"role\":\"user\""));
             assertThat(afterUpdate.getContent(), not(containsString("passwordHash")));
 
-            // Password is required when creating a user through the data-plane.
             TestResponse missingPassword = TestRequest.post("/api/collections/users")
                     .withHeader("Authorization", "Bearer " + accessToken)
                     .withStringBody("{\"username\":\"dp-nopass\"}")

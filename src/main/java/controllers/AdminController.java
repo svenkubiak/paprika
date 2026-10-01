@@ -10,6 +10,8 @@ import enums.Role;
 import helpers.AdminLoginResponseHelper;
 import helpers.AdminSettingsResponseHelper;
 import helpers.AdminUiResponseHelper;
+import helpers.HashingCapacityResponse;
+import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Authentication;
 import io.mangoo.routing.bindings.Form;
@@ -26,12 +28,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/**
- * Deliberately without TenantContextFilter. None of these routes work on tenant data - the admin
- * UI shell, the login flow, and the bootstrap payload all resolve what they need from the session
- * themselves. The filter answers a request it cannot resolve a tenant for with 403, which on a
- * setup without any tenant turned the login page itself into an error response.
- */
+// Deliberately without TenantContextFilter: it answers 403 without a tenant, which would break the
+// login page on an instance that has none yet.
 public class AdminController {
     private final AuthResponseService authResponseService;
     private final AdminBootstrapService adminBootstrapService;
@@ -116,14 +114,13 @@ public class AdminController {
             return Response.ok().bodyJson(Map.of("success", true));
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage())).end();
+        } catch (MangooHashingException e) {
+            // Hashed before the token is claimed, so the same link still works on retry
+            return HashingCapacityResponse.refused().end();
         }
     }
 
-    /**
-     * Confirms the email address a superadmin stored on their own profile. Deliberately without the
-     * admin filter: the token that arrives here is the credential, and it is opened from a mailbox,
-     * which is rarely the browser the superadmin happens to be signed in with.
-     */
+    // No admin filter: the token is the credential, and the link is often opened in another browser.
     public Response verifyEmail(@NotNull(message = "Request body is required") @Valid VerifyEmailDto dto) {
         return AdminSettingsResponseHelper.toResponse(superadminProfileService.confirmEmail(dto));
     }
@@ -133,16 +130,14 @@ public class AdminController {
             return Response.unauthorized().bodyJson(Map.of("error", "Unauthorized"));
         }
 
-        // The session, not just the identity: a switch continues it rather than starting a new one,
-        // so chaining switches cannot keep a token alive past the maximum session length
+        // A switch continues the session, so chained switches cannot outlive the maximum session length.
         Optional<AuthService.TokenSession> session = authService.resolveBearerSession(request);
         AuthContext auth = session.map(AuthService.TokenSession::auth).orElseGet(AuthContext::guest);
         if (!auth.isAuthenticated() || !auth.isSuperAdmin()) {
             return Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
         }
 
-        // Issuing a fresh token pair must not be possible for an account that no longer exists,
-        // otherwise a deleted superadmin could keep renewing access from an old token
+        // Otherwise a deleted superadmin could keep renewing access from an old token.
         if (systemUserService.findPublicUser(auth.id()).isEmpty()) {
             return Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
         }

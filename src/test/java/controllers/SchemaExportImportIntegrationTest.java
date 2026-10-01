@@ -23,9 +23,8 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 
 /**
- * Rules ride along in a schema export only because the whole CollectionDefinition document is
- * serialized - nothing states that intent. A projection on the meta query or a reshuffle of the
- * DTO would drop them without any other test noticing, which is what these cover.
+ * Rules ride along in an export only because the whole CollectionDefinition is serialized; a
+ * projection or DTO reshuffle would silently drop them.
  */
 @ExtendWith({TestRunner.class})
 class SchemaExportImportIntegrationTest {
@@ -35,8 +34,7 @@ class SchemaExportImportIntegrationTest {
     @Test
     void rulesSurviveAnExportImportRoundTrip() throws Exception {
         String collection = "schema_rt_" + DbUtils.id();
-        // Every level gets a different value, so swapped fields fail here too, and the owner field
-        // is not the default - a hardcoded fallback would pass an all-defaults fixture.
+        // Distinct values per level catch swapped fields; a non-default owner field catches a hardcoded fallback.
         CollectionRules rules = new CollectionRules("*", "auth", "owner", "owner", "", "author");
         TenantTestUtils.seedCollection(collection, rules);
 
@@ -46,8 +44,7 @@ class SchemaExportImportIntegrationTest {
         assertThat(export.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(exportedRules(export, collection), equalTo(rules));
 
-        // Wipe the rules in the database so the import has something to actually restore. Without
-        // this the assertion below would pass on an import that silently does nothing.
+        // Wipe the rules so an import that silently does nothing cannot pass.
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
         replaceRules(collections, ctx, collection, CollectionRules.locked());
@@ -60,12 +57,7 @@ class SchemaExportImportIntegrationTest {
         assertThat(collections.findDefinition(ctx, collection).rules(), equalTo(rules));
     }
 
-    /**
-     * The export is the only producer of these files, but not their only source: they get
-     * hand-edited and generated. An entry without a rules object used to be applied as a null,
-     * which falls through rulesOrDefault() to locked() and cuts off API access to a collection
-     * that was working a moment ago.
-     */
+    /** Hand-edited files may omit rules; a null would fall through rulesOrDefault() to locked(). */
     @Test
     void anImportWithoutRulesKeepsTheExistingOnesAndSaysSo() {
         String collection = "schema_norules_" + DbUtils.id();
@@ -85,7 +77,6 @@ class SchemaExportImportIntegrationTest {
         assertThat(collections.findDefinition(ctx, collection).rules(), equalTo(rules));
     }
 
-    /** A rules object that is present is applied as it is, including a deliberate full lock. */
     @Test
     void anImportWithRulesStillOverwritesThem() {
         String collection = "schema_lock_" + DbUtils.id();
@@ -106,10 +97,7 @@ class SchemaExportImportIntegrationTest {
         assertThat(applied.ownerField(), equalTo("owner"));
     }
 
-    /**
-     * Fields and indexes are what an import is for, so a missing one is an incomplete file rather
-     * than "leave it alone". Applying it would wipe the schema of a live collection.
-     */
+    /** A missing fields or indexes entry is an incomplete file; applying it would wipe a live schema. */
     @Test
     void anImportWithoutFieldsOrIndexesIsRejectedWholesale() {
         String intact = "schema_intact_" + DbUtils.id();
@@ -119,8 +107,7 @@ class SchemaExportImportIntegrationTest {
 
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
 
-        // The intact entry comes first on purpose: it would already be written by the time the
-        // broken one is reached, which is what validating up front prevents.
+        // The intact entry comes first: without up-front validation it would already be written.
         String schema = """
                 {"version":"1","collections":[
                   {"name":"%s","fields":[{"name":"title","type":"STRING","required":true}],"indexes":[]},
@@ -135,7 +122,6 @@ class SchemaExportImportIntegrationTest {
                 response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
         assertThat(response.getContent(), containsString(broken + " is missing \\\"fields\\\""));
 
-        // Nothing at all may have been applied, including the entry that was fine.
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
         assertThat("a rejected import must not have written the entries before the broken one",
@@ -163,11 +149,7 @@ class SchemaExportImportIntegrationTest {
         assertThat(response.getContent(), containsString(collection + " is missing \\\"indexes\\\""));
     }
 
-    /**
-     * The membership configuration of the group/peers presets is as much part of a rule as the
-     * rule value itself - a round trip that loses it would restore a collection whose rules deny
-     * everything, or worse, whose meaning quietly changed.
-     */
+    /** Losing the membership configuration would restore rules whose meaning quietly changed. */
     @Test
     void theMembershipConfigurationSurvivesARoundTrip() throws Exception {
         String memberships = "schema_memberships_" + DbUtils.id();
@@ -176,9 +158,7 @@ class SchemaExportImportIntegrationTest {
                 "group", "group", "group", "group", "group",
                 "owner", memberships, "user", "crew", "crew");
 
-        // The membership fields have to exist: the import validates the file the same way the
-        // meta API validates a save, and a rule pointing at a field nobody declared is refused
-        // there too.
+        // The import validates like a meta API save, which refuses a rule pointing at an undeclared field.
         TenantTestUtils.seedCollection(memberships, CollectionRules.locked(), membershipFields("crew"));
         TenantTestUtils.seedCollection(collection, rules, groupFields("crew"));
 
@@ -204,7 +184,6 @@ class SchemaExportImportIntegrationTest {
         assertThat(restored.groupRecordField(), equalTo("crew"));
     }
 
-    /** The group collection itself: groupRecordField "id" has to come back as "id", not as null. */
     @Test
     void theGroupCollectionConfigurationSurvivesARoundTrip() throws Exception {
         String memberships = "schema_selfmemberships_" + DbUtils.id();
@@ -248,10 +227,6 @@ class SchemaExportImportIntegrationTest {
                 new models.FieldDefinition(groupRecordField, enums.FieldType.STRING, true, false, null));
     }
 
-    /**
-     * The export is the one producer of these files, so whatever it writes has to pass the import's
-     * own validation - otherwise a tenant could end up with a backup the instance refuses to read.
-     */
     @Test
     void anExportIsAlwaysAcceptedByTheImport() throws Exception {
         String collection = "schema_selfimport_" + DbUtils.id();
@@ -275,11 +250,7 @@ class SchemaExportImportIntegrationTest {
         assertThat(reimport.getStatusCode(), equalTo(StatusCodes.OK));
     }
 
-    /**
-     * Field options ride along for the same reason the rules do - nothing states that intent - so
-     * the newest one gets its own round trip. Losing it would silently disable image variants for
-     * every restored tenant.
-     */
+    /** Field options ride along implicitly like the rules; losing them disables image variants. */
     @Test
     void imageWidthsSurviveAnExportImportRoundTrip() throws Exception {
         String collection = "schema_widths_" + DbUtils.id();

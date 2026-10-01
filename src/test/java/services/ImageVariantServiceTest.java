@@ -31,9 +31,6 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
-/**
- * Image variants are produced once, after the upload is committed, and live and die with the original.
- */
 class ImageVariantServiceTest {
 
     @TempDir
@@ -46,7 +43,6 @@ class ImageVariantServiceTest {
         return new FileFieldService(storage, queue);
     }
 
-    /** The variants are produced in the background once the upload is committed. */
     private void awaitVariants() throws InterruptedException {
         assertThat("the variant queue did not drain", queue.awaitIdle(Duration.ofSeconds(10)), is(true));
     }
@@ -65,7 +61,6 @@ class ImageVariantServiceTest {
         assertThat(storage.variantWidths(ctx, fileId), contains(100, 200));
         assertThat(widthOf(storage.read(ctx, FileStorageService.variantKey(fileId, 100))), is(100));
         assertThat(widthOf(storage.read(ctx, FileStorageService.variantKey(fileId, 200))), is(200));
-        // The original is stored untouched.
         assertThat(widthOf(storage.read(ctx, fileId)), is(400));
     }
 
@@ -106,8 +101,7 @@ class ImageVariantServiceTest {
         FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
-        // Orientation 6 means "rotate 90° clockwise for display", so a 400x200 stored image is a
-        // 200x400 image to the viewer - and the variant has to come out that way around.
+        // Orientation 6 rotates 90 degrees clockwise for display, so the 400x200 variant must come out 200x400.
         byte[] rotated = jpegWithOrientation(image(400, 200, "jpg"), 6);
 
         FileFieldService.UploadChanges changes =
@@ -209,7 +203,6 @@ class ImageVariantServiceTest {
         assertThat(storage.variantWidths(ctx, fileId), is(empty()));
     }
 
-    /** Exact hit, next larger variant, and the original as the last resort - never a smaller one. */
     @Test
     void readingFallsBackToTheNextLargerVariantAndThenToTheOriginal() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
@@ -237,7 +230,6 @@ class ImageVariantServiceTest {
         assertThat(widthOf(untouched.bytes()), is(800));
     }
 
-    /** An upload as a successful write sees it: staged, committed, and its variants produced. */
     private FileFieldService.UploadChanges upload(
             FileFieldService service,
             TenantContext ctx,
@@ -302,7 +294,6 @@ class ImageVariantServiceTest {
         return out.toByteArray();
     }
 
-    /** Wraps a JPEG in an APP1/EXIF segment carrying nothing but the orientation tag. */
     private static byte[] jpegWithOrientation(byte[] jpeg, int orientation) {
         byte[] exif = exifSegment(orientation);
         byte[] result = new byte[jpeg.length + exif.length];

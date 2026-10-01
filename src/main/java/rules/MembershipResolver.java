@@ -20,32 +20,13 @@ import java.util.Set;
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Filters.in;
 
-/**
- * Answers the one question the {@code group} and {@code peers} presets need and the rule
- * expression engine cannot express: which groups does the caller belong to, and who else is in
- * them. Both are a lookup in a second collection - the memberships - which
- * {@link RuleParser}/{@link RuleEvaluator}/{@link RuleToMongoConverter} have no notion of, so the
- * two presets are decided in {@link RuleService} before anything is parsed.
- * <p>
- * <b>The rules of the membership collection are deliberately not applied here.</b> This resolver
- * reads it internally, on behalf of Paprika itself, the same way the owner field of a record is
- * read without asking whether the caller may see that field. That says nothing about who may call
- * {@code /api/collections/<groupCollection>} - that collection keeps its own rules, and they
- * should normally be locked or scoped like any other.
- * <p>
- * Nothing is cached beyond a single operation: a membership that is revoked has to take effect on
- * the very next request, not when a time window runs out. {@link Membership} is the memo, it is
- * created per operation and dies with it.
- */
+// The membership collection is read internally, deliberately without applying its own rules.
+// Nothing is cached beyond one operation, so a revoked membership takes effect on the next request.
 @Singleton
 public final class MembershipResolver {
     private final Provider<TenantCollectionService> tenantCollections;
 
-    /**
-     * A {@link Provider} instead of the service itself: {@link RuleService} depends on this
-     * resolver and {@code TenantCollectionService} depends on {@code RuleService} for its
-     * validation, which is a cycle the injector cannot construct eagerly.
-     */
+    // Provider breaks the cycle RuleService -> this -> TenantCollectionService -> RuleService
     @Inject
     public MembershipResolver(Provider<TenantCollectionService> tenantCollections) {
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
@@ -55,20 +36,11 @@ public final class MembershipResolver {
         this.tenantCollections = null;
     }
 
-    /**
-     * A resolver without a database behind it, for the unit tests and for any {@link RuleService}
-     * built outside the injector. Every membership is empty, so the two presets deny - the safe
-     * direction, and never a silently open collection.
-     */
+    // No database behind it: every membership is empty, so the group presets deny
     public static MembershipResolver denying() {
         return new MembershipResolver();
     }
 
-    /**
-     * The caller's membership for one operation. Every lookup is made at most once per instance,
-     * so an operation that asks twice - an update checking the old and the new group of a record -
-     * costs one query, and an instance never survives the request that created it.
-     */
     public Membership membership(TenantContext ctx, CollectionRules rules, AuthContext auth) {
         return new Membership(this, ctx, rules, auth);
     }
@@ -100,9 +72,7 @@ public final class MembershipResolver {
         return values(memberships, rules.groupMemberField());
     }
 
-    /**
-     * A RELATION field can hold a single id or a list of them, so both shapes are collected.
-     */
+    // A RELATION field holds a single id or a list of them
     private static Set<String> values(List<Document> documents, String field) {
         Set<String> collected = new HashSet<>();
         for (Document document : documents) {
@@ -130,11 +100,7 @@ public final class MembershipResolver {
         return List.copyOf(collected);
     }
 
-    /**
-     * The memo of one operation: the groups of the caller and, for {@code peers}, the users that
-     * share one of them. Both are resolved on first use and kept for the lifetime of this object
-     * only - which is the request that created it.
-     */
+    // Per-operation memo; must never outlive the request that created it
     public static final class Membership {
         private final MembershipResolver resolver;
         private final TenantContext ctx;
@@ -155,7 +121,6 @@ public final class MembershipResolver {
             this.auth = auth;
         }
 
-        /** The groups the caller is a member of. Empty for a guest, and empty means nothing. */
         public Set<String> groups() {
             if (groups == null) {
                 groups = resolver.loadGroups(ctx, rules, auth);
@@ -163,10 +128,7 @@ public final class MembershipResolver {
             return groups;
         }
 
-        /**
-         * Everyone sharing at least one group with the caller, plus the caller. The own id is
-         * always in there: a user reaches their own record even without any membership.
-         */
+        // Always includes the caller, who reaches their own record even without any membership
         public Set<String> peers() {
             if (peers == null) {
                 if (auth == null || !auth.isAuthenticated()) {
@@ -180,17 +142,12 @@ public final class MembershipResolver {
             return peers;
         }
 
-        /** Whether at least one of the given values names a group the caller belongs to. */
         public boolean inAnyGroup(List<String> candidates) {
             Set<String> mine = groups();
             return !mine.isEmpty() && candidates.stream().anyMatch(mine::contains);
         }
 
-        /**
-         * Whether every given value names a group the caller belongs to - the check for a value a
-         * client supplied. A write must never put a record into a group the caller is not in, not
-         * even alongside one it is in.
-         */
+        // For client-supplied values: a write must never add a group the caller is not in
         public boolean inEveryGroup(List<String> candidates) {
             Set<String> mine = groups();
             return !candidates.isEmpty() && !mine.isEmpty() && mine.containsAll(candidates);

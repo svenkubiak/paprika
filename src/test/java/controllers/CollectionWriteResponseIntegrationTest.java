@@ -143,7 +143,7 @@ class CollectionWriteResponseIntegrationTest {
 
             String id = json(create).path("id").asText();
 
-            // Not the email: that is a credential an anonymous caller may never change, whatever the rule
+            // Not the email: an anonymous caller may never change a credential, whatever the rule
             TestResponse update = TestRequest.patch("/api/collections/users/" + id)
                     .withStringBody("{\"username\":\"updated-" + username + "\"}")
                     .withContentType("application/json")

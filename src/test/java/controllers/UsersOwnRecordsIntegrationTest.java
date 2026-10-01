@@ -27,10 +27,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * On the {@code users} collection, {@code Own records} has to mean "my own account"
- * ({@code record.id = auth.id}) instead of the owner-field comparison every other collection uses
- * - a user record has no relation pointing at itself, so the owner variant would lock every user
- * out of their own profile.
+ * On {@code users}, Own records means {@code record.id = auth.id}: a user record has no owner
+ * relation to itself, so the owner comparison would lock every user out of their own profile.
  */
 @ExtendWith({TestRunner.class})
 class UsersOwnRecordsIntegrationTest {
@@ -69,7 +67,7 @@ class UsersOwnRecordsIntegrationTest {
                     "{\"email\":\"own-update-me@example.com\",\"oldPassword\":\"secret-password-123\"}");
             assertThat(own.getStatusCode(), equalTo(StatusCodes.OK));
 
-            // A credential change revokes every token of the account, the one that made it included
+            // A credential change revokes every token of the account, including this one
             String freshToken = accessTokenFor("own-update-me");
             TestResponse readBack = get("/api/collections/users/" + meId, freshToken);
             assertThat(readBack.getContent(), containsString("own-update-me@example.com"));
@@ -130,8 +128,7 @@ class UsersOwnRecordsIntegrationTest {
             String meId = userId(userService.createUser("own-create-me", null, "secret-password-123"));
             String token = accessTokenFor("own-create-me");
 
-            // There is no record yet whose id could equal the caller's, so Own records cannot be
-            // satisfied - not even by sending one's own id along. Sign-up is /api/auth/register.
+            // No record id can equal the caller's yet, not even a sent one. Sign-up is /api/auth/register.
             TestResponse plain = TestRequest.post("/api/collections/users")
                     .withHeader("Authorization", "Bearer " + token)
                     .withStringBody("{\"username\":\"own-create-new\",\"password\":\"another-secret-123\"}")
@@ -199,8 +196,7 @@ class UsersOwnRecordsIntegrationTest {
             UserService userService = Application.getInstance(UserService.class);
             String meId = userId(userService.createUser("own-guest-target", null, "secret-password-123"));
 
-            // Same shape as an owner rule on any other collection: the list is answered, but the
-            // filter can never match for a caller without an identity
+            // The list is answered, but the filter cannot match a caller without an identity
             TestResponse list = TestRequest.get("/api/collections/users?offset=0&limit=25").execute();
             assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));
             assertThat(list.getContent(), containsString("\"total\":0"));
@@ -221,8 +217,7 @@ class UsersOwnRecordsIntegrationTest {
             TenantDefinition tenant = TenantTestUtils.defaultTenant();
 
             AdminTestUtils.AdminCookies adminCookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
-            // The users collection is shared by the whole suite, so a plain first page would only
-            // contain the oldest 25 accounts. Both records are therefore looked up by name.
+            // The users collection is shared by the suite, so look records up by name, not first page.
             for (String username : List.of("own-bypass-me", "own-bypass-other")) {
                 TestResponse asAdmin = AdminTestUtils.getWithAdminCookies(
                         "/api/collections/users?offset=0&limit=25&filter=username:eq:" + username, adminCookies);
@@ -279,7 +274,6 @@ class UsersOwnRecordsIntegrationTest {
         assertThat(list.getContent(), not(containsString("theirs")));
         assertThat(list.getContent(), containsString("\"total\":1"));
 
-        // The owner field is still filled in automatically on a create
         TestResponse create = TestRequest.post("/api/collections/" + collection)
                 .withHeader("Authorization", "Bearer " + token)
                 .withStringBody("{\"title\":\"created by me\"}")

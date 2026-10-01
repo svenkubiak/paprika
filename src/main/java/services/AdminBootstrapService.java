@@ -46,9 +46,7 @@ public class AdminBootstrapService {
     public Map<String, Object> buildPayload(Request request) {
         AuthContext auth = authService.resolveAdmin(request).orElse(AuthContext.guest());
 
-        // The endpoint is reachable without a session so the admin UI can ask whether it still
-        // has one. Anyone without a session only learns that - no tenants, no collection names,
-        // no stats. The guest tenant context the request filter resolves must not leak here.
+        // Reachable without a session; a guest must learn nothing beyond that (no tenants, collections, stats)
         if (!auth.isAuthenticated()) {
             return unauthenticatedPayload();
         }
@@ -58,8 +56,7 @@ public class AdminBootstrapService {
         TenantContext ctx = resolveContext(request, auth);
         boolean hasActiveTenant = ctx.hasTenantContext();
         boolean smtpConfigured = StringUtils.isNotBlank(config.getSmtpHost());
-        // Loaded once and passed on: the payload lists them, the stats count them and the
-        // warnings read their settings, and that used to be two round trips for one answer.
+        // Loaded once and shared by payload, stats and warnings
         List<TenantDefinition> tenants = auth.isSuperAdmin() ? tenantService.listAll() : List.of();
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -68,9 +65,7 @@ public class AdminBootstrapService {
         payload.put("isSuperAdmin", auth.isSuperAdmin());
         payload.put("adminId", auth.isAuthenticated() ? auth.id() : null);
         payload.put("adminUsername", profile.map(SystemUserService.SuperadminProfile::username).orElse(null));
-        // The header shows the picture, so its URL travels with the payload the header is built
-        // from. It carries a version instead of the bytes: the picture is cacheable, the payload
-        // is fetched on every navigation.
+        // A versioned URL instead of the bytes: the picture is cacheable, the payload is fetched on every navigation
         payload.put("adminAvatarUrl", profile.map(SuperadminProfileService::avatarUrl).orElse(null));
         payload.put("smtpConfigured", smtpConfigured);
         payload.put("hasActiveTenant", hasActiveTenant);
@@ -134,11 +129,7 @@ public class AdminBootstrapService {
                 uptimeSeconds);
     }
 
-    /**
-     * The problems that are worth interrupting a superadmin for, because nothing else in the UI
-     * shows them: a running instance looks exactly the same with or without them. Instance-wide,
-     * so nobody but a superadmin is told about them.
-     */
+    // Instance-wide, so only superadmins are told
     private InstanceWarnings buildWarnings(
             AuthContext auth,
             List<TenantDefinition> tenants,

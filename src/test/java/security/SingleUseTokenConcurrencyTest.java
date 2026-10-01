@@ -28,21 +28,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Single use tokens have to stay single use under concurrency.
- * <p>
- * "Look the token up, then clear it" reads correctly in sequence but is two operations: several
- * requests arriving at the same time all pass the check before any of them clears the token. A
- * password reset link that was forwarded, logged by a mail gateway or captured in a browser history
- * could then be redeemed more than once - and a leaked 2FA fallback code would stop being one-time.
- * <p>
- * These tests fire the redemptions in parallel and require that exactly one succeeds. They are
- * written so that a regression is visible rather than flaky: the requests are released together by
- * a latch, and the assertion is on the number of successes, not on timing.
- * <p>
- * The rejected attempts are required to answer with a client error: concurrency must not turn into
- * a server error either. Up to mangoo I/O 10.12.1 that was not the case - its attachment key was
- * built lazily on an unsynchronized static field, so parallel requests sporadically produced a 500.
- * Fixed in 10.12.2, which is why this can be asserted strictly now.
+ * Look-up-then-clear is two operations, so parallel redemptions could all pass the check. Requests
+ * are released by a latch and the count of successes is asserted, so a regression is not flaky.
  */
 @ExtendWith({TestRunner.class})
 class SingleUseTokenConcurrencyTest {
@@ -83,7 +70,6 @@ class SingleUseTokenConcurrencyTest {
         assertThat("and every other attempt must be rejected: " + statuses,
                 count(statuses, 400), equalTo(PARALLEL_ATTEMPTS - 1));
 
-        // Exactly one of the attempted passwords is now valid, and the old one is gone
         assertThat(login(username, PASSWORD).getStatusCode(), equalTo(401));
         long usable = 0;
         for (int index = 0; index < PARALLEL_ATTEMPTS; index++) {
@@ -121,8 +107,7 @@ class SingleUseTokenConcurrencyTest {
     void aTwoFactorFallbackCodeCanOnlyBeConsumedOnce() throws Exception {
         SystemUserService systemUsers = Application.getInstance(SystemUserService.class);
         String username = "concurrent-admin-" + DbUtils.id().substring(0, 8);
-        // A pending invite is enough: the fallback code lives on the user record either way, and
-        // this keeps the "last completed superadmin" invariant other tests rely on untouched
+        // A pending invite suffices and keeps the "last completed superadmin" invariant other tests rely on
         systemUsers.createSuperadminSetup(username, null);
         String adminId = String.valueOf(systemUsers.findPublicUserByUsername(username).orElseThrow().get("id"));
         systemUsers.setTotpSecret(adminId, "CONCURRENCYFALLBACKSECRET");
@@ -142,11 +127,6 @@ class SingleUseTokenConcurrencyTest {
                 systemUsers.consumeTotpFallbackCode(adminId, fallbackCode), is(false));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
-
-    /** Releases all attempts at once, so they genuinely overlap instead of running in sequence. */
     private static List<Integer> inParallel(IndexedCall call) throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_ATTEMPTS);
         CountDownLatch start = new CountDownLatch(1);

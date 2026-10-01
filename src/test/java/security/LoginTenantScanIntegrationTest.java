@@ -20,10 +20,8 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
 /**
- * {@code POST /api/auth/login} without a tenant slug is a login for the default tenant, and for
- * nothing else. It used to search every tenant for the username, which ran the hooks of one tenant
- * for a login into another and made every answer a statement about other tenants' user bases. A
- * user of any other tenant has to name it, and the endpoint answers every failure the same way.
+ * A slug-less login is a login for the default tenant only; scanning all tenants ran foreign hooks
+ * and leaked statements about other tenants' user bases.
  */
 @ExtendWith({TestRunner.class})
 class LoginTenantScanIntegrationTest {
@@ -53,10 +51,7 @@ class LoginTenantScanIntegrationTest {
         users.createUser(TenantTestUtils.defaultTenant(), DEFAULT_USERNAME, null, PASSWORD_DEFAULT);
     }
 
-    /**
-     * The oracle: a 409 tells an unauthenticated caller that this username exists in more than
-     * one tenant. Nothing about another tenant's user base may be derivable from here.
-     */
+    /** A 409 would tell an unauthenticated caller the username exists in more than one tenant. */
     @Test
     void anAmbiguousUsernameIsAnsweredLikeAnyOtherFailedLogin() {
         TestResponse ambiguous = login(SHARED_USERNAME, PASSWORD_A);
@@ -69,7 +64,6 @@ class LoginTenantScanIntegrationTest {
         assertThat(ambiguous.getContent(), not(org.hamcrest.Matchers.containsString("tenant")));
     }
 
-    /** Naming the tenant resolves the ambiguity - that is what the slug is for. */
     @Test
     void theSameUsernameStillLogsInWhenTheTenantIsNamed() {
         TestResponse inA = TestRequest.post("/api/auth/login")
@@ -84,7 +78,6 @@ class LoginTenantScanIntegrationTest {
                 .execute();
         assertThat(inB.getContent(), inB.getStatusCode(), equalTo(StatusCodes.OK));
 
-        // ... and the password of the other tenant's namesake does not work
         TestResponse crossed = TestRequest.post("/api/auth/login")
                 .withStringBody(TenantTestUtils.loginBody(tenantA.slug(), SHARED_USERNAME, PASSWORD_B))
                 .withContentType("application/json")
@@ -92,7 +85,6 @@ class LoginTenantScanIntegrationTest {
         assertThat(crossed.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
     }
 
-    /** A username that exists in exactly one other tenant is not looked up there any more. */
     @Test
     void aUserOfAnotherTenantHasToNameIt() {
         TestResponse withoutSlug = login(UNIQUE_USERNAME, PASSWORD_A);
@@ -103,7 +95,6 @@ class LoginTenantScanIntegrationTest {
                 withoutSlug.getContent(), equalTo(unknown.getContent()));
     }
 
-    /** The default tenant keeps the convenience of the slug-less login. */
     @Test
     void aUserOfTheDefaultTenantStillLogsInWithoutASlug() {
         TestResponse response = login(DEFAULT_USERNAME, PASSWORD_DEFAULT);
@@ -113,10 +104,8 @@ class LoginTenantScanIntegrationTest {
     }
 
     /**
-     * Argon2 only ran when a user was found, so an unknown username came back an order of
-     * magnitude faster than a known one with a wrong password - the same enumeration the status
-     * code no longer gives away. The bound is deliberately loose; the point is the order of
-     * magnitude, not a precise ratio.
+     * Skipping Argon2 for unknown users makes them an order of magnitude faster, an enumeration oracle.
+     * The bound is deliberately loose; only the order of magnitude matters.
      */
     @Test
     void anUnknownUsernameCostsRoughlyAsMuchAsAKnownOne() {

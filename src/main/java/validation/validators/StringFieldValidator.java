@@ -30,9 +30,8 @@ public class StringFieldValidator implements FieldValidator {
         FieldOptions options = field.optionsOrDefault();
         String text = value.asText();
 
-        // Length first, and no pattern match when it is already violated: the record is rejected
-        // either way, and running a regex over a value the schema does not allow is work an
-        // unauthenticated caller would otherwise get to schedule.
+        // Length first: no regex runs over a value the schema already rejects, which an
+        // unauthenticated caller could otherwise use to schedule work.
         if (!FieldConstraintUtils.validateTextLength(field.name(), text, options, result)) {
             return;
         }

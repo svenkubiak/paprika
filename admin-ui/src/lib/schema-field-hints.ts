@@ -1,13 +1,6 @@
 /**
- * The explanations shown with the schema editor fields.
- *
- * Each hint is split in two: `short` is one sentence that stays visible under the control, `long`
- * is the rest and is revealed by the info toggle beside the label. The split is what makes the
- * long ones usable at all - a field editor with twelve paragraphs under it scrolls away from the
- * save button, and a tooltip hides them from touch devices and from a page search alike.
- *
- * Keep `short` to a single sentence, and put anything that is an example, a limit or a
- * consequence into `long`.
+ * `short` stays visible under the control, `long` sits behind the info toggle. Keep `short` to one
+ * sentence; examples, limits and consequences go into `long`.
  */
 export type FieldHint = {
   short: string

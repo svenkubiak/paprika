@@ -32,19 +32,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
 /**
- * Isolation on the realtime channel over the real socket.
- * <p>
- * {@link RealtimeTenantIsolationIntegrationTest} covers the same rules, but hands
- * {@code RealtimeService} a recording double instead of a connection, because an Undertow SSE
- * stream cannot be consumed through the test HTTP client. That leaves the transport itself
- * untested: whether {@code GET /api/realtime} is actually served by the route-bound
- * {@code PaprikaServerSentEventHandler}, whether a client id ever reaches a client, and whether
- * what the service decides is what goes out over the wire.
- * <p>
- * Here every stream is a real HTTP response whose lines are consumed on a background thread, so
- * the whole path is exercised end to end. Each case asserts both directions - the permitted
- * subscriber receives the record, the other one does not - so a delivery that silently stops
- * working cannot pass as isolation.
+ * Covers the real SSE transport that RealtimeTenantIsolationIntegrationTest replaces with a double. Each
+ * case asserts both directions, so a delivery that silently stops cannot pass as isolation.
  */
 @ExtendWith({TestRunner.class})
 class RealtimeStreamIsolationIntegrationTest {
@@ -108,7 +97,6 @@ class RealtimeStreamIsolationIntegrationTest {
         }
     }
 
-    /** Within one tenant the view rule decides, exactly as it does on the REST API. */
     @Test
     void anEventNeverReachesAUserTheViewRuleExcludes() throws Exception {
         try (SseStream owner = SseStream.open(); SseStream stranger = SseStream.open()) {
@@ -126,11 +114,7 @@ class RealtimeStreamIsolationIntegrationTest {
         }
     }
 
-    /**
-     * The stream itself is not authenticated, so whoever knows a client id could otherwise attach
-     * their own identity to a stream someone else is reading - and would redirect the victim's
-     * events to their own subscriptions. A claimed client stays bound to the user that claimed it.
-     */
+    /** The stream is unauthenticated, so a claimed client stays bound to its user or events could be redirected. */
     @Test
     void aClaimedStreamCannotBeClaimedBySomeoneElse() throws Exception {
         try (SseStream victim = SseStream.open()) {
@@ -141,7 +125,6 @@ class RealtimeStreamIsolationIntegrationTest {
         }
     }
 
-    /** Without a successful subscribe a stream only ever sees its own connect event. */
     @Test
     void anUnauthenticatedStreamReceivesNoRecords() throws Exception {
         try (SseStream silent = SseStream.open()) {
@@ -155,15 +138,7 @@ class RealtimeStreamIsolationIntegrationTest {
         }
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
-
-    /**
-     * What an EventSource does: an HTTP response that stays open, with its lines collected on a
-     * background thread. Closing uses {@code shutdownNow}, as an ordinary close would wait for a
-     * stream that never ends.
-     */
+    /** Closing uses {@code shutdownNow}, as an ordinary close would wait for a stream that never ends. */
     private static final class SseStream implements AutoCloseable {
         private static final String CLIENT_ID_MARKER = "\"clientId\":\"";
         private final List<String> lines = new CopyOnWriteArrayList<>();

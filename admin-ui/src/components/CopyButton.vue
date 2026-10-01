@@ -1,11 +1,4 @@
 <script setup lang="ts">
-/**
- * Copies a value and says so on the button itself.
- *
- * Record ids, API keys and hook secrets exist to be pasted somewhere else, so they get the same
- * button everywhere. The confirmation is the icon swap rather than a toast: a toast for something
- * the user can see happened is one notification too many.
- */
 import { onBeforeUnmount, ref } from 'vue'
 import { copyToClipboard } from '@/lib/utils'
 
@@ -30,7 +23,7 @@ async function copy() {
       copied.value = false
     }, 1500)
   } catch {
-    // Clipboard access can be denied by the browser; nothing useful to do but leave the icon be.
+    // Clipboard access can be denied by the browser; nothing useful to do.
   }
 }
 

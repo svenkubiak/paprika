@@ -23,14 +23,8 @@ public class CollectionController {
         this.collectionRecordService = Objects.requireNonNull(collectionRecordService, "collectionRecordService must not be null");
     }
 
-    /**
-     * {@link ApiMultipartFilter} runs before {@link ApiAuthFilter} on purpose: mangoo hands a
-     * multipart request an empty body, so the rules would see no body at all and every
-     * body-dependent check (the {@code group} preset, any rule reading {@code body.x}) would
-     * silently pass. The multipart filter turns the parts into the JSON body the rules evaluate;
-     * it needs nothing but the tenant context and the collection definition, never the
-     * authorization decision.
-     */
+    // ApiMultipartFilter must run before ApiAuthFilter: mangoo gives multipart requests an empty body,
+    // so body-dependent rules would otherwise silently pass.
     @FilterWith({TenantContextFilter.class, ApiMultipartFilter.class, ApiAuthFilter.class, ApiHookFilter.class, ApiValidationFilter.class})
     public Response create(String collection, Request request) {
         return CollectionRecordResponseHelper.toResponse(
@@ -49,7 +43,7 @@ public class CollectionController {
                 collectionRecordService.read(TenantContextHolder.require(request), collection, id));
     }
 
-    /** See {@link #create}: the multipart body has to exist before the rules are evaluated. */
+    // See create: the multipart body must exist before the rules are evaluated.
     @FilterWith({TenantContextFilter.class, ApiMultipartFilter.class, ApiAuthFilter.class, ApiHookFilter.class, ApiValidationFilter.class})
     public Response update(String collection, String id, Request request) {
         return CollectionRecordResponseHelper.toResponse(

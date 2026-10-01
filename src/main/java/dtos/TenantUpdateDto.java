@@ -7,8 +7,7 @@ import java.util.List;
 public record TenantUpdateDto(
         String name,
 
-        // Stays optional - null means "leave the slug as it is". Same message as TenantDto,
-        // because it is the same rule.
+        // Optional: null leaves the slug unchanged.
         @Pattern(regexp = "[a-z0-9-]+", message = "Slug must be one or more lowercase letters, numbers, or hyphens")
         String slug,
 

@@ -86,43 +86,56 @@ The examples below throttle all of `/api/auth/` in one go, which covers every ro
 A handful of requests per second per IP with a small burst is plenty for real users and cuts brute force down hard. Tune to taste; the numbers in the examples are a sane starting point, not a law.
 
 ::: warning Keep the burst small on the auth routes, and skip `nodelay` there
-A login is not a cheap request. Verifying a password is a full Argon2id computation that really
-allocates about 90 MiB of heap and holds it for roughly a quarter of a second — and it runs even
-when the username does not exist, because a hash that always happens is what stops the response
-time from revealing which accounts are real.
+A login is not a cheap request. Verifying a password is a full Argon2id computation that
+allocates about 32 MiB of heap and keeps one CPU core busy for about 40 ms. It runs even when the
+username does not exist, because a hash that always happens is what stops the response time from
+revealing which accounts are real.
 
 `nodelay` tells nginx to forward a whole burst immediately instead of spacing it out at the zone
 rate. On the auth routes that means the burst size *is* the number of expensive computations that
-start at the same moment: `burst=20 nodelay` lets one address trigger about 1.8 GiB of allocation
-in under a second. Use a small burst without `nodelay` here (`burst=5`), and keep `nodelay` for
-routes where a request is cheap.
-
-Paprika caps the concurrent password verifications on its own as well — see below — so an
-over-burst answers with `429` rather than an `OutOfMemoryError`. The proxy setting is what keeps
-it from getting that far.
+start at the same moment. The heap is safe either way, because the number of concurrent
+verifications is capped (see below). But `burst=20 nodelay` lets one address claim every hashing
+slot at once, so honest logins arriving in that moment are answered with `429`. Use a small burst
+without `nodelay` here (`burst=5`), and keep `nodelay` for routes where a request is cheap.
 :::
 
 ## Password hashing has its own ceiling
 
-A rate limit counts requests; it cannot see that one of them costs 90 MiB. Paprika therefore
-bounds the expensive part itself: the number of Argon2id verifications running at the same time is
-capped, derived from the heap the JVM was given (a quarter of it, at least two and at most eight
-concurrent verifications). The cap is logged at startup:
+A rate limit counts requests; it cannot see that one of them costs 32 MiB and 40 ms of a core. The
+expensive part is therefore bounded where it happens: mangoo caps how many Argon2id computations
+run at the same time. By default the number of slots is derived from the heap. Half of it is the
+budget, each slot is reckoned at the configured memory cost plus 20 % headroom, and the result is
+kept between two and eight. With the default 32 MiB a heap of 2 GiB or more gets the full eight
+slots, about 256 MiB at peak. The cap is logged at startup:
 
 ```
-Password hashing is capped at 5 concurrent verifications (~480 MiB peak) for a heap of 2048 MiB
+Argon2 hashing is limited to 8 concurrent computations with a timeout of 200 ms (memory 32768 KB, iterations 3, parallelism 1)
 ```
 
-Requests over that cap are refused with **429 Too Many Requests** and a `Retry-After` header, not
-queued — queueing would turn a memory problem into a pile of open connections. The refusal is
-identical for a known and an unknown username, so it cannot be used to probe for accounts.
+A caller that finds every slot taken waits up to `authentication.hashing.timeout` (200 ms in
+Paprika's configuration) for one to free up. That covers the overlap of a short burst. After that
+the request is refused with **429 Too Many Requests** and a `Retry-After` header. The wait is kept
+that short on purpose: a longer one would turn a memory problem into a pile of open connections.
+The refusal is identical for a known and an unknown username, so it cannot be used to probe for
+accounts.
 
-The ceiling covers the superadmin credential paths as well, not only the tenant login: signing in
-at `/api/admin/login`, minting a token at `/api/admin/token`, and the password a superadmin
-re-enters to change it or to switch two-factor authentication on and off. Hashing a *new* password
-is not capped - creating an account, completing the initial setup and finishing a password reset
-all validate a token or a session before they hash, so none of them can be triggered by a caller
-who does not already hold a valid secret.
+The derivation knows the heap but not the core count. A computation keeps one core busy for its
+whole duration, so on a container with fewer cores than slots, set
+`authentication.hashing.concurrency` to the core count.
+
+The ceiling covers every Argon2id computation, not only the tenant login: signing in at
+`/api/admin/login`, minting a token at `/api/admin/token`, the password a superadmin re-enters to
+change it or to switch two-factor authentication on and off, and hashing a *new* password as well:
+self-registration, a password reset, a password change, a user created or given a new password
+through the data plane or the admin editor, and completing the superadmin setup. Every one of them
+answers a refusal with `429` like a login does, and none of them has written anything at that
+point, so the request can simply be retried.
+
+### Changing the hashing parameters
+
+Every stored hash carries the Argon2id parameters it was computed with, and is always verified with those, never with `authentication.hashing.*`. So changing `memory`, `iterations` or `parallelism` locks nobody out, but it only reaches an account the next time that account signs in. A successful login (tenant user or superadmin) whose hash was made with other parameters stores a fresh one right away. The password stays the same, so the account's tokens stay valid. If no hashing slot is free at that moment, the rehash waits for the next login.
+
+The same applies to accounts whose password was set before Paprika 0.47.0. Their hashes don't embed the parameters yet and are verified with mangoo's legacy settings, 80 MB and six iterations, which is more than the hashing ceiling above is sized for. They are converted on their next login. An account that never signs in again keeps its old hash.
 
 If you see those 429s in normal operation, the instance is too small for its login volume: give
 it more heap. The cap follows the heap automatically.
@@ -408,11 +421,12 @@ server {
     # Public tenant API, open to the world but rate limited on auth.
     location /api/auth/ {
         # Deliberately a small burst and no "nodelay": every login costs a full Argon2id
-        # verification, which holds ~90 MiB of heap for a quarter of a second - even for a
-        # username that does not exist, because the hash is what keeps the response time from
-        # giving account existence away. "nodelay" forwards the whole burst at once, so
-        # burst=20 nodelay means twenty of those start together, about 1.8 GiB at one go from a
-        # single address. Without nodelay nginx spaces them out at the zone rate instead.
+        # verification, ~32 MiB of heap and ~40 ms of a core - even for a username that does not
+        # exist, because the hash is what keeps the response time from giving account existence
+        # away. Paprika caps the concurrent verifications (8 by default), so the heap is safe
+        # either way. But "nodelay" forwards the whole burst at once: burst=20 nodelay lets a single
+        # address take every slot, and honest logins in that moment get a 429. Without nodelay
+        # nginx spaces them out at the zone rate instead.
         limit_req zone=paprika_auth burst=5;
         proxy_pass http://paprika;
     }

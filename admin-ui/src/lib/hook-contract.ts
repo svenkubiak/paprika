@@ -12,8 +12,7 @@ const sampleRecord = {
   owner: 'user-abc'
 }
 
-// Only headers that are actually forwarded: the fixed allowlist, plus whatever the hook opts
-// into via forwardHeaders (x-app-key-id here as an example).
+// Only headers actually forwarded: the fixed allowlist plus forwardHeaders opt-ins (x-app-key-id).
 const sampleHeaders = {
   'Content-Type': ['application/json'],
   'User-Agent': ['MyApp/1.0'],

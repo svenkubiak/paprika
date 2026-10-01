@@ -37,19 +37,9 @@ import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 
 /**
- * API keys: a second way to prove an existing tenant-user identity, for backends that cannot use
- * a password login (no interactive user, no second factor, nothing to rotate or revoke).
- * <p>
- * A key resolves to exactly the {@link AuthContext} an access token of the same user produces, so
- * the whole data path - rules, owner filtering, hooks, {@code tokenIssuers} - stays untouched and
- * a key can never do more than the identity it is bound to.
- * <p>
- * The records live in the <em>system</em> database, not in the tenant database, because a
- * presented key is the only input available when it has to be resolved: no tenant is known at that
- * point, and searching every tenant database per request is not an option. Each record names its
- * tenant, the resolved context is bound to that tenant, and the management endpoints only ever
- * touch keys of the tenant in their path - so a key still resolves to one tenant and one tenant
- * only.
+ * A key resolves to exactly the {@link AuthContext} of its tenant user, so it can never do more
+ * than that identity. Records live in the system database because no tenant is known when a
+ * presented key is resolved; each record is bound to exactly one tenant.
  */
 @Singleton
 public class ApiKeyService {
@@ -57,10 +47,7 @@ public class ApiKeyService {
     private static final String LOOKUP_INDEX = "lookup";
     private static final String TENANT_INDEX = "tenantId";
 
-    /**
-     * {@code lastUsedAt} exists to answer "is this key still in use", which a minute of
-     * granularity answers just as well as a write on every single request would.
-     */
+    // lastUsedAt only answers "still in use?", so a write per minute is enough.
     private static final Duration TOUCH_MIN_INTERVAL = Duration.ofMinutes(1);
 
     private final TenantDatabaseResolver resolver;
@@ -79,7 +66,6 @@ public class ApiKeyService {
         this.tenantUserService = Objects.requireNonNull(tenantUserService, "tenantUserService must not be null");
     }
 
-    /** The key that authenticated a request, for logging. Never carries the key itself. */
     public record ResolvedApiKey(
             AuthContext auth,
             String keyId,
@@ -88,11 +74,8 @@ public class ApiKeyService {
             boolean bypassHooks) {}
 
     /**
-     * What resolving a presented key came to. {@code resolved} is {@code null} for everything the
-     * caller has to treat as an invalid key; {@code sourceRejected} distinguishes one of those
-     * cases - a valid key presented from an address it is not bound to - for the request log and
-     * for nothing else. The response a client sees must stay identical, because a different
-     * answer would confirm to whoever presented the key that the secret itself is good.
+     * {@code sourceRejected} is for the request log only: the client response must stay identical
+     * to an invalid key, or it would confirm that the secret itself is good.
      */
     public record ApiKeyResolution(ResolvedApiKey resolved, String rejectedKeyName, boolean sourceRejected) {
         private static final ApiKeyResolution INVALID = new ApiKeyResolution(null, null, false);
@@ -114,7 +97,6 @@ public class ApiKeyService {
         }
     }
 
-    /** A freshly created key: the record plus the plaintext, which is returned exactly once. */
     public record CreatedApiKey(Map<String, Object> key, String plaintext) {}
 
     public void ensureApiKeysCollection() {
@@ -135,32 +117,14 @@ public class ApiKeyService {
         ensureIndex(collection, TENANT_INDEX, Indexes.ascending("tenantId"), false);
     }
 
-    /** Creates an ordinary key, bound to the rules of its user and subject to its hooks. */
     public CreatedApiKey create(TenantDefinition tenant, String name, String userId, String expiresAt) {
         return create(tenant, name, userId, expiresAt, false, false, null);
     }
 
     /**
-     * Creates a key for a user of this tenant. Returns the plaintext alongside the record; it is
-     * never stored and cannot be retrieved afterwards.
-     * <p>
-     * {@code bypassRules} makes this a service credential: requests with it skip the collection
-     * rules on the data plane, which is the only way to express "this one caller, and nobody
-     * else" with the four rule presets. It stays bound to this tenant and this user, and it never
-     * reaches the management API. There is deliberately no way to set the flag afterwards.
-     * <p>
-     * {@code bypassHooks} exempts the key from the hooks. It is meant for the service a hook
-     * itself calls, whose callbacks into Paprika would otherwise re-enter that same hook; see
-     * {@link ApiKeyDefinition#bypassHooks()}. It is a separate flag rather than a property of
-     * every key, because a tenant may well be using hooks to log or narrow exactly the machine
-     * traffic that API keys produce - and because a second, less trusted key must not inherit the
-     * exemption of the first. Just like {@code bypassRules}, it cannot be set afterwards.
-     * <p>
-     * {@code allowedCidrs} is the opposite kind of field: it binds the key to the source
-     * addresses it may be presented from, and an invalid range is refused here rather than
-     * ignored - a range that silently vanishes would leave a key open to a network the operator
-     * believes they excluded. Empty means unrestricted, and because the field only ever narrows,
-     * it is the one property of a key that {@link #updateAllowedCidrs} may change later.
+     * {@code bypassRules} and {@code bypassHooks} grant reach and deliberately cannot be set later.
+     * An invalid {@code allowedCidrs} range is refused rather than ignored, so no network the
+     * operator meant to exclude stays open.
      */
     public CreatedApiKey create(
             TenantDefinition tenant,
@@ -182,8 +146,7 @@ public class ApiKeyService {
             throw new IllegalArgumentException("User not found");
         }
 
-        // A superadmin-bound key would be a cross-tenant bypass credential, which is a separate
-        // feature with its own audit story - not something an API key may become by accident.
+        // A superadmin-bound key would be a cross-tenant bypass credential.
         if (!Role.USER.equals(user.getString("role"))) {
             throw new IllegalArgumentException("API keys can only be bound to tenant users");
         }
@@ -208,13 +171,11 @@ public class ApiKeyService {
 
         keys().insertOne(toDocument(key));
 
-        // Issuing a credential that is not subject to the rules is a security relevant event
         if (bypassRules) {
             LOG.info("Issued a rule-bypassing API key {} for user {} in tenant {}",
                     key.id(), key.userId(), tenant.id());
         }
 
-        // So is one that no hook ever sees: a hook used as an authorizer stops applying to it
         if (bypassHooks) {
             LOG.info("Issued a hook-free API key {} for user {} in tenant {}",
                     key.id(), key.userId(), tenant.id());
@@ -232,10 +193,6 @@ public class ApiKeyService {
                 .toList();
     }
 
-    /**
-     * Revokes a key. The record is kept so the admin UI can still show that this named key
-     * existed and when it was last used; only its ability to authenticate is gone.
-     */
     public boolean revoke(String tenantId, String keyId) {
         if (StringUtils.isBlank(keyId)) {
             return false;
@@ -247,18 +204,7 @@ public class ApiKeyService {
                 .getModifiedCount() == 1;
     }
 
-    /**
-     * Narrows (or widens, or lifts) the source binding of an existing key.
-     * <p>
-     * This is the one property of a key that may change after it has been handed out, and the
-     * asymmetry to {@code bypassRules}/{@code bypassHooks} is the point: those grant reach, so a
-     * credential already in circulation must not acquire them behind the holder's back, while
-     * this one only ever says where the key works. Addresses, unlike trust, change on their own -
-     * a host moves, a network is renumbered - and forcing a key rotation for that would push
-     * operators towards not using the binding at all.
-     *
-     * @throws IllegalArgumentException if any of the ranges is not valid CIDR notation
-     */
+    // The only mutable key property: it restricts where a key works rather than granting reach.
     public boolean updateAllowedCidrs(String tenantId, String keyId, List<String> allowedCidrs) {
         if (StringUtils.isBlank(keyId)) {
             return false;
@@ -278,12 +224,6 @@ public class ApiKeyService {
         return updated;
     }
 
-    /**
-     * Removes a key for good, record included. Revoking is the safer of the two - it keeps the
-     * entry so it stays visible that this named key existed and when it was last used - so this
-     * exists for housekeeping: a mistyped or superseded key that nobody wants to keep reading
-     * about. A key that is still active dies with the record, silently for whoever holds it.
-     */
     public boolean delete(String tenantId, String keyId) {
         if (StringUtils.isBlank(keyId)) {
             return false;
@@ -295,21 +235,18 @@ public class ApiKeyService {
                 .getDeletedCount() == 1;
 
         if (deleted) {
-            // Otherwise the throttle map keeps an entry for a key that no longer exists
             lastTouch.remove(normalizedKeyId);
         }
 
         return deleted;
     }
 
-    /** Called when a tenant user is removed: their keys must stop working with them. */
     public void revokeForUser(String tenantId, String userId) {
         keys().updateMany(
                 and(eq("tenantId", tenantId), eq("userId", userId), eq("revokedAt", null)),
                 new Document("$set", new Document("revokedAt", SystemFields.timestamp())));
     }
 
-    /** Called when a tenant is deleted: its keys have nothing left to resolve to. */
     public void deleteForTenant(String tenantId) {
         for (Document document : keys().find(eq("tenantId", tenantId))) {
             lastTouch.remove(document.getString("id"));
@@ -317,17 +254,7 @@ public class ApiKeyService {
         keys().deleteMany(eq("tenantId", tenantId));
     }
 
-    /**
-     * Resolves a presented key to the identity it is bound to, or nothing when the key is
-     * unknown, revoked, expired, presented from a source it is not bound to, or its user or
-     * tenant is gone. All of those are treated exactly like an invalid access token by the
-     * callers - the outcome only records <em>which</em> of them it was so the request log can say
-     * so; see {@link ApiKeyResolution}.
-     *
-     * @param source the peer of the TCP connection, or {@code null} when it cannot be
-     *               determined. A key with {@code allowedCidrs} fails closed on {@code null}:
-     *               "we do not know where this came from" is not a reason to let it through.
-     */
+    /** A key with {@code allowedCidrs} fails closed when {@code source} is {@code null}. */
     public ApiKeyResolution resolve(String presented, InetAddress source) {
         if (!ApiKeys.isApiKey(presented)) {
             return ApiKeyResolution.invalid();
@@ -343,9 +270,7 @@ public class ApiKeyService {
             return ApiKeyResolution.invalid();
         }
 
-        // Checked before anything else the key would cause - before the tenant and user lookups
-        // and before touch() - so that a key presented from the wrong place leaves no trace of
-        // having been used and costs no reads.
+        // Before lookups and touch(), so a key from the wrong source leaves no trace and costs no reads.
         if (!isAllowedSource(key, source)) {
             return ApiKeyResolution.sourceRejected(key.name());
         }
@@ -360,8 +285,7 @@ public class ApiKeyService {
         TenantContext ctx = TenantContext.guest(tenant.id(), tenant.databaseName());
         AuthContext auth = tenantUserService.resolveUser(ctx, key.userId()).orElse(null);
 
-        // Defence in depth: a role change on the bound user must never turn the key into an
-        // admin credential, the same way create() refuses a non-user role in the first place.
+        // Defence in depth: a role change on the bound user must never make this an admin credential.
         if (auth == null || !Role.USER.equals(auth.role())) {
             return ApiKeyResolution.invalid();
         }
@@ -372,11 +296,6 @@ public class ApiKeyService {
                 auth, key.id(), key.name(), key.bypassRules(), key.bypassHooks()));
     }
 
-    /**
-     * Whether the key may be presented from this address. A key without {@code allowedCidrs} may
-     * be presented from anywhere, which is the behaviour of every key that existed before the
-     * field did.
-     */
     private static boolean isAllowedSource(ApiKeyDefinition key, InetAddress source) {
         List<String> allowed = key.allowedCidrs();
         return allowed.isEmpty() || Cidrs.contains(allowed, source);
@@ -470,14 +389,12 @@ public class ApiKeyService {
                 doc.getString("lastUsedAt"),
                 doc.getString("expiresAt"),
                 doc.getString("revokedAt"),
-                // Keys written before these flags existed are ordinary keys
                 doc.getBoolean("bypassRules", false),
                 doc.getBoolean("bypassHooks", false),
-                // ... and keys written before this field existed are bound to no source
                 allowedCidrs(doc));
     }
 
-    /** The view the admin UI gets: everything but the hash, which never leaves this service. */
+    // The key hash never leaves this service.
     private Map<String, Object> toPublicMap(ApiKeyDefinition key) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", key.id());

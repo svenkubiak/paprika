@@ -14,12 +14,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Email addresses are stored in one canonical shape.
- * <p>
- * A mail domain is case insensitive and providers treat the local part that way too, so two
- * spellings of the same address must never become two identities. Storing them lowercased keeps
- * every lookup a plain equality match - the alternative, comparing case insensitively at every call
- * site, is the kind of rule that holds until someone adds the next query.
+ * Stored lowercased so every lookup stays a plain equality match, instead of relying on every query
+ * comparing case-insensitively.
  */
 @ExtendWith({TestRunner.class})
 class EmailNormalizationTest {

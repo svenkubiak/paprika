@@ -41,7 +41,6 @@ const form = ref<RecordFormState>({ values: {}, jsonText: {}, dateTimeInitial: {
 const jsonState = ref('')
 const fileSelections = ref<Record<string, File[]>>({})
 
-/** Validation messages per field name, filled on save and cleared as each field is corrected. */
 const errors = ref<Record<string, string>>({})
 const body = useTemplateRef<HTMLElement>('body')
 
@@ -98,11 +97,7 @@ function counterFor(field: FieldDefinition) {
   return fieldCounter(field, value)
 }
 
-/**
- * Re-checks a field that is already marked. Nothing turns red while it is being typed for the
- * first time - but once a message is showing, it should disappear the moment the value is fixed
- * rather than at the next save.
- */
+/** Only re-checks fields already marked, so nothing turns red while first typed. */
 function onFieldInput(field: FieldDefinition) {
   if (!errors.value[field.name]) return
   try {
@@ -114,7 +109,7 @@ function onFieldInput(field: FieldDefinition) {
       delete errors.value[field.name]
     }
   } catch {
-    // A field that cannot even be serialized yet (half-typed JSON) keeps its message.
+    // A field that cannot be serialized yet (half-typed JSON) keeps its message.
   }
 }
 
@@ -131,7 +126,7 @@ function submit() {
       const payload = JSON.parse(jsonState.value) as Record<string, unknown>
       const issues = validateRecordValues(props.fields, payload)
       if (issues.length > 0) {
-        // The JSON view has no field to mark, so the message carries the field name itself.
+        // The JSON view has no field to mark, so the message carries the field name.
         emit('validation-error', `${issues[0].field}: ${issues[0].message}`)
         return
       }
@@ -139,15 +134,13 @@ function submit() {
       return
     }
 
-    // Only schema fields are serialized, so id/createdAt/updatedAt of the edited record cannot
-    // travel back into the request - the API rejects them as read-only.
+    // Only schema fields are serialized, so id/createdAt/updatedAt cannot reach the request - the
+    // API rejects them as read-only.
     const values = serializeRecordForm(props.fields, form.value, props.mode)
 
     const issues = validateRecordValues(props.fields, values)
     errors.value = Object.fromEntries(issues.map((issue) => [issue.field, issue.message]))
     if (issues.length > 0) {
-      // The messages are at the fields; the toast only says how many there are and that nothing
-      // was saved.
       emit(
         'validation-error',
         issues.length === 1 ? '1 field needs attention' : `${issues.length} fields need attention`

@@ -16,8 +16,8 @@ const confirmPassword = ref('')
 const loading = ref(false)
 const error = ref('')
 
-// The route guard already turned away anything without a token, so this only has to lift it out
-// of the fragment and get it out of the address bar again.
+// The route guard already turned away visits without a token; this reads it from the fragment
+// and removes it from the address bar.
 onMounted(() => {
   token.value = new URLSearchParams(window.location.hash.slice(1)).get('token') || ''
   if (token.value) {

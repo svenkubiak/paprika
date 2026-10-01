@@ -9,7 +9,9 @@ import dtos.TenantUpdateDto;
 import dtos.UserDto;
 import dtos.UserUpdateDto;
 import filters.admin.AdminAuthFilter;
+import helpers.HashingCapacityResponse;
 import io.mangoo.annotations.FilterWith;
+import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.routing.Response;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
@@ -30,16 +32,10 @@ import java.util.Set;
 
 @FilterWith(AdminAuthFilter.class)
 public class TenantController {
-    /**
-     * The user fields this controller passes as explicit arguments. Everything else in the body is
-     * a field of the tenant's own users schema and is handed to the service as a custom field.
-     */
+    // Everything else in the body is a custom field of the tenant's users schema.
     private static final Set<String> CORE_USER_FIELDS = Set.of("username", "email", "password");
 
-    /**
-     * API key fields that grant reach and are therefore fixed at creation. Naming one of them in
-     * an update is refused rather than ignored - see {@link #updateApiKey}.
-     */
+    // Fixed at creation; naming one in an update is refused rather than ignored.
     private static final Set<String> IMMUTABLE_API_KEY_FIELDS =
             Set.of("bypassRules", "bypassHooks", "name", "userId", "expiresAt");
 
@@ -100,8 +96,7 @@ public class TenantController {
 
     public Response delete(String tenantId) {
         if (tenantService.deleteWithCascade(tenantId)) {
-            // The keys live in the system database, so the dropped tenant database does not take
-            // them with it
+            // The keys live in the system database, so dropping the tenant database does not remove them.
             apiKeyService.deleteForTenant(tenantId);
             return Response.status(StatusCodes.NO_CONTENT);
         }
@@ -130,6 +125,8 @@ public class TenantController {
                     .orElseGet(Response::notFound);
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
+        } catch (MangooHashingException e) {
+            return HashingCapacityResponse.refused();
         }
     }
 
@@ -153,13 +150,12 @@ public class TenantController {
                     .orElseGet(Response::notFound);
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
+        } catch (MangooHashingException e) {
+            return HashingCapacityResponse.refused();
         }
     }
 
-    /**
-     * Everything in the request body that is not a core user field, as plain JSON values. A key
-     * with a {@code null} value is kept: on an update that is how the editor clears a field.
-     */
+    // null values are kept: on an update that is how the editor clears a field.
     private Map<String, Object> customUserFields(Request request) {
         String body = request.getBody();
         if (StringUtils.isBlank(body)) {
@@ -204,10 +200,7 @@ public class TenantController {
                 .orElseGet(Response::notFound);
     }
 
-    /**
-     * Creates an API key. This is the only response that ever carries the plaintext key - it is
-     * stored hashed, so it cannot be shown again afterwards.
-     */
+    // The only response that ever carries the plaintext key; it is stored hashed.
     public Response createApiKey(
             String tenantId,
             @NotNull(message = "Request body is required") @Valid ApiKeyDto apiKeyDto) {
@@ -234,18 +227,8 @@ public class TenantController {
         }
     }
 
-    /**
-     * Changes the source binding of an existing key - the only property of a key that may move
-     * after it has been handed out. {@code bypassRules} and {@code bypassHooks} grant reach and
-     * stay creation-only; {@code allowedCidrs} takes reach away, and the addresses it names
-     * change when a host does.
-     * <p>
-     * An unparsable range is a {@code 400}: accepting the request and quietly dropping the entry
-     * would leave the operator believing they had excluded a network they had not. So is a body
-     * that names one of the two bypass flags - answering {@code 204} to it would look like the
-     * flag had been set, and "the field was silently ignored" is not something a caller should
-     * have to infer from a subsequent read.
-     */
+    // Unparsable ranges and creation-only fields are a 400, never silently dropped: the caller
+    // would otherwise believe a network was excluded or a flag was set.
     public Response updateApiKey(
             String tenantId,
             String keyId,
@@ -269,12 +252,7 @@ public class TenantController {
         }
     }
 
-    /**
-     * The first creation-only API key field the body tries to touch, or {@code null}. Checked on
-     * the raw body rather than on the DTO because the DTO does not carry those fields at all -
-     * which is exactly why an unnoticed rename or a copied payload could otherwise slip through
-     * unanswered.
-     */
+    // Checked on the raw body because the DTO does not carry those fields at all.
     private String immutableFieldIn(Request request) {
         String body = request.getBody();
         if (StringUtils.isBlank(body)) {
@@ -289,14 +267,14 @@ public class TenantController {
                 }
             }
         } catch (JsonProcessingException e) {
-            // An unreadable body fails on the DTO binding, which is where it belongs
+            // An unreadable body fails on the DTO binding instead.
             return null;
         }
 
         return null;
     }
 
-    /** Stops a key from authenticating but keeps its record, so it stays auditable. */
+    // Keeps the record, so the key stays auditable.
     public Response revokeApiKey(String tenantId, String keyId) {
         return tenantService.findById(tenantId)
                 .filter(tenant -> apiKeyService.revoke(tenant.id(), keyId))
@@ -304,7 +282,6 @@ public class TenantController {
                 .orElseGet(Response::notFound);
     }
 
-    /** Removes the record as well - housekeeping, not the usual way to retire a key. */
     public Response deleteApiKey(String tenantId, String keyId) {
         return tenantService.findById(tenantId)
                 .filter(tenant -> apiKeyService.delete(tenant.id(), keyId))

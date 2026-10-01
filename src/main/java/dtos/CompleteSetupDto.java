@@ -2,11 +2,7 @@ package dtos;
 
 import jakarta.validation.constraints.NotBlank;
 
-/**
- * {@code password} deliberately carries no constraint: {@code SystemUserService.validatePassword}
- * already rejects null and anything shorter than the minimum length, and says so precisely. A
- * {@code @NotBlank} here would shadow that with a less useful message.
- */
+// password is unconstrained on purpose: SystemUserService.validatePassword gives a more precise message.
 public record CompleteSetupDto(
         @NotBlank(message = "Token is required")
         String token,

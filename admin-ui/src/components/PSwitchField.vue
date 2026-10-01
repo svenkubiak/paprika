@@ -1,27 +1,15 @@
 <script setup lang="ts">
 /**
- * A yes/no setting as a full row: subject and reason on the left, the switch on the right, the
- * whole row clickable.
- *
- * This replaces the `<div class="flex justify-between"><label/><USwitch/></div>` pattern that grew
- * in every sheet. Besides being one shape instead of six, the row states *why* the setting exists
- * - a switch labelled "Cascade delete" without its consequence is the kind of thing that gets
- * turned on once and regretted later.
- *
- * `USwitch` renders its thumb before the label, so the row order is flipped in `ui.root` rather
- * than rebuilt by hand: that keeps reka-ui's label/control wiring, and with it keyboard operation
- * and the click target, intact.
+ * USwitch renders its thumb before the label, so the row order is flipped in `ui.root` rather than
+ * rebuilt by hand - that keeps reka-ui's label/control wiring and keyboard operation intact.
  */
 import { ref } from 'vue'
 
 defineProps<{
   modelValue: boolean
   label: string
-  /** Icon in front of the label. */
   icon?: string
-  /** One sentence on what the setting does, shown under the label. */
   help?: string
-  /** The rest of the explanation, revealed by the info toggle. */
   details?: string
   disabled?: boolean
 }>()

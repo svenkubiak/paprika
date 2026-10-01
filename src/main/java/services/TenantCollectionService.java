@@ -118,11 +118,7 @@ public class TenantCollectionService {
         validateUniqueIndexNames(definition.indexes());
     }
 
-    /**
-     * Everything {@link #validateDefinition(CollectionDefinition)} checks, plus what can only be
-     * checked against the other collections of the tenant: the membership configuration of the
-     * {@code group} and {@code peers} presets.
-     */
+    /** Additionally checks the membership configuration against the tenant's other collections. */
     public void validateDefinition(TenantContext ctx, CollectionDefinition definition) throws RuleParseException {
         validateDefinition(
                 definition,
@@ -131,14 +127,8 @@ public class TenantCollectionService {
     }
 
     /**
-     * The same check against a caller-supplied view of the tenant's collections. A schema import
-     * validates a whole file before it writes anything, so the collection a membership rule
-     * points at may well be another entry of that same file - one that is not in the database
-     * yet and, if the file is rejected, never will be.
-     *
-     * @param lookup             resolves a collection name to its definition, or to {@code null}
-     * @param tenantDefinitions  every collection of the tenant as it will be once this one is saved;
-     *                           an entry for the collection being validated is ignored
+     * Caller-supplied view of the tenant's collections, because a schema import validates a whole
+     * file before writing, so a membership target may be another not-yet-stored entry.
      */
     public void validateDefinition(
             CollectionDefinition definition,
@@ -146,18 +136,12 @@ public class TenantCollectionService {
             Collection<CollectionDefinition> tenantDefinitions) throws RuleParseException {
 
         validateDefinition(definition);
-        // A collection that holds its own memberships is checked as it is about to be saved, not
-        // as it is stored - on create it is not stored at all yet
+        // Self-referencing memberships are checked as about to be saved; on create nothing is stored yet
         validateMembershipTargets(definition, name -> definition.name().equals(name) ? definition : lookup.apply(name));
         validateMembershipSources(definition, tenantDefinitions);
     }
 
-    /**
-     * A membership rule that points at a collection or a field that does not exist would deny
-     * every request at runtime, and look like a broken application rather than a typo in the
-     * rules. It is rejected while the collection is being saved, where the message can still say
-     * what is wrong.
-     */
+    // Rejected at save time: a dangling target would silently deny every request at runtime
     private static void validateMembershipTargets(
             CollectionDefinition definition,
             Function<String, CollectionDefinition> lookup) throws RuleParseException {
@@ -180,19 +164,15 @@ public class TenantCollectionService {
         requireLookupField(membershipCollection, rules.groupField(), "groupField");
         requireSafeMembershipWrites(membershipCollection, definition.name());
 
-        // "id" is the third case: the records of this collection *are* the groups, so the group
-        // is the record's own identity and no declared field points at it. It is the only system
-        // field that may be used here - a timestamp is not an identity and would never match.
+        // "id": the records themselves are the groups. The only system field allowed here,
+        // a timestamp would never match
         if (StringUtils.isNotBlank(rules.groupRecordField())
                 && !SystemFields.ID.equals(rules.groupRecordField())) {
             requireLookupField(definition, rules.groupRecordField(), "groupRecordField");
         }
     }
 
-    /**
-     * The other direction of {@link #requireSafeMembershipWrites}: a membership collection must not
-     * be loosened after the fact, while another collection already grants access through it.
-     */
+    // A membership collection must not be loosened while another collection grants access through it
     private static void validateMembershipSources(
             CollectionDefinition definition,
             Collection<CollectionDefinition> tenantDefinitions) throws RuleParseException {
@@ -208,12 +188,8 @@ public class TenantCollectionService {
     }
 
     /**
-     * Every record of a membership collection grants its member the group it names - who wrote
-     * the record plays no part. Writing there is therefore handing out access, and only two write
-     * rules keep that in the right hands: locked (memberships come from the admin, a rule-bypassing
-     * key or a backend) and "group" (only a member of a group can add to that group). "owner" in
-     * particular looks safe and is not: it pins the member field to the caller and leaves the
-     * group free, so it reads "anyone may join any group, as long as it is themselves".
+     * Writing a membership record grants access, so only locked or "group" write rules are safe.
+     * "owner" is not: it pins the member to the caller but leaves the group free to choose.
      */
     private static void requireSafeMembershipWrites(CollectionDefinition membershipCollection, String usedBy)
             throws RuleParseException {
@@ -243,11 +219,7 @@ public class TenantCollectionService {
                 || RuleService.isMembershipRule(rules.deleteRule());
     }
 
-    /**
-     * A membership is matched by comparing ids, so the field has to hold one: a RELATION or, for
-     * schemas that store the id plainly, a STRING. Any other type would compare against something
-     * that is not an id and never match.
-     */
+    // Memberships match by id, so only RELATION or STRING fields can ever match
     private static void requireLookupField(CollectionDefinition definition, String fieldName, String setting)
             throws RuleParseException {
 
@@ -272,15 +244,8 @@ public class TenantCollectionService {
     }
 
     /**
-     * Brings the indexes of a collection in line with its definition.
-     * <p>
-     * MongoDB refuses a createIndex that reuses the name of an index with different options with
-     * IndexOptionsConflict - so an index that only changed its unique flag (or a field, or a sort
-     * direction) has to be dropped and rebuilt, not just created again. Creating it again is what
-     * the admin UI used to end up doing, and the conflict came back as a 500.
-     *
-     * @throws IllegalArgumentException when an index cannot be built from the data that is there,
-     *                                  which is a request problem and not a server error
+     * A changed index must be dropped and rebuilt: MongoDB rejects reusing a name with different
+     * options (IndexOptionsConflict). Throws IllegalArgumentException when the data prevents a build.
      */
     public void syncIndexes(TenantContext ctx, String logicalName, List<IndexDefinition> desired) {
         MongoCollection<Document> collection = dataCollection(ctx, logicalName);
@@ -300,7 +265,6 @@ public class TenantCollectionService {
 
             IndexDefinition index = byName.get(name);
             if (index != null && matches(existing, index)) {
-                // Already exactly as requested - rebuilding it would only cost a scan.
                 byName.remove(name);
                 continue;
             }
@@ -313,8 +277,7 @@ public class TenantCollectionService {
             try {
                 collection.createIndex(indexKeys(index), indexOptions(index));
             } catch (RuntimeException e) {
-                // The old index is already gone at this point, so put it back before reporting -
-                // a rejected change must not leave the collection with fewer indexes than it had.
+                // A rejected change must not leave the collection with fewer indexes than it had
                 restore(collection, dropped);
                 throw indexFailure(index, e);
             }
@@ -360,11 +323,7 @@ public class TenantCollectionService {
                 && Boolean.TRUE.equals(existing.getBoolean("unique")) == index.unique();
     }
 
-    /**
-     * Document.equals() is map equality and therefore blind to order, but the order of the keys
-     * is what a compound index is: only a query that starts with its leading fields can use it.
-     * Swapping two fields has to count as a different index, so the keys are compared as a list.
-     */
+    // Document.equals() ignores key order, but order defines a compound index, so compare as a list
     private static List<String> keyList(Document keys) {
         return keys.entrySet().stream()
                 .map(entry -> entry.getKey() + ":" + entry.getValue())

@@ -40,8 +40,7 @@ public class AuthService {
     private static final String TYPE_REFRESH = "refresh";
     private static final long ACCESS_TTL_SECONDS = 3600;
     private static final long REFRESH_TTL_SECONDS = 604800;
-    // How long a session may be renewed - by refresh or by switching the tenant - before the
-    // user has to sign in again. Without a bound, one leaked refresh token renews itself forever.
+    // Bounds renewal (refresh or tenant switch); otherwise a leaked refresh token renews itself forever
     private static final Duration MAX_SESSION = Duration.ofDays(30);
     private static final String BEARER_ATTRIBUTE = "paprika.bearer";
     private final Config config;
@@ -51,13 +50,9 @@ public class AuthService {
     private final byte[] tokenSecret;
     private final byte[] tokenKey;
 
-    /**
-     * The identity a token stands for, plus when the session it belongs to was started by a
-     * sign-in. Renewing a session carries that point in time over instead of resetting it.
-     */
+    /** {@code authTime} is the original sign-in; renewal carries it over instead of resetting it. */
     public record TokenSession(AuthContext auth, Instant authTime) { }
 
-    /** A resolved bearer value; {@code session} is {@code null} for an API key or an invalid token. */
     private record BearerResolution(AuthContext auth, TokenSession session) { }
 
     @Inject
@@ -98,18 +93,11 @@ public class AuthService {
         return bearer(request).auth();
     }
 
-    /**
-     * The session of the bearer access token, or empty for an API key, an invalid token or no
-     * bearer at all.
-     */
     public Optional<TokenSession> resolveBearerSession(Request request) {
         return Optional.ofNullable(bearer(request).session());
     }
 
-    /**
-     * Resolved once per request: checking a token reads its account, and several filters of one
-     * request ask for the bearer.
-     */
+    // Cached per request: checking a token reads its account, and several filters ask for it
     private BearerResolution bearer(Request request) {
         if (request.getAttribute(BEARER_ATTRIBUTE) instanceof BearerResolution resolved) {
             return resolved;
@@ -123,8 +111,6 @@ public class AuthService {
     private BearerResolution resolveBearerUncached(Request request) {
         String token = bearerToken(request);
         if (token != null) {
-            // An API key is a bearer value as well, so it travels the existing filter paths
-            // untouched; the prefix decides which of the two it is without a parse attempt.
             if (ApiKeys.isApiKey(token)) {
                 return new BearerResolution(resolveApiKey(token, request), null);
             }
@@ -139,14 +125,8 @@ public class AuthService {
     }
 
     /**
-     * The credential of an {@code Authorization: Bearer …} header, or {@code null} when the header
-     * is absent or carries a different scheme.
-     * <p>
-     * RFC 7235 defines the scheme as case-insensitive, and it is matched that way here so that the
-     * exact spelling a client chose can never decide an authorization outcome: a lower case
-     * {@code bearer} must not turn an API key into an anonymous request on the data plane, and it
-     * must not look like "no bearer at all" to the admin API, whose only defence is rejecting
-     * every bearer it sees.
+     * Scheme matched case-insensitively (RFC 7235): a lower-case {@code bearer} must not look like
+     * "no bearer" to the admin API, whose only defence is rejecting every bearer it sees.
      */
     private String bearerToken(Request request) {
         String authorization = request.getHeader("Authorization");
@@ -158,17 +138,9 @@ public class AuthService {
     }
 
     /**
-     * An API key yields the very same context an access token of the bound user yields, so nothing
-     * downstream has to know which of the two authenticated the request. The key id and name are
-     * put on the request so the request log can name it - the key itself never is.
-     * <p>
-     * A key bound to source ranges is checked against the peer of the TCP connection, which is
-     * read here because this is the only layer that sees the key at all. Deliberately not against
-     * {@code X-Forwarded-For}: that header is written by the caller, so a binding that honoured
-     * it could be lifted by the very party it is meant to keep out. A rejection is
-     * indistinguishable from an unknown key to the caller - same guest context, and therefore the
-     * same status, body and {@code WWW-Authenticate} header further up - and only the request log
-     * is told which of the two it was, so the operator does not go looking for a broken key.
+     * Source ranges are checked against the TCP peer, never {@code X-Forwarded-For}, which the caller
+     * controls. A source rejection looks like an unknown key to the caller; only the request log
+     * is told the difference.
      */
     private AuthContext resolveApiKey(String key, Request request) {
         ApiKeyService.ApiKeyResolution resolution =
@@ -199,10 +171,7 @@ public class AuthService {
         return bearerToken(request) != null;
     }
 
-    /**
-     * Resolves the admin Web UI user from the Mangoo authentication cookie.
-     * Returns empty when a Bearer token is present or the cookie is missing/invalid.
-     */
+    /** Empty whenever a bearer token is present: the admin UI authenticates by cookie only. */
     public Optional<AuthContext> resolveAdmin(Request request) {
         if (hasBearerToken(request)) {
             return Optional.empty();
@@ -239,13 +208,8 @@ public class AuthService {
     }
 
     /**
-     * The admin context of an account, but only if that account still <em>is</em> a superadmin.
-     * <p>
-     * The role is read back from the stored user instead of being assumed from the fact that a
-     * valid session cookie exists: the cookie only carries a subject, and it outlives any change
-     * to the account it points at. Without this check every system user would be handed superadmin
-     * authority - which today is true for all of them, but is exactly the assumption that would
-     * silently turn into a privilege escalation the day a lesser system role is introduced.
+     * The role is read from the stored user, not assumed from the cookie, which only carries a
+     * subject and outlives account changes; this prevents escalation once a lesser system role exists.
      */
     private Optional<AuthContext> resolveSuperadmin(String subject) {
         if (StringUtils.isBlank(subject)) {
@@ -262,13 +226,7 @@ public class AuthService {
         return createTokenPair(auth, Instant.now());
     }
 
-    /**
-     * Continues a session with a fresh token pair, for the identity given - which may differ from
-     * the session's own in its tenant, as on a tenant switch.
-     *
-     * @return empty when the session is older than the maximum session length; the user has to
-     *         sign in again
-     */
+    /** {@code auth} may differ from the session's tenant (tenant switch); empty past {@code MAX_SESSION}. */
     public Optional<TokenPair> renewTokenPair(TokenSession session, AuthContext auth) {
         if (session.authTime().plus(MAX_SESSION).isBefore(Instant.now())) {
             return Optional.empty();
@@ -277,8 +235,7 @@ public class AuthService {
     }
 
     private TokenPair createTokenPair(AuthContext auth, Instant authTime) {
-        // Read once, so both tokens of a pair carry the same version. Every caller has just
-        // verified the account; one deleted in between is refused where its token is used.
+        // Read once so both tokens of a pair carry the same version
         int version = tokenVersionService.current(auth).orElse(0);
         return new TokenPair(
                 createToken(auth, TYPE_ACCESS, ACCESS_TTL_SECONDS, version, authTime),
@@ -294,10 +251,7 @@ public class AuthService {
         return Optional.ofNullable(parseRefreshToken(refreshToken));
     }
 
-    /**
-     * Reads {@code exp}/{@code iat} back off a freshly issued access token rather than assuming the
-     * configured TTL, so the value stays correct if the TTL or claim handling ever changes.
-     */
+    // Read from the token rather than assuming the TTL, so it stays correct if claim handling changes
     public long resolveExpiresIn(String accessToken) {
         JwtUtils.JwtData jwtData = JwtUtils.jwtData()
                 .withSecret(tokenSecret)
@@ -349,10 +303,8 @@ public class AuthService {
     }
 
     /**
-     * A token is valid only while it carries the account's current token version: a password
-     * reset, a credential change, 2FA and a logout raise it and so revoke every token issued
-     * before. A token without a version or a session start was not issued by this code and is
-     * refused like a forged one.
+     * Valid only while it carries the account's current token version (raised by reset, credential
+     * change, 2FA and logout). Tokens without version or auth time are refused as forged.
      */
     private TokenSession parseToken(String token, String expectedType) {
         long maxTtlSeconds = TYPE_REFRESH.equals(expectedType)
@@ -393,8 +345,7 @@ public class AuthService {
 
             AuthContext auth = AuthContext.of(subject, role, tenantId);
             int expected = Integer.parseInt(version);
-            // An account that is gone is refused where the token is used, as it always was - with
-            // the answer each of those places gives. Here it is only about a revoked token.
+            // Only revocation is checked here; a deleted account is refused where the token is used
             Optional<Integer> current = tokenVersionService.current(auth);
             if (current.isPresent() && current.orElseThrow() != expected) {
                 return null;

@@ -15,11 +15,8 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThan;
 
 /**
- * The order of the write filter chain is a security property, not a style question: mangoo runs
- * the filters in the order they are declared, and the rule evaluation in {@link ApiAuthFilter}
- * can only see the body of a multipart request after {@link ApiMultipartFilter} has turned the
- * parts into one. Declared the other way round, every body-dependent rule - the {@code group}
- * preset among them - is bypassed by sending the same write as {@code multipart/form-data}.
+ * mangoo runs filters in declaration order, and {@link ApiAuthFilter} only sees a multipart body
+ * after {@link ApiMultipartFilter}; reversed, every body-dependent rule is bypassed via multipart.
  */
 class CollectionControllerFilterOrderTest {
 

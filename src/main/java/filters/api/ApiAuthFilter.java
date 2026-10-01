@@ -35,11 +35,7 @@ import java.util.Optional;
 import static com.mongodb.client.model.Filters.empty;
 import static com.mongodb.client.model.Filters.eq;
 
-/**
- * Evaluates the collection rules of a request and records the outcome as an
- * {@link AuthorizationDecision}. This is the only place such a decision is created, so anything
- * downstream either finds one - and can trust that a rule was evaluated - or refuses.
- */
+// The only place an AuthorizationDecision is created: downstream either finds one or refuses.
 public class ApiAuthFilter implements PerRequestFilter {
     private static final Logger LOG = LogManager.getLogger(ApiAuthFilter.class);
     private static final Map<String, String> FORBIDDEN_BODY = Map.of("error", "Forbidden");
@@ -132,13 +128,8 @@ public class ApiAuthFilter implements PerRequestFilter {
         };
     }
 
-    /**
-     * Whether the API key that authenticated this request may skip the rules. The flag is read off
-     * the request because the auth layer is the only place that sees the key, and it travels as an
-     * attribute rather than on {@link AuthContext} on purpose: the context has to stay identical
-     * to the one an access token of the same user produces, otherwise rules, owner filtering and
-     * the hook envelope would start telling the two credentials apart.
-     */
+    // A request attribute, not part of AuthContext: the context must stay identical to an access
+    // token's for the same user, or rules, owner filtering and hooks would tell them apart.
     private static boolean bypassesRules(Request request) {
         return Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES));
     }
@@ -150,14 +141,8 @@ public class ApiAuthFilter implements PerRequestFilter {
                 .orElseGet(() -> new ResolvedAuth(TenantContextHolder.auth(request), false));
     }
 
-    /**
-     * {@code adminBypass} covers both callers that skip the rule evaluation: the admin UI session
-     * and a rule-bypassing API key. They are treated as one case deliberately - the downstream
-     * behaviour is meant to be identical (unscoped LIST, no owner field forced on create), and a
-     * second flag would only invite the two paths to drift apart. Who the caller actually was
-     * stays visible: the request log records the key id and name plus the bypass itself, and
-     * {@code context.auth} in hooks is the bound tenant user, never an admin.
-     */
+    // adminBypass deliberately covers both the admin UI session and a rule-bypassing API key, so the
+    // two paths cannot drift apart downstream.
     private record ResolvedAuth(AuthContext auth, boolean adminBypass) { }
 
     private Response applyListRule(
@@ -168,8 +153,7 @@ public class ApiAuthFilter implements PerRequestFilter {
             AuthContext auth,
             String collection,
             TenantContext tenantContext) {
-        // Rules that require an identity answer a caller without one with 401 rather than 403:
-        // the request is not forbidden, it is unauthenticated.
+        // 401 rather than 403: the request is unauthenticated, not forbidden.
         boolean needsIdentity = rule != null
                 && ("auth".equalsIgnoreCase(rule.trim()) || RuleService.isMembershipRule(rule));
         if (needsIdentity && !auth.isAuthenticated()) {
@@ -181,7 +165,7 @@ public class ApiAuthFilter implements PerRequestFilter {
 
         Bson filter = ruleService.listFilter(rule, rules, auth, collection, tenantContext);
         if (filter == null) {
-            // A rule that cannot be translated into a query must not result in an unscoped list
+            // A rule that cannot be translated into a query must not result in an unscoped list.
             return Response.forbidden().bodyJson(FORBIDDEN_BODY).end();
         }
 
@@ -252,8 +236,8 @@ public class ApiAuthFilter implements PerRequestFilter {
     }
 
     private RuleOperation resolveOperation(Request request) {
-        // Only route parameters may decide the operation: a client can always add a query
-        // parameter of the same name, which must not turn a LIST into a VIEW (or similar).
+        // Only path parameters decide the operation: a same-named query parameter must not turn a
+        // LIST into a VIEW.
         if (request.hasPathParameter("field")) {
             if (Methods.GET.equals(request.getMethod())) {
                 return RuleOperation.VIEW;
@@ -278,27 +262,15 @@ public class ApiAuthFilter implements PerRequestFilter {
         return RuleOperation.VIEW;
     }
 
-    /**
-     * Refuses a write whose body the rules cannot see. This is a wiring error, not a client
-     * error, so it is answered with 500 and logged - answering 403 would hide a broken filter
-     * chain behind what looks like a permission problem.
-     */
+    // A wiring error, not a client error: 500 instead of 403, which would hide a broken filter chain.
     private Response unreadableBody(Request request) {
         LOG.error("Multipart body was not parsed before the rules were evaluated for collection '{}' - "
                 + "ApiMultipartFilter must run before ApiAuthFilter", request.getPathParameter("collection"));
         return Response.internalServerError().bodyJson(SERVER_ERROR_BODY).end();
     }
 
-    /**
-     * The request body as a flat map, or {@code null} when the body cannot be read at all.
-     * <p>
-     * That second case is a multipart request whose parts have not been turned into a JSON body
-     * yet. mangoo answers {@link Request#getBody()} with an empty string for every multipart
-     * request, so falling back to it would hand the rules an empty body - indistinguishable from
-     * a write that touches nothing, and therefore a silent bypass of every body-dependent check.
-     * A body that is genuinely empty or unparseable still yields an empty map: that is a client
-     * error the rules are allowed to decide on.
-     */
+    // null for an unparsed multipart request: mangoo gives those an empty body, which would silently
+    // bypass every body-dependent rule. A genuinely empty or invalid body yields an empty map.
     private Map<String, Object> parseBodyMap(Request request) {
         String body;
         if (MultipartSupport.isMultipart(request)) {

@@ -34,6 +34,7 @@ import validation.ValidationResult;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
 
 @Singleton
@@ -47,15 +48,8 @@ public class TenantUserService {
     private static final int PASSWORD_SALT_LENGTH = 22;
     private static final int MIN_PASSWORD_LENGTH = SystemUserService.MIN_PASSWORD_LENGTH;
 
-    /**
-     * A salt and hash that no password matches, used to spend the time an Argon2 verification
-     * would have taken when there is no user to verify against. Derived once and not per request,
-     * because deriving it is exactly as expensive as the check it stands in for.
-     * <p>
-     * Held in a holder class so that it is derived on first use rather than at class load:
-     * hashing goes through a PasswordHasher that mangoo resolves from the injector, and that
-     * injector is still being built when this class is initialized as part of the object graph.
-     */
+    // Hash for unknown users so the response time matches a real verification. Lazy holder because
+    // mangoo resolves the PasswordHasher from the injector, which is still being built at class load.
     private static final class Dummy {
         private static final String SALT = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
         private static final String HASH = CommonUtils.hashArgon2(
@@ -64,11 +58,7 @@ public class TenantUserService {
         private Dummy() {
         }
     }
-    /**
-     * Field names the admin user editor must never write: the core fields have their own
-     * parameters, the rest is server-managed. Everything else in a request body is a custom field
-     * of the tenant's users schema.
-     */
+    // Core fields have their own parameters, the rest is server-managed; never written as custom fields
     private static final Set<String> NON_CUSTOM_FIELDS = Set.of(
             SystemFields.ID, SystemFields.CREATED_AT, SystemFields.UPDATED_AT,
             UserRecordUtils.USERNAME, UserRecordUtils.EMAIL, UserRecordUtils.PASSWORD,
@@ -113,10 +103,8 @@ public class TenantUserService {
             return loginResult(tenant, normalizedUsername, password);
         }
 
-        // Without a slug the login is for the default tenant, and only for it. Finding the tenant
-        // by the username instead meant the hooks had already run for another tenant by the time
-        // it was known - the target tenant's blocking beforeLogin never saw the login - and every
-        // answer was a statement about other tenants' user bases.
+        // Without a slug only the default tenant: resolving the tenant by username would run another
+        // tenant's hooks and leak which tenants know the username
         TenantDefinition tenant = tenantService.resolveDefaultTenant().orElse(null);
         if (tenant == null) {
             return burnedOrAtCapacity(password);
@@ -128,8 +116,8 @@ public class TenantUserService {
     private TenantLoginResult loginResult(TenantDefinition tenant, String username, String password) {
         Document user = findByUsername(tenant, username);
 
-        // Both outcomes go through the same gate and the same hash, so neither the response time
-        // nor a refusal under load tells a known username from an unknown one.
+        // Known and unknown usernames share the same gate and hash, so neither timing nor a refusal
+        // under load reveals whether the account exists
         PasswordCheck check = checkPassword(password, user);
         if (check == PasswordCheck.AT_CAPACITY) {
             return TenantLoginResult.atCapacity();
@@ -137,6 +125,8 @@ public class TenantUserService {
         if (check == PasswordCheck.NO_MATCH) {
             return TenantLoginResult.invalidCredentials();
         }
+
+        rehashIfOutdated(tenant, user, password);
 
         if (tenant.emailVerificationRequired()
                 && !Boolean.TRUE.equals(user.getBoolean(UserRecordUtils.EMAIL_VERIFIED, false))) {
@@ -146,22 +136,12 @@ public class TenantUserService {
         return TenantLoginResult.success(AuthContext.of(user.getString("id"), Role.USER, tenant.id()));
     }
 
-    /**
-     * Creates a user without touching the custom part of the users schema - used by
-     * self-registration, which only knows the core fields. A required custom field is therefore not
-     * enforced here; that check belongs to the callers that can actually supply one.
-     */
+    /** Required custom fields are deliberately not enforced here; self-registration only knows the core fields. */
     public Map<String, Object> createUser(TenantDefinition tenant, String username, String email, String password) {
         return createUser(tenant, username, email, password, null);
     }
 
-    /**
-     * Self-registration through {@code POST /api/auth/register}. This is the unauthenticated way
-     * into {@link #createUser}, and hashing a new password costs the same as verifying one, so it
-     * is subject to the same cap on concurrent Argon2 computations that the login is.
-     *
-     * @return the created user, or empty when no hashing slot became free in time
-     */
+    /** Empty when no Argon2 slot became free; unauthenticated, so subject to the same hashing cap as login. */
     public Optional<Map<String, Object>> registerUser(
             TenantDefinition tenant,
             String username,
@@ -176,11 +156,7 @@ public class TenantUserService {
         }
     }
 
-    /**
-     * Creates a tenant user. {@code customFields} carries the fields the tenant added to its own
-     * users schema; they are validated against that schema exactly like a data-plane write, so the
-     * admin UI cannot store a value the API would later reject.
-     */
+    /** Custom fields are validated like a data-plane write, so the admin UI cannot store a value the API would reject. */
     public Map<String, Object> createUser(
             TenantDefinition tenant,
             String username,
@@ -210,8 +186,7 @@ public class TenantUserService {
 
         user.putAll(custom);
 
-        // The check above can be lost to a request arriving at the same time; the unique index on
-        // the username is what settles it, and a lost race must read like a detected duplicate
+        // The unique index settles a concurrent race; a lost race must read like a detected duplicate
         DbWrites.rejectDuplicateAs("Username already exists", () -> usersCollection(tenant).insertOne(user));
 
         return toPublicMap(user);
@@ -226,11 +201,7 @@ public class TenantUserService {
         return updateUser(tenant, userId, username, email, password, null);
     }
 
-    /**
-     * Updates a tenant user. Only the keys present in {@code customFields} are touched, so the
-     * editor can patch a single field without having to resend the whole record. A key with a
-     * {@code null} value clears the field.
-     */
+    /** Only keys present in {@code customFields} are touched; a {@code null} value clears the field. */
     public Optional<Map<String, Object>> updateUser(
             TenantDefinition tenant,
             String userId,
@@ -305,13 +276,9 @@ public class TenantUserService {
         return Optional.of(toPublicMap(findById(tenant, normalizedUserId)));
     }
 
-    /** A freshly issued single-use token plus the public view of the user it belongs to. */
     public record TokenChallenge(String token, Map<String, Object> user) {}
 
-    /**
-     * Issues a password-reset token for the user with this email, or empty if no such user exists.
-     * Only the token hash is stored; the raw token is returned for delivery through a hook.
-     */
+    /** Only the token hash is stored; the raw token is returned for delivery through a hook. */
     public Optional<TokenChallenge> issuePasswordResetToken(TenantDefinition tenant, String email) {
         Document user = findByEmail(tenant, email);
         if (user == null) {
@@ -327,10 +294,6 @@ public class TenantUserService {
         return Optional.of(new TokenChallenge(token, toPublicMap(user)));
     }
 
-    /**
-     * Consumes a password-reset token and sets the new password. Returns false when the token is
-     * unknown or expired. The token is invalidated on success.
-     */
     public boolean resetPassword(TenantDefinition tenant, String token, String newPassword) {
         validatePassword(newPassword);
         if (StringUtils.isBlank(token)) {
@@ -354,24 +317,14 @@ public class TenantUserService {
                         .append("passwordHash", hashPassword(newPassword, salt))
                         .append(SystemFields.UPDATED_AT, SystemFields.timestamp())));
 
-        // A reset is how a compromised account is taken back: whoever holds a token issued under
-        // the old password is out from here on
+        // A reset is how a compromised account is taken back, so all existing tokens are revoked
         tokenVersionService.revokeAll(tenant, user.getString("id"));
         return true;
     }
 
     /**
-     * Claims a single use token and returns the user it belonged to, or null when the token is
-     * unknown, already used or expired.
-     * <p>
-     * Reading the token and clearing it afterwards would be two steps, and two requests arriving at
-     * the same time would both pass the check before either clears it - a reset link forwarded or
-     * leaked could then be redeemed more than once. The token is therefore removed in the same
-     * operation that finds it, so exactly one caller can ever win, and the expiry is evaluated on
-     * the document as it was before that write.
-     * <p>
-     * An expired token is consumed as well: it is worthless either way, and clearing it keeps stale
-     * hashes from lingering on the record.
+     * Finds and clears the token in one atomic operation so concurrent requests cannot redeem it
+     * twice; expiry is checked on the pre-write document. Expired tokens are cleared as well.
      */
     private Document consumeToken(TenantDefinition tenant, String hash, String hashField, String expiresAtField) {
         Document claimed = usersCollection(tenant).findOneAndUpdate(
@@ -386,9 +339,6 @@ public class TenantUserService {
         return claimed;
     }
 
-    /**
-     * Issues an email-verification token for the user with this email, or empty if none exists.
-     */
     public Optional<TokenChallenge> issueEmailVerificationToken(TenantDefinition tenant, String email) {
         Document user = findByEmail(tenant, email);
         if (user == null) {
@@ -404,10 +354,6 @@ public class TenantUserService {
         return Optional.of(new TokenChallenge(token, toPublicMap(user)));
     }
 
-    /**
-     * Consumes an email-verification token and marks the user's email as verified. Returns false
-     * when the token is unknown or expired.
-     */
     public boolean confirmEmailVerification(TenantDefinition tenant, String token) {
         if (StringUtils.isBlank(token)) {
             return false;
@@ -432,15 +378,8 @@ public class TenantUserService {
     }
 
     /**
-     * Looks a user up by email address, ignoring case.
-     * <p>
-     * Mail domains are case insensitive and mailbox providers treat the local part that way too, so
-     * a user who registered as {@code User@example.com} expects {@code user@example.com} to work
-     * when asking for a password reset. A case sensitive match would deny them recovery without any
-     * distinguishable answer, because these endpoints deliberately respond uniformly.
-     * <p>
-     * New and updated records are stored lowercased (see {@link #normalizeEmail}); the secondary
-     * collation strength additionally covers records written before that normalization existed.
+     * Case-insensitive, since recovery endpoints answer uniformly and a case mismatch would silently
+     * deny recovery. The collation also covers records stored before lowercasing was introduced.
      */
     private Document findByEmail(TenantDefinition tenant, String email) {
         if (StringUtils.isBlank(email)) {
@@ -481,15 +420,8 @@ public class TenantUserService {
     }
 
     /**
-     * Authorization for {@code POST /api/auth/issue-token}: a trusted backend that authenticated a
-     * user elsewhere (Apple Sign-In, SAML, a magic link) needs a Paprika session for that user
-     * without knowing a password.
-     * <p>
-     * Two things have to hold. The caller must be an authenticated tenant user - a guest has no
-     * identity to check, and a superadmin token carries no unambiguous tenant user - and that
-     * identity must be listed in the tenant's {@code tokenIssuers}. The tenant is taken from the
-     * caller's own context only, never from the request body, so this can never cross a tenant
-     * boundary.
+     * Caller must be an authenticated tenant user listed in {@code tokenIssuers}. The tenant comes
+     * only from the caller's context, never the request body, so this cannot cross tenants.
      */
     public TokenIssueResult resolveTokenIssue(TenantContext ctx, String targetUserId) {
         if (ctx == null || !ctx.hasTenantContext() || !ctx.hasAuthenticatedUser()
@@ -527,11 +459,8 @@ public class TenantUserService {
     }
 
     /**
-     * Privileged lookup for {@code GET /api/auth/me}: bypasses the rule engine (the validated
-     * bearer token itself is the authorization), and strips {@code role} in addition to the
-     * credential fields the data-plane already hides, since role is not an app-facing concept here.
-     * {@code apple_sub} is stripped defensively even though no such field exists yet, so it can
-     * never leak if a future Sign in with Apple integration adds it.
+     * Bypasses the rule engine: the validated bearer token is the authorization. {@code role} is
+     * not app-facing; {@code apple_sub} is stripped defensively for a future Apple integration.
      */
     public Optional<Document> findOwnUserRecord(TenantContext ctx) {
         if (!ctx.hasTenantContext() || StringUtils.isBlank(ctx.userId())) {
@@ -565,10 +494,6 @@ public class TenantUserService {
         return resolveUser(TenantContext.of(auth, tenant.databaseName()), auth.id());
     }
 
-    /**
-     * The outcome of a password verification, including the case where the instance had no
-     * capacity left to run one.
-     */
     private enum PasswordCheck {
         MATCH,
         NO_MATCH,
@@ -576,13 +501,8 @@ public class TenantUserService {
     }
 
     /**
-     * Verifies the password against the user, or burns the equivalent time when there is no user.
-     * <p>
-     * Both cases hash, and both therefore compete for the same Argon2 slot and are refused the
-     * same way when none is free. That symmetry is the point: a refusal that only happened for
-     * missing users would hand out exactly the account existence this path is built to hide.
-     *
-     * @param user the user to verify against, or {@code null} when the username is unknown
+     * A {@code null} user still hashes, so both cases compete for the same Argon2 slot and are
+     * refused alike; an asymmetric refusal would reveal account existence.
      */
     private PasswordCheck checkPassword(String password, Document user) {
         try {
@@ -597,7 +517,6 @@ public class TenantUserService {
         }
     }
 
-    /** The answer for a login that failed before a user was found, with the hash still spent. */
     private TenantLoginResult burnedOrAtCapacity(String password) {
         return checkPassword(password, null) == PasswordCheck.AT_CAPACITY
                 ? TenantLoginResult.atCapacity()
@@ -605,14 +524,29 @@ public class TenantUserService {
     }
 
     /**
-     * Spends the time a password check would have taken, on a hash that cannot match. Called on
-     * every path that answers "invalid credentials" without having verified a password, so the
-     * response time does not say whether the account exists.
+     * mangoo verifies with the parameters a hash was made with, so outdated hashes stay slow (and
+     * distinguishable from the dummy) until rehashed. Best effort, not a credential change; the
+     * conditional write never overwrites a concurrent password change.
      */
-    /**
-     * Hashes a new password. Sits on the service rather than being called statically so that a
-     * test can make it refuse the way mangoo refuses when no Argon2 slot is free.
-     */
+    private void rehashIfOutdated(TenantDefinition tenant, Document user, String password) {
+        String stored = user.getString(UserRecordUtils.PASSWORD_HASH);
+        if (StringUtils.isBlank(stored) || !CommonUtils.needsRehash(stored)) {
+            return;
+        }
+
+        try {
+            String salt = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
+            String hash = hashPassword(password, salt);
+            usersCollection(tenant).updateOne(
+                    and(eq("id", user.getString("id")), eq(UserRecordUtils.PASSWORD_HASH, stored)),
+                    new Document("$set", new Document(UserRecordUtils.PASSWORD_SALT, salt)
+                            .append(UserRecordUtils.PASSWORD_HASH, hash)));
+        } catch (MangooHashingException e) {
+            LOG.info("Postponed rehashing an outdated password hash, no Argon2 slot became free");
+        }
+    }
+
+    // Instance method so a test can make it refuse like mangoo does when no Argon2 slot is free
     String hashPassword(String password, String salt) {
         return CommonUtils.hashArgon2(password, salt);
     }
@@ -629,11 +563,7 @@ public class TenantUserService {
                 .getCollection(CollectionName.tenantData(SystemCollections.USERS));
     }
 
-    /**
-     * The raw user record of this tenant, credential fields included. Only for callers inside the
-     * auth layer - anything client facing goes through {@link #findPublicUser} or
-     * {@link #toPublicMap}.
-     */
+    /** Includes credential fields: auth layer only, client-facing code uses {@link #findPublicUser}. */
     public Document findById(TenantDefinition tenant, String id) {
         return usersCollection(tenant).find(eq("id", id)).first();
     }
@@ -653,12 +583,7 @@ public class TenantUserService {
         return UserRecordUtils.matchesPassword(password, user);
     }
 
-    /**
-     * The view of a user the admin API hands out: the core fields in a fixed order, followed by
-     * whatever the tenant added to its own users schema. Credentials and single-use auth tokens are
-     * filtered out by name, so a new internal field is only ever exposed by also listing it in
-     * {@link UserRecordUtils#CREDENTIAL_FIELDS}.
-     */
+    // Secrets are filtered by name: a new internal field must be added to UserRecordUtils.CREDENTIAL_FIELDS
     private Map<String, Object> toPublicMap(Document user) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", user.getString("id"));
@@ -681,17 +606,11 @@ public class TenantUserService {
         return map;
     }
 
-    /**
-     * Checks the custom part of a user write against the tenant's users schema and returns it as a
-     * Mongo document. An unknown field name, a wrong type or a violated constraint is rejected here
-     * rather than stored, which keeps the admin editor and {@code /api/collections/users} in
-     * agreement about what a user record may contain.
-     */
     private Document validatedCustomFields(TenantDefinition tenant, Map<String, Object> customFields, boolean create) {
         Document document = new Document();
 
-        // null means "this caller does not manage custom fields at all", an empty map means "it
-        // does, and there are none" - only the latter can be held to a required custom field.
+        // null: caller does not manage custom fields; empty map: it does and there are none,
+        // so only the latter is held to required custom fields
         if (customFields == null) {
             return document;
         }
@@ -711,9 +630,7 @@ public class TenantUserService {
 
         CollectionDefinition users = usersDefinition(tenant);
 
-        // The values arrive as plain JSON, so validating them means going through the same node
-        // tree the data-plane validators see - anything else would be a second, diverging notion of
-        // what a valid value is.
+        // Same node tree as the data-plane validators, so there is only one notion of a valid value
         JsonNode node = JsonUtils.getMapper().valueToTree(customFields);
         ValidationResult result = validationService.validateUpdate(users, node);
         if (!result.isValid()) {
@@ -735,7 +652,6 @@ public class TenantUserService {
         return document;
     }
 
-    /** A required custom field has to be supplied on create, just like on a data-plane POST. */
     private void requireCustomFieldsPresent(TenantDefinition tenant, Set<String> supplied) {
         for (FieldDefinition field : customFieldDefinitions(tenant)) {
             if (field.required() && !supplied.contains(field.name())) {
@@ -779,7 +695,6 @@ public class TenantUserService {
         }
     }
 
-    /** Addresses are stored lowercased, so that a lookup is a plain equality match. */
     private String normalizeEmail(String email) {
         if (email == null || email.isBlank()) {
             return null;

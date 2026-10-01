@@ -6,12 +6,15 @@ import io.mangoo.core.Application;
 import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.undertow.util.StatusCodes;
+import constants.CollectionName;
 import models.TenantDefinition;
 import services.SystemUserService;
+import services.TenantDatabaseResolver;
 import services.TenantService;
 
 import java.net.HttpCookie;
 
+import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.equalTo;
@@ -81,6 +84,17 @@ public final class AdminTestUtils {
                 .get("id"));
         systemUserService.changePassword(userId, TEST_ADMIN_PASSWORD);
         return TEST_ADMIN_PASSWORD;
+    }
+
+    /**
+     * Removes a superadmin a test created. Bypasses the last-admin guard on purpose: until a test
+     * sets the password of "admin", the test's account may be the only completed one, and a refused
+     * delete would leave it behind for the tests that count superadmins.
+     */
+    public static void removeSuperadmin(String id) {
+        Application.getInstance(TenantDatabaseResolver.class)
+                .systemCollection(CollectionName.USERS)
+                .deleteOne(eq("id", id));
     }
 
     public static TestResponse getWithAdminCookies(String path, AdminCookies cookies) {

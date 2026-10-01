@@ -49,10 +49,6 @@ public class RequestLogService {
     private static final String TYPE_HOOK = "hook";
     private static final Set<String> EXCLUDED_PATHS = Set.of("/health", "/api/admin/request-logs");
 
-    /**
-     * The admin plane: the UI shell, its session endpoints and the management API it talks to.
-     * Everything here is Paprika operating itself, never traffic of the API a tenant exposes.
-     */
     private static final Set<String> ADMIN_UI_PATHS = Set.of("/", "/login", "/setup", "/authenticate", "/logout");
     private static final Set<String> ADMIN_UI_PREFIXES = Set.of("/admin/", "/api/admin/", "/api/meta/", "/assets/");
     private final TenantDatabaseResolver resolver;
@@ -99,9 +95,8 @@ public class RequestLogService {
             return;
         }
 
-        // Successful admin plane traffic is Paprika operating itself and would bury the API
-        // traffic the log is actually about. Failures stay, because a rejected admin login is a
-        // security event and not UI noise.
+        // Successful admin plane traffic would bury the API traffic; failures stay because a
+        // rejected admin login is a security event.
         if (statusCode < 400
                 && isAdminUi(path)
                 && !settingsService.getBoolean(SettingKeys.REQUEST_LOG_ADMIN_UI, false)) {
@@ -131,8 +126,7 @@ public class RequestLogService {
             entry.append("userRole", ctx.role());
         }
 
-        // Which credential proved the identity: an API key is named, an access token is not. The
-        // key itself is never logged, only its id and name.
+        // Only id and name of an API key are logged, never the key itself.
         Object apiKeyId = request.getAttribute(ApiKeys.ATTRIBUTE_ID);
         if (apiKeyId instanceof String keyId) {
             entry.append("apiKeyId", keyId);
@@ -141,9 +135,7 @@ public class RequestLogService {
             if (Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES))) {
                 entry.append("rulesBypassed", true);
             }
-            // Without this the entry of a hook-free key looks exactly like one whose hook silently
-            // failed to run, and telling a deliberate exemption from a defect apart is precisely
-            // what someone needs the log for during the next incident.
+            // Distinguishes a deliberate hook exemption from a hook that silently failed to run.
             if (ApiKeys.bypassesHooks(request)) {
                 entry.append("hooksBypassed", true);
             }
@@ -153,13 +145,7 @@ public class RequestLogService {
         maybePurgeExpired(ctx);
     }
 
-    /**
-     * The message the log records for a failed request. Normally whatever the response said, with
-     * one exception: a key turned away because of its source answers the caller with the plain
-     * {@code Unauthorized} of an invalid key, and only here is it allowed to say what actually
-     * happened. Without that the operator reads "unauthorized" on a key they know is valid and
-     * goes looking for an expiry or a revocation that is not there.
-     */
+    // A source-rejected key answers the client with a plain Unauthorized; only the log may say why.
     private static String errorMessage(Request request, String responseMessage) {
         if (!Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_SOURCE_REJECTED))) {
             return responseMessage;
@@ -170,11 +156,7 @@ public class RequestLogService {
                 + (name instanceof String keyName && !keyName.isBlank() ? " (key: " + keyName + ")" : "");
     }
 
-    /**
-     * Writes the log entry of one asynchronous (after-)hook. Those run once the response is
-     * already out, so they cannot be a field of the request that triggered them; {@code requestId}
-     * is what ties both entries together.
-     */
+    // Async hooks run after the response is out, so they get their own entry linked by requestId.
     public void recordHookExecution(
             TenantContext ctx,
             String requestId,
@@ -208,10 +190,7 @@ public class RequestLogService {
         }
     }
 
-    /**
-     * Client IP and user agent identify a person, so they are off unless the operator switches
-     * them on and thereby takes the decision (and its justification) consciously.
-     */
+    // Client IP and user agent are personal data, so they are opt-in.
     private void appendClientInfo(Document entry, Request request) {
         if (settingsService.getBoolean(SettingKeys.REQUEST_LOG_CLIENT_INFO, false)) {
             entry.append("userAgent", StringUtils.trimToNull(request.getHeader(Headers.USER_AGENT_STRING)));
@@ -264,19 +243,12 @@ public class RequestLogService {
         return invocation.event() + " \u2192 " + invocation.name() + " (" + target + ")";
     }
 
-    /**
-     * Health probes would drown out real traffic in a size-limited log, and reading the log must
-     * not create new entries.
-     */
+    // Health probes would drown out real traffic, and reading the log must not create entries.
     private static boolean isExcluded(String path) {
         return path == null || EXCLUDED_PATHS.contains(path);
     }
 
-    /**
-     * Whether the path belongs to the admin plane rather than to a tenant's API. Decided by path
-     * and not by credential on purpose: the same answer for an anonymous login attempt as for a
-     * schema change, and no additional lookup per logged request.
-     */
+    // Decided by path, not credential: same answer for anonymous logins, no extra lookup per request.
     private static boolean isAdminUi(String path) {
         if (ADMIN_UI_PATHS.contains(path)) {
             return true;
@@ -284,10 +256,7 @@ public class RequestLogService {
         return ADMIN_UI_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
-    /**
-     * Requests outside any tenant scope (admin login, setup, the UI shell) still belong in the
-     * log; they are kept with the default tenant, which is the one the admin plane works on.
-     */
+    // Requests outside any tenant scope are logged with the default tenant.
     private TenantContext resolveLogTenant(Request request) {
         TenantContext ctx = TenantContextHolder.get(request);
         if (ctx != null && ctx.hasTenantContext()) {
@@ -346,17 +315,6 @@ public class RequestLogService {
         }
     }
 
-    /**
-     * How many server errors this tenant's log holds for the last 24 hours.
-     * <p>
-     * Only 500 and above: a 401 or a 404 is a client being a client, while a 5xx is Paprika or a
-     * hook target failing, and that is the number a dashboard should be able to show as a
-     * problem. Hook entries count too - a hook whose target answers 500 breaks the write it was
-     * attached to just as visibly.
-     * <p>
-     * Answered from the {@code timestamp_desc} index as a range scan over one day, not over the
-     * whole log, so the retention setting does not decide what this costs.
-     */
     public long countServerErrors24h(TenantContext ctx) {
         if (ctx == null || !ctx.hasTenantContext()) {
             return 0;
@@ -397,14 +355,8 @@ public class RequestLogService {
     }
 
     /**
-     * The read behind the admin UI's live mode: it asks every few seconds for what has been
-     * written since the newest entry it already shows, which the {@code timestamp_desc} index
-     * answers as a short range scan. The total is deliberately not counted here - a
-     * {@code countDocuments} over the whole log every few seconds is what would make a polling
-     * client expensive, and the caller can derive the new total from the entries it receives.
-     * <p>
-     * The bound is inclusive so that a second entry carrying the exact same timestamp as the
-     * newest known one is not lost; the caller discards what it already knows by id.
+     * Polled by the live mode, so no total is counted. The bound is inclusive so an entry with the
+     * same timestamp as the newest known one is not lost; the caller dedupes by id.
      */
     public Map<String, Object> listSince(
             TenantContext ctx,
@@ -449,8 +401,6 @@ public class RequestLogService {
                     regex("url", pattern, "i"),
                     regex("errorMessage", pattern, "i"),
                     regex("method", pattern, "i"),
-                    // A request and the async hooks it spawned are separate entries; searching
-                    // for their shared request id is what puts them back together.
                     regex("requestId", pattern, "i")
             ));
         }
@@ -462,8 +412,7 @@ public class RequestLogService {
         }
 
         if ("continued".equalsIgnoreCase(hookFilter)) {
-            // "A hook ran and let the call through" - the counterpart of "blocked", so the two
-            // filters are disjoint instead of one containing the other.
+            // Disjoint from "blocked" rather than containing it.
             clauses.add(and(eq("hookFired", true), ne("hookBlocked", true)));
         } else if ("fired".equalsIgnoreCase(hookFilter)) {
             clauses.add(eq("hookFired", true));

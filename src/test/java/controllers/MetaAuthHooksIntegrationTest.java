@@ -40,8 +40,7 @@ class MetaAuthHooksIntegrationTest {
         assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
         assertThat(create.getContent(), containsString("\"event\":\"beforeRegister\""));
 
-        // Clean up: this hook lives on the shared default tenant and would otherwise fire (and
-        // fail closed) during other auth tests.
+        // This hook lives on the shared default tenant and would fail closed in other auth tests.
         String id = extractJsonString(create.getContent(), "id");
         TestResponse deleted = cookies.apply(
                 TestRequest.delete("/api/meta/collections/users/hooks/" + id)

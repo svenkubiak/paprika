@@ -8,11 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Collects the {@link HookInvocation}s of a request so the request log can report how much of the
- * total time was spent waiting for hooks. Blocking hooks run inside the request thread, so a plain
- * list guarded by synchronization is enough.
- */
 public final class HookTelemetry {
     private HookTelemetry() {
     }
@@ -45,7 +40,6 @@ public final class HookTelemetry {
         }
     }
 
-    /** Host and port of a hook URL - the part that identifies the target without exposing paths. */
     public static String target(String url) {
         if (url == null || url.isBlank()) {
             return null;

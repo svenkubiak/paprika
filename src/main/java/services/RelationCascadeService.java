@@ -22,22 +22,9 @@ import java.util.Objects;
 import static com.mongodb.client.model.Filters.eq;
 
 /**
- * Deletes the records a {@code RELATION} field with {@code cascadeDelete} points at, once the
- * record holding that relation has been deleted.
- * <p>
- * The target of this delete is chosen by the client: it is an ordinary field of the request body,
- * validated for existence only. That makes the cascade a delete on a record the caller never named
- * in a route and whose collection was never seen by {@code ApiAuthFilter} - the
- * {@link auth.AuthorizationDecision} of the request covers the <em>holding</em> collection and
- * nothing else. So every target is authorized here, against the delete rule of its own collection
- * and with the caller's own identity, exactly as a direct {@code DELETE} on that record would be.
- * A target the caller may not delete is skipped, not deleted: the holding record is already gone by
- * the time we get here, and refusing the whole operation would neither bring it back nor be
- * expressible in the response.
- * <p>
- * The cascade is one level deep by design. A target that itself holds cascading relations does not
- * cascade further - relations may form cycles, and a delete that walks them would need a visited
- * set and a depth limit to stay bounded. Dependent deletes beyond one hop belong in a hook.
+ * Targets are client-chosen and not covered by the request's AuthorizationDecision, so each is
+ * authorized against its own collection's delete rule; forbidden targets are skipped. One level
+ * deep by design, since relations may form cycles.
  */
 @Singleton
 public class RelationCascadeService {
@@ -57,13 +44,6 @@ public class RelationCascadeService {
         this.fileFieldService = Objects.requireNonNull(fileFieldService, "fileFieldService must not be null");
     }
 
-    /**
-     * @param definition   the collection of the record that was just deleted
-     * @param record       the deleted record, carrying the relation ids to follow
-     * @param auth         the caller, used to evaluate the delete rule of every target collection
-     * @param adminBypass  whether the request skipped the rules already (admin UI session or a
-     *                     rule-bypassing API key), in which case the targets follow that decision
-     */
     public void cascadeDelete(
             TenantContext ctx,
             CollectionDefinition definition,
@@ -105,9 +85,7 @@ public class RelationCascadeService {
             AuthContext auth,
             boolean adminBypass) {
 
-        // Read unprojected, so the rule sees the same record ApiAuthFilter#checkRecordRule would
-        // have seen for a direct DELETE - a projection here could hide the very field a rule is
-        // written against.
+        // Unprojected, so the rule sees the same record as for a direct DELETE
         Document target = tenantCollections.dataCollection(ctx, targetCollection)
                 .find(eq("id", relatedId))
                 .first();

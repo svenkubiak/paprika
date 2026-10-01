@@ -16,10 +16,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Signs superadmins in, both into the admin UI session and into an API token pair. Every path that
- * ends in a completed sign-in tells {@link LoginAlertService} about it, so a login from a device
- * the account has not been used from before can be reported to its owner. A deferred 2FA challenge
- * is not a login yet - only the confirmation step is.
+ * Every completed sign-in must be reported to {@link LoginAlertService}; a deferred 2FA challenge
+ * is not a login yet, only its confirmation is.
  */
 @Singleton
 public class AdminLoginService {
@@ -40,9 +38,6 @@ public class AdminLoginService {
         this.loginAlertService = Objects.requireNonNull(loginAlertService, "loginAlertService must not be null");
     }
 
-    /**
-     * Signs the superadmin into the Web UI session, or defers to a pending 2FA challenge.
-     */
     public AdminLoginResult login(String username, String password, Authentication authentication, Request request) {
         SuperadminPasswordResult verified = systemUserService.verifyPassword(username, password);
         if (verified.isAtCapacity()) {
@@ -54,9 +49,6 @@ public class AdminLoginService {
                 .orElseGet(AdminLoginResult::invalidCredentials);
     }
 
-    /**
-     * Issues an API token pair for the superadmin, or defers to a pending 2FA challenge.
-     */
     public AdminLoginResult issueToken(String username, String password, Request request) {
         SuperadminPasswordResult verified = systemUserService.verifyPassword(username, password);
         if (verified.isAtCapacity()) {
@@ -156,7 +148,6 @@ public class AdminLoginService {
         return systemUserService.findTotpSecret(auth.id()).isPresent();
     }
 
-    /** The outcome of a second-factor check, including the locked-out case. */
     private enum TwoFactorOutcome {
         VALID,
         INVALID,
@@ -164,14 +155,8 @@ public class AdminLoginService {
     }
 
     /**
-     * Accepts either the current TOTP code or the user's one-time fallback code, against a budget
-     * of wrong attempts.
-     * <p>
-     * The fallback code is checked first and deliberately stays usable while the second factor is
-     * locked: it is 32 random characters and cannot be guessed, so letting it through costs
-     * nothing - and it is what keeps a guessing campaign from locking the rightful superadmin out
-     * of their own instance. Only the six-digit TOTP path, the one that can actually be brute
-     * forced, is behind the lock.
+     * The fallback code deliberately bypasses the lock: it cannot be guessed, and it keeps a
+     * guessing campaign from locking the rightful superadmin out. Only TOTP is behind the lock.
      */
     private TwoFactorOutcome checkTwoFactorCode(String userId, String code) {
         if (systemUserService.consumeTotpFallbackCode(userId, code)) {
@@ -192,8 +177,7 @@ public class AdminLoginService {
             return TwoFactorOutcome.VALID;
         }
 
-        // A wrong code that trips the budget is answered as locked right away, so the attempt
-        // after the last one of the budget does not still look like an ordinary wrong code.
+        // The attempt that trips the budget is already answered as locked.
         return systemUserService.recordTwoFactorFailure(userId).isPresent()
                 ? TwoFactorOutcome.LOCKED
                 : TwoFactorOutcome.INVALID;

@@ -1,15 +1,5 @@
-/**
- * Recovery for the one failure the admin UI cannot code around: the server gets updated while a
- * tab is still open, so the content-hashed chunk a lazily imported page lives in is gone. Every
- * navigation into a page that has not been imported yet then fails with a 404, and because the
- * router resolves the page component before the app is mounted, the first such navigation leaves
- * an empty <div id="app"> behind - a white page with nothing on it and no hint that a reload is
- * all it takes.
- *
- * `/login` is where this shows up most, because it is the one page an authenticated tab has
- * usually never loaded: signing out pushes straight into it, and so does a session that ran out
- * after a restart.
- */
+// Recovery for a server update under an open tab: the content-hashed chunk of a lazy page is gone,
+// so navigating into it fails and the first such navigation leaves a blank page.
 
 /** Shared with public/boot.js - the two recover from the same situation and must not add up. */
 const RELOAD_KEY = 'paprika:reload-attempt'
@@ -19,11 +9,8 @@ const HEALTH_BUDGET_MS = 30_000
 const HEALTH_INTERVAL_MS = 1_000
 
 /**
- * Browsers all word this differently, so the message is matched instead of the error type. The
- * list is only used to pick the wording of the notice - recovery itself no longer depends on it,
- * because the list was never complete: Safari says "Load failed", a proxy that answers a chunk
- * with an HTML error page produces a MIME type complaint, and a dead keep-alive connection
- * produces a plain network error. All of them mean the same thing here.
+ * Only picks the wording of the notice; recovery does not depend on it, since browsers and
+ * proxies word this failure too differently for a complete list.
  */
 const STALE_BUILD_MARKERS = [
   'Failed to fetch dynamically imported module',
@@ -77,10 +64,7 @@ function writeAttempt(count: number): void {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/**
- * Reloading into a server that is still restarting replaces the broken page with the browser's
- * error page and uses up an attempt for nothing, so every reload waits for the server first.
- */
+/** Reloading into a still-restarting server would show an error page and waste an attempt. */
 async function waitForServer(): Promise<boolean> {
   const deadline = Date.now() + HEALTH_BUDGET_MS
 
@@ -103,13 +87,8 @@ async function waitForServer(): Promise<boolean> {
 }
 
 /**
- * Reloads the given path so the browser picks up the current index.html and with it the chunk
- * names of the deployed build. Returns false when this tab has used up its attempts, which is
- * what keeps a chunk that stays unreachable from turning into a reload loop.
- *
- * The counter has to survive the reload, hence sessionStorage. It is time boxed rather than
- * once-per-tab: an attempt that was spent on a server which had not come back up yet must not
- * disable the recovery for the rest of the session.
+ * Returns false once the attempts are used up, so an unreachable chunk cannot cause a reload loop.
+ * The counter lives in sessionStorage to survive the reload and is time boxed, not once-per-tab.
  */
 export function reloadForStaleBuild(path: string): boolean {
   if (reloading) {
@@ -130,8 +109,7 @@ export function reloadForStaleBuild(path: string): boolean {
       return
     }
 
-    // The server never came back within the budget. Say so instead of leaving the tab on
-    // whatever the failed navigation left behind.
+    // The server never came back within the budget; say so instead of leaving the failed page.
     reloading = false
     renderStaleBuildNotice(new Error('The server did not respond.'))
   })
@@ -153,11 +131,7 @@ export function clearStaleBuildReload(): void {
   }
 }
 
-/**
- * Last resort once the reload did not help. Built from plain DOM on purpose: at this point a page
- * chunk is known to be unreachable, so the only code that can still be trusted to run is what the
- * entry chunk already brought along.
- */
+/** Plain DOM on purpose: with a page chunk unreachable, only the entry chunk can be trusted. */
 export function renderStaleBuildNotice(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error)
 
@@ -180,11 +154,7 @@ export function renderStaleBuildNotice(error: unknown): void {
   )
 }
 
-/**
- * Shown when the server itself is not answering. Deliberately not the login page: a request that
- * never got an answer says nothing about the session, and bouncing a signed-in admin to /login
- * over a restart is what used to happen here.
- */
+/** Deliberately not the login page: a request without an answer says nothing about the session. */
 export function renderServerUnreachableNotice(): void {
   renderNotice(
     'The server is not responding',
@@ -195,9 +165,8 @@ export function renderServerUnreachableNotice(): void {
 let noticeRendered = false
 
 function renderNotice(titleText: string, bodyText: string): void {
-  // A failed navigation is reported by more than one place (onError, the ready promise, the
-  // guard). Whoever explained it first keeps the screen - the later, vaguer message must not
-  // replace it.
+  // Several places report a failed navigation (onError, the ready promise, the guard); the first
+  // explanation keeps the screen.
   if (noticeRendered) {
     return
   }

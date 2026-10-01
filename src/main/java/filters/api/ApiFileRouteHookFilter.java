@@ -16,20 +16,8 @@ import utils.ApiKeys;
 
 import java.util.Objects;
 
-/**
- * Runs the global beforeRequest hooks on the file routes
- * (/api/collections/{collection}/{id}/files/{field}[/{fileId}]).
- *
- * <p>These routes are served by {@code CollectionFileController}, which carries neither
- * {@code ApiHookFilter} (it bails out on file routes, because the collection lifecycle events do
- * not exist for them) nor {@code ApiBeforeRequestHookFilter} (that one takes the auth path, which
- * deliberately ignores the collection scope). So a hook meant as an external authorizer never saw
- * downloads or file deletions. This filter closes that gap with the same semantics the collection
- * routes have: collection scope, failOpen, timeout, priority and forwardHeaders all come from the
- * same HookDefinition.
- *
- * <p>Runs only for hooks that opted in via {@code includeFileRoutes}; see HookDefinition.
- */
+// Runs opted-in (includeFileRoutes) beforeRequest hooks on the file routes, which neither
+// ApiHookFilter nor ApiBeforeRequestHookFilter cover, with the same semantics as collection routes.
 public class ApiFileRouteHookFilter implements PerRequestFilter {
     private final TenantCollectionService tenantCollections;
     private final HookService hookService;
@@ -44,8 +32,7 @@ public class ApiFileRouteHookFilter implements PerRequestFilter {
 
     @Override
     public Response execute(Request request, Response response) {
-        // Same exemption the collection and auth routes grant a hook-free key; a download that
-        // skipped the authorizer on one route but not the other would be the worse surprise.
+        // Same exemption as on the collection and auth routes.
         if (ApiKeys.bypassesHooks(request)) {
             return response;
         }
@@ -55,8 +42,7 @@ public class ApiFileRouteHookFilter implements PerRequestFilter {
 
         CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
         if (definition == null) {
-            // No hook for an unknown collection: it must not become an oracle for what exists.
-            // The 404 comes from the existing chain, as it does in ApiHookFilter.
+            // No hook for an unknown collection, so it is no oracle for what exists; the chain answers 404.
             return response;
         }
 
@@ -73,8 +59,7 @@ public class ApiFileRouteHookFilter implements PerRequestFilter {
             return HookResponseHelper.toErrorResponse(result);
         }
 
-        // A body mutation returned by the hook is meaningless here: a download has no request
-        // body, and a delete ignores one. Dropping it silently keeps the hook contract unchanged.
+        // A body mutation from the hook is dropped: downloads have no body and deletes ignore one.
         return response;
     }
 }

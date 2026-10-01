@@ -105,8 +105,7 @@ function onSlugInput() {
           </PField>
 
           <template v-if="mode === 'edit' && tenant">
-            <!-- Read-only rather than disabled: the database name is not editable, but it is
-                 something you copy into a mongo shell. -->
+            <!-- Read-only rather than disabled, so the name can be copied into a mongo shell. -->
             <PField label="Database" icon="i-lucide-database" width="md">
               <UInput :model-value="tenant.databaseName" icon="i-lucide-database" readonly class="font-mono">
                 <template #trailing>

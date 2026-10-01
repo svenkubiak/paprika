@@ -22,7 +22,6 @@ const serverErrors = computed(() => stats.value?.serverErrors24h ?? 0)
 const mailDependentTenants = computed(() => bootstrap.value?.warnings?.mailDependentTenants ?? [])
 const degradedIndexTenants = computed(() => bootstrap.value?.warnings?.degradedIndexTenants ?? [])
 
-/** Keeps a warning readable on an instance with many tenants. */
 function tenantList(names: readonly string[]): string {
   if (names.length <= 3) {
     return names.join(', ')
@@ -42,8 +41,7 @@ function formatUptime(seconds: number | undefined): string {
   return parts.join(' ')
 }
 
-// Ordered so that the three-column grid breaks into "what this instance holds" on the first
-// row and "how it is doing" on the second.
+// Ordered so the three-column grid shows contents on the first row and health on the second.
 const statCards = computed(() => [
   {
     label: 'Tenants',
@@ -113,9 +111,8 @@ const statCards = computed(() => [
       </template>
     </UAlert>
 
-    <!-- Uniqueness that is not enforced is invisible until two definitions share a name and an
-         edit lands on whichever one MongoDB returns first. Only a restored archive gets an
-         instance into this state, and only the startup log said so until now. -->
+    <!-- Unenforced uniqueness lets an edit land on whichever of two same-named definitions MongoDB
+         returns first. Only a restored archive gets an instance into this state. -->
     <UAlert
       v-if="degradedIndexTenants.length"
       color="error"
@@ -125,8 +122,7 @@ const statCards = computed(() => [
       :description="`${tenantList(degradedIndexTenants)} had duplicate collection definitions when the index was created, so duplicate names and ids are no longer rejected. Remove the duplicates and restart to enforce uniqueness.`"
     />
 
-    <!-- The feature is switched on, the API accepts the request, and the mail is dropped. There
-         is nothing in the UI that would otherwise tell an admin about it. -->
+    <!-- Otherwise nothing tells an admin that the mail is silently dropped. -->
     <UAlert
       v-if="mailDependentTenants.length"
       color="warning"

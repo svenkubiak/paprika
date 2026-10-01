@@ -45,8 +45,7 @@ class CollectionRecordServiceListTest {
                 .dataCollection(ctx, collection)
                 .insertOne(new org.bson.Document().append("id", DbUtils.id()).append("title", "SECRET"));
 
-        // A request that never passed through ApiAuthFilter carries no authorization decision.
-        // Listing unfiltered here would return every record, so the service has to refuse instead.
+        // A request that skipped ApiAuthFilter has no decision; listing unfiltered would return every record.
         CollectionRecordService.RecordResult result = Application.getInstance(CollectionRecordService.class)
                 .list(ctx, collection, new Request(), 0, 25, null, null);
 
@@ -54,11 +53,7 @@ class CollectionRecordServiceListTest {
         assertThat(result.body(), is((Object) null));
     }
 
-    /**
-     * A decision for a single record operation carries no scoping query, as there is nothing to
-     * scope. Reusing it for a LIST would list the whole collection, so it must be refused as well:
-     * the presence of a decision alone is not permission to list.
-     */
+    /** A single-record decision has no scoping query, so reusing it for LIST would list the whole collection. */
     @Test
     void listRefusesDecisionWithoutScopingQuery() {
         String collection = "notes_noscope_" + DbUtils.id();
@@ -82,9 +77,8 @@ class CollectionRecordServiceListTest {
     }
 
     /**
-     * Without a sort MongoDB may return the same record on two pages, or none at all, once a write
-     * lands between the two requests. Paginating across a concurrent insert and delete is the only
-     * assertion that catches that - "the page is sorted" would pass on an unordered cursor too.
+     * Without a sort MongoDB may repeat or skip records across pages once a write lands in between;
+     * "the page is sorted" would pass on an unordered cursor too.
      */
     @Test
     void paginationStaysStableAcrossWrites() {
@@ -99,8 +93,6 @@ class CollectionRecordServiceListTest {
         List<String> firstPage = idsOf(list(ctx, collection, 0, 10, null));
         seen.addAll(firstPage);
 
-        // A write between two page requests is exactly the situation an unordered cursor cannot
-        // survive: the new record sorts after everything already seen, the deleted one is gone.
         insert(ctx, collection, "title-inserted");
         String deleted = seeded.getLast();
         Application.getInstance(TenantCollectionService.class)
@@ -115,7 +107,6 @@ class CollectionRecordServiceListTest {
         assertThat("pages must not repeat a record", thirdPage, everyItem(not(in(seen))));
         seen.addAll(thirdPage);
 
-        // Every record that existed before and after the writes has to show up exactly once.
         for (String id : seeded) {
             if (!id.equals(deleted)) {
                 assertThat("record " + id + " fell out of the pagination", seen.contains(id), is(true));
@@ -123,10 +114,7 @@ class CollectionRecordServiceListTest {
         }
     }
 
-    /**
-     * A limit above the maximum used to fall back to the default of 25, which hands the client a
-     * plausible looking but far too short page. It is clamped to the maximum instead.
-     */
+    /** Falling back to the default of 25 would hand out a plausible but far too short page. */
     @Test
     void limitIsClampedToTheMaximumInsteadOfFallingBackToTheDefault() {
         String collection = seededCollection("notes_limit_");
@@ -193,10 +181,7 @@ class CollectionRecordServiceListTest {
                 is(titlesOf(list(ctx, collection, 0, 25, null))));
     }
 
-    /**
-     * An invalid sort must never be answered with an arbitrarily ordered page: the client asked for
-     * an order and would have no way of telling it did not get one.
-     */
+    /** The client asked for an order and could not tell it did not get one. */
     @Test
     void invalidSortIsRejectedInsteadOfSilentlyIgnored() {
         String collection = "notes_sortinvalid_" + DbUtils.id();

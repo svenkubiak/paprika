@@ -6,21 +6,9 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.net.InetAddress;
 
-/**
- * Resolves the client IP for the request log.
- * <p>
- * An IP address identifies a person, so it is only kept when the operator asked for it. The
- * {@code truncated} mode is the middle ground the GDPR's data minimisation expects: enough to
- * recognise an abusive network, too little to single out a household - IPv4 loses its last octet,
- * IPv6 everything below the /48 prefix.
- * <p>
- * The address is read from the proxy headers only: Paprika is meant to run behind a reverse proxy,
- * and the socket peer would be that proxy, not the caller. Those headers are therefore whatever
- * the caller put in them: nginx's {@code $proxy_add_x_forwarded_for} appends the peer to the list
- * the client sent, and the leftmost entry - the one that names the original client - is the one
- * the client wrote. Everything here treats the value as untrusted input accordingly, and a value
- * that is not an IP address is dropped rather than interpreted.
- */
+// Client IP for the request log only (GDPR: truncated mode keeps IPv4 /24, IPv6 /48).
+// Read from proxy headers, whose leftmost entry is client-written, so it is untrusted input:
+// anything that is not an IP literal is dropped.
 public final class ClientIps {
     private static final String FORWARDED_FOR = "X-Forwarded-For";
     private static final String REAL_IP = "X-Real-IP";
@@ -38,8 +26,7 @@ public final class ClientIps {
             candidate = StringUtils.trimToNull(request.getHeader(REAL_IP));
         }
 
-        // Parsed once, for both modes: "full" must not write an arbitrary header value into the
-        // log either, and neither mode has anything to store when the header names no address.
+        // "full" must not log an arbitrary header value either
         InetAddress address = parseLiteral(candidate);
         if (address == null) {
             return null;
@@ -60,7 +47,6 @@ public final class ClientIps {
         return StringUtils.trimToNull(comma >= 0 ? value.substring(0, comma) : value);
     }
 
-    /** IPv4 to /24, IPv6 to /48; an unparsable value is dropped rather than stored raw. */
     public static String truncate(String address) {
         InetAddress parsed = parseLiteral(address);
         return parsed == null ? null : truncate(parsed);
@@ -80,16 +66,8 @@ public final class ClientIps {
         return prefix.append(':').toString();
     }
 
-    /**
-     * The address a header value names, or {@code null} when it names none.
-     * <p>
-     * {@link InetAddress#ofLiteral} parses and never resolves, which is the entire point.
-     * {@code InetAddress.getByName} - what this used to call - hands anything that is not a
-     * literal to the resolver, so a header the caller writes turned into one blocking DNS lookup
-     * per logged request, against a nameserver the caller chose, in the response path. What came
-     * back was then truncated and stored as the client's address, even though the caller had
-     * never been there.
-     */
+    // ofLiteral never resolves; getByName would turn a caller-written header into a blocking DNS
+    // lookup against a nameserver the caller chose.
     private static InetAddress parseLiteral(String value) {
         if (value == null) {
             return null;

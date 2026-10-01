@@ -26,28 +26,13 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * Covers binding an API key to source address ranges: the one restriction Paprika itself can put
- * on a credential that otherwise has no expiry, no second factor and - as a bypassing key - the
- * reach of a whole tenant.
- * <p>
- * Two properties carry the whole feature and are therefore tested head on: a key without ranges
- * must behave exactly as it did before the field existed, and a key turned away because of its
- * source must be indistinguishable from an unknown key to whoever presented it. The second one
- * is why {@code X-Forwarded-For} gets its own test - a binding a caller can lift with a header
- * is not a binding.
- */
 @ExtendWith({TestRunner.class})
 class ApiKeySourceBindingIntegrationTest {
 
-    /**
-     * The test client reaches the server over the loopback interface, so these are the ranges
-     * that contain it. Both families are listed because which one {@code localhost} resolves to
-     * is a property of the machine the suite runs on, not of the feature.
-     */
+    /** Both families, since whether {@code localhost} resolves to IPv4 or IPv6 depends on the machine. */
     private static final String LOOPBACK = "\"127.0.0.0/8\",\"::1/128\"";
 
-    /** Documentation ranges (RFC 5737 / RFC 3849) - nothing the suite can ever originate from. */
+    /** Documentation ranges (RFC 5737 / RFC 3849) the suite can never originate from. */
     private static final String ELSEWHERE = "\"203.0.113.0/24\",\"2001:db8::/32\"";
 
     @Test
@@ -74,11 +59,7 @@ class ApiKeySourceBindingIntegrationTest {
         assertThat(list(collection, elsewhere).getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
     }
 
-    /**
-     * The one answer a rejected key must give: the same one an unknown key gives. Anything else
-     * confirms to whoever holds it that the secret is real and only the place is wrong, which is
-     * precisely the information a stolen key still needs.
-     */
+    /** Any other answer would confirm to a thief that the stolen secret is real. */
     @Test
     void rejectionIsIndistinguishableFromAnInvalidKey() {
         String collection = "posts_cidr_indistinguishable";
@@ -96,11 +77,7 @@ class ApiKeySourceBindingIntegrationTest {
         assertThat(rejected.getContentType(), equalTo(unknown.getContentType()));
     }
 
-    /**
-     * Nails down the choice made in the auth layer: the address checked is the peer of the TCP
-     * connection. If {@code X-Forwarded-For} were consulted, the caller would be the one telling
-     * Paprika where the caller is.
-     */
+    /** The address checked is the TCP peer; a caller-supplied header must not decide it. */
     @Test
     void forgedForwardingHeadersCannotLiftTheBinding() {
         String collection = "posts_cidr_forged";
@@ -117,7 +94,6 @@ class ApiKeySourceBindingIntegrationTest {
 
         assertThat(forged.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
 
-        // The mirror image: a key bound to the loopback must not be locked out by a header either
         String loopback = createKey("cidr-forged-loopback-key", user("cidr-forged-loopback"), LOOPBACK).key();
         TestResponse stillAllowed = TestRequest.get("/api/collections/" + collection + "?offset=0&limit=25")
                 .withHeader("Authorization", "Bearer " + loopback)
@@ -127,11 +103,7 @@ class ApiKeySourceBindingIntegrationTest {
         assertThat(stillAllowed.getStatusCode(), equalTo(StatusCodes.OK));
     }
 
-    /**
-     * IPv4 and IPv6 at the enforcement point itself. The address a request arrives from is a
-     * property of the machine the suite runs on, so the service is asked directly here - which
-     * is the same call {@code AuthService} makes, with the same argument.
-     */
+    /** The arrival address depends on the machine, so this calls the service as {@code AuthService} does. */
     @Test
     void enforcementCoversBothAddressFamilies() {
         ApiKeyService apiKeyService = Application.getInstance(ApiKeyService.class);
@@ -148,11 +120,9 @@ class ApiKeySourceBindingIntegrationTest {
         assertThat(apiKeyService.resolve(v6Key, address("2a01:4f8:c17:c74d::1")).key().isPresent(), is(false));
         assertThat(apiKeyService.resolve(v6Key, address("2a01:4f8:c17:c74d::1")).sourceRejected(), is(true));
 
-        // An unknown source is not a reason to let a bound key through
         assertThat(apiKeyService.resolve(v4Key, null).key().isPresent(), is(false));
         assertThat(apiKeyService.resolve(v4Key, null).sourceRejected(), is(true));
 
-        // ... while a key without ranges does not care about the source at all
         String open = createKey("cidr-open-key", user("cidr-open-user"), null).key();
         assertThat(apiKeyService.resolve(open, null).key().isPresent(), is(true));
         assertThat(apiKeyService.resolve(open, address("203.0.113.7")).key().isPresent(), is(true));
@@ -174,7 +144,6 @@ class ApiKeySourceBindingIntegrationTest {
         assertThat(created.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
         assertThat(created.getContent(), containsString("not-an-address"));
 
-        // Nothing partial was written: the whole key is refused, not only the broken range
         TestResponse list = AdminTestUtils.getWithAdminCookies(
                 "/api/meta/tenants/" + tenant.id() + "/api-keys", adminCookies());
         assertThat(list.getContent(), not(containsString("cidr-invalid-key")));
@@ -191,10 +160,7 @@ class ApiKeySourceBindingIntegrationTest {
         assertThat(storedCidrs("cidr-invalid-update-key"), contains("10.200.0.0/24"));
     }
 
-    /**
-     * The asymmetry to {@code bypassRules}/{@code bypassHooks}: this field narrows reach, so it
-     * may move after the key was handed out.
-     */
+    /** Unlike {@code bypassRules}/{@code bypassHooks}, this field narrows reach, so it may change later. */
     @Test
     void sourceBindingCanBeChangedAfterwards() {
         String collection = "posts_cidr_editable";
@@ -204,17 +170,15 @@ class ApiKeySourceBindingIntegrationTest {
         CreatedKey key = createKey("cidr-editable-key", user("cidr-editable-user"), ELSEWHERE);
         assertThat(list(collection, key.key()).getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
 
-        // The host moved: point the binding at where the caller is now
         assertThat(patchCidrs(tenant, key.id(), "[" + LOOPBACK + "]").getStatusCode(),
                 equalTo(StatusCodes.NO_CONTENT));
         assertThat(list(collection, key.key()).getStatusCode(), equalTo(StatusCodes.OK));
 
-        // An empty list lifts the binding again
         assertThat(patchCidrs(tenant, key.id(), "[]").getStatusCode(), equalTo(StatusCodes.NO_CONTENT));
         assertThat(storedCidrs("cidr-editable-key"), empty());
         assertThat(list(collection, key.key()).getStatusCode(), equalTo(StatusCodes.OK));
 
-        // Host bits are masked off when the range is stored, not re-interpreted on every request
+        // Host bits are masked off when the range is stored
         assertThat(patchCidrs(tenant, key.id(), "[\"10.200.0.42/24\"]").getStatusCode(),
                 equalTo(StatusCodes.NO_CONTENT));
         assertThat(storedCidrs("cidr-editable-key"), contains("10.200.0.0/24"));
@@ -223,10 +187,7 @@ class ApiKeySourceBindingIntegrationTest {
                 equalTo(StatusCodes.NOT_FOUND));
     }
 
-    /**
-     * Point six of the feature: the operator must be able to see why the key failed, or they go
-     * looking for an expiry that is not there. The log entry says it; the response still does not.
-     */
+    /** The operator learns the reason from the log; the response still must not reveal it. */
     @Test
     void requestLogNamesTheSourceAsTheReason() {
         String collection = "posts_cidr_log";

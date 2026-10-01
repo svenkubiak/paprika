@@ -42,8 +42,7 @@ const indexDeleteTarget = ref<IndexDefinition | null>(null)
 
 const indexes = computed<IndexDefinition[]>(() => definition.value?.indexes || [])
 
-// An index may also be built on the fields every record carries, which are not part of the
-// schema field list.
+// System fields can be indexed too but are not part of the schema field list.
 const indexableFields = computed(() => indexableFieldsFor(rows.value))
 
 const takenIndexNames = computed(() =>
@@ -52,10 +51,7 @@ const takenIndexNames = computed(() =>
     .filter((name) => indexEditorMode.value === 'add' || name !== indexEditorTarget.value?.name)
 )
 
-/**
- * Indexes the server owns (the unique username index on the users collection) are rebuilt on
- * every save, so offering to edit or delete them would only produce a change that reverts.
- */
+/** Server-owned indexes are rebuilt on every save, so editing or deleting them would revert. */
 function isManagedIndex(index: IndexDefinition): boolean {
   return index.fields.some((field) => isProtectedUserField(collection.value, field.field))
 }
@@ -77,9 +73,7 @@ const indexColumns = [
   { id: 'actions', header: '' }
 ]
 
-// Reloading on a collection change as well as on mount: a deep link or the browser's
-// back button can move straight from one collection's tab to another's, which reuses
-// this component and would otherwise leave the previous collection on screen.
+// Also reload on a collection change: navigating between collections reuses this component.
 onMounted(loadDefinition)
 watch(collection, loadDefinition)
 
@@ -264,18 +258,15 @@ function buildDefinitionFromRows(
 }
 
 /**
- * Rebuilds the index list for a change made in the field table. The per-field toggles only ever
- * describe one single-field index per field; everything else - compound indexes and any extra
- * index built in the index editor - is carried over untouched.
+ * Field toggles describe one single-field index per field; compound and extra indexes are
+ * carried over untouched.
  */
 function indexesForRows(sourceRows: SchemaRow[]): IndexDefinition[] {
   const existing = definition.value?.indexes || []
   const generated: IndexDefinition[] = []
 
-  // Keep the name an existing single-field index already has instead of regenerating it: names
-  // are part of the index identity server-side, so renaming one means dropping and rebuilding it.
-  // Indexes created outside this editor (meta API, or server-owned ones like the unique username
-  // index on users) do not follow the idx_<field> convention.
+  // Keep existing names: renaming an index drops and rebuilds it server-side, and indexes created
+  // elsewhere (meta API, server-owned) do not follow the idx_<field> convention.
   const nameByField = new Map<string, string>()
   for (const index of existing) {
     if (index.fields.length === 1) {
@@ -283,8 +274,7 @@ function indexesForRows(sourceRows: SchemaRow[]): IndexDefinition[] {
     }
   }
 
-  // Names the field table owns. Such an index is replaced by what its row says, or dropped when
-  // the row's toggle is off - it must not be carried over as an untouched one.
+  // Indexes the field table owns are replaced or dropped per their row, never carried over.
   const ownedByRows = new Set<string>()
 
   for (const row of sourceRows) {
@@ -307,9 +297,8 @@ function indexesForRows(sourceRows: SchemaRow[]): IndexDefinition[] {
     }
   }
 
-  // A field that is gone takes every index mentioning it with it. An index pointing at a field
-  // that no longer exists is rejected by the server for the whole definition, so a deleted field
-  // that appears in a compound index would otherwise make the collection unsavable.
+  // A removed field takes its indexes with it: the server rejects the whole definition if an index
+  // points at a missing field.
   const known = new Set(indexableFieldsFor(sourceRows))
   const preserved = existing.filter(
     (index) =>
@@ -380,10 +369,7 @@ async function confirmDeleteIndex() {
   )
 }
 
-/**
- * Saves an index list as it is instead of deriving it from the field rows, so an index the field
- * table cannot express - a compound one, or a second index on the same field - survives.
- */
+/** Saves the list as is, so indexes the field table cannot express survive. */
 async function persistIndexes(
   nextIndexes: IndexDefinition[],
   successMessage: string

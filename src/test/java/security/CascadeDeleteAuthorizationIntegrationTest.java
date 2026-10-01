@@ -25,19 +25,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Executable specification of the cascading delete of a {@code RELATION} field.
- * <p>
- * The record a cascade removes lives in another collection and is named by the client, in an
- * ordinary body field that is validated for existence only. It is therefore a delete that
- * {@code ApiAuthFilter} never saw: the {@link auth.AuthorizationDecision} of the request was made
- * for the <em>holding</em> collection. The cascade used to run as a plain
- * {@code deleteOne(eq("id", ...))}, which let any user delete any record of the target collection -
- * including one whose delete rule is locked - by pointing a throwaway record of their own at it and
- * then deleting that.
- * <p>
- * What is asserted here is the rule of the <em>target</em> collection, evaluated against the caller
- * of the delete: a target the caller could not have deleted directly must survive the cascade, and
- * one they could have deleted must not.
+ * A cascade deletes a client-named record in another collection that ApiAuthFilter never authorized,
+ * so the target collection's delete rule must be evaluated against the caller.
  */
 @ExtendWith({TestRunner.class})
 class CascadeDeleteAuthorizationIntegrationTest {
@@ -79,8 +68,7 @@ class CascadeDeleteAuthorizationIntegrationTest {
 
     @Test
     void doesNotDeleteATargetOfALockedCollection() {
-        // No delete rule at all: nobody may remove these records through the API, and a cascade is
-        // not an exception to that - not even for the user who owns the target.
+        // No delete rule: a cascade is no exception, not even for the user who owns the target.
         String targets = seedTargets(null);
         String holders = seedHolders(targets);
 
@@ -112,11 +100,6 @@ class CascadeDeleteAuthorizationIntegrationTest {
                 findById(targets, foreignTarget), nullValue());
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Fixture
-    // ---------------------------------------------------------------------------------------
-
-    /** The target collection of the relation, with the given delete rule. */
     private static String seedTargets(String deleteRule) {
         String name = "cascade_targets_" + DbUtils.id();
         TenantTestUtils.seedCollection(
@@ -129,7 +112,6 @@ class CascadeDeleteAuthorizationIntegrationTest {
         return name;
     }
 
-    /** The holding collection: anyone authenticated may create, everyone deletes their own. */
     private static String seedHolders(String targets) {
         String name = "cascade_holders_" + DbUtils.id();
         TenantTestUtils.seedCollection(
@@ -191,7 +173,6 @@ class CascadeDeleteAuthorizationIntegrationTest {
         return TenantTestUtils.defaultTenantContext();
     }
 
-    /** Creates the user on first use and returns its id. */
     private static String userId(String username, String password) {
         Document existing = collections().dataCollection(context(), "users")
                 .find(eq("username", username))

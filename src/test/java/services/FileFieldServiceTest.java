@@ -111,14 +111,8 @@ class FileFieldServiceTest {
         assertThat(new String(storage.read(ctx, "old-file"), StandardCharsets.UTF_8), is("old"));
     }
 
-    // -------------------------------------------------------------------------------------
-    // maxSelect on a multi-file field
-    //
-    // An append adds to what the record already holds, so the limit has to be checked against
-    // the total. Checking only the uploaded count let a full field accept more files and then
-    // drop them without a word, while the write still answered 200 - the one failure a caller
-    // has no way of noticing.
-    // -------------------------------------------------------------------------------------
+    // maxSelect on append counts what the record already holds; counting only the upload would silently
+    // drop files while answering 200.
 
     @Test
     void appendingStoresEveryFileThatStillFits() throws Exception {
@@ -132,7 +126,6 @@ class FileFieldServiceTest {
 
         assertThat(changes.storedFileIds(), hasSize(2));
         assertThat(changes.replacedFileIds(), is(empty()));
-        // The kept file and both new ones are on the record, and all three are in storage.
         assertThat(FileFieldUtils.fileIds(record.get("attachment"), attachment(3)), hasSize(3));
         assertThat(storage.read(ctx, "kept-1"), is(notNullValue()));
         for (String fileId : changes.storedFileIds()) {
@@ -168,7 +161,6 @@ class FileFieldServiceTest {
 
         assertThat(rejected.getMessage(), containsString("Too many files"));
         assertThat(rejected.getMessage(), containsString("attachment"));
-        // Nothing was written: not to the record, not to storage.
         assertThat(record.get("attachment"), is(before));
         assertThat(storage.read(ctx, "kept-1"), is(notNullValue()));
         assertThat(storedFileCount(storage, ctx), is(3));
@@ -181,8 +173,7 @@ class FileFieldServiceTest {
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         Document record = recordHolding(storage, ctx, 3, "kept-1", "kept-2");
 
-        // Two more onto two of three: the first would fit, which is exactly why a partial store
-        // would be the wrong answer.
+        // The first would fit, which is exactly why a partial store would be the wrong answer.
         assertThrows(
                 IllegalArgumentException.class,
                 () -> service.applyUploads(ctx, multiFileDefinition(3), record, uploads("a.txt", "b.txt"), true));
@@ -190,7 +181,6 @@ class FileFieldServiceTest {
         assertThat(storedFileCount(storage, ctx), is(2));
     }
 
-    /** A rejected field must not leave the uploads of an earlier field behind. */
     @Test
     void aRejectedFieldRollsBackWhatAnEarlierFieldAlreadyStored() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
@@ -217,12 +207,10 @@ class FileFieldServiceTest {
                 IllegalArgumentException.class,
                 () -> service.applyUploads(ctx, definition, record, both, false));
 
-        // Only the pre-existing file is left - the cover that was already written is gone again.
         assertThat(storedFileCount(storage, ctx), is(1));
         assertThat(storage.read(ctx, "kept-1"), is(notNullValue()));
     }
 
-    /** A single-file field replaces rather than appends, so a held file never blocks a new one. */
     @Test
     void aSingleFileFieldCanAlwaysBeReplaced() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
@@ -237,7 +225,6 @@ class FileFieldServiceTest {
         assertThat(changes.replacedFileIds(), contains("kept-1"));
     }
 
-    /** Creating a record is not an append: more files than the field allows is still a rejection. */
     @Test
     void moreFilesThanTheFieldAllowsAreRejectedOnCreate() {
         FileStorageService storage = new FileStorageService(storageRoot);
@@ -255,10 +242,6 @@ class FileFieldServiceTest {
 
         assertThat(rejected.getMessage(), containsString("Too many files"));
     }
-
-    // -------------------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------------------
 
     private static FieldDefinition attachment(int maxSelect) {
         return new FieldDefinition(
@@ -283,12 +266,7 @@ class FileFieldServiceTest {
         return multiFileDefinition(1);
     }
 
-    /**
-     * A record whose file field already holds these files, with the bytes in storage. The stored
-     * shape comes from {@link FileFieldUtils#toStoredValue} rather than being built by hand: a
-     * single-file field holds the reference document itself, a multi-file field holds a list, and
-     * a test that gets that wrong would be testing a record the application never writes.
-     */
+    /** Shape comes from FileFieldUtils#toStoredValue, so the test never uses a record the app would not write. */
     private static Document recordHolding(
             FileStorageService storage, TenantContext ctx, int maxSelect, String... fileIds)
             throws Exception {

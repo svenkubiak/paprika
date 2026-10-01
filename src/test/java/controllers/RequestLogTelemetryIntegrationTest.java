@@ -40,11 +40,6 @@ import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * The request log is the only place an operator can see what an API call actually cost and which
- * hook made it cost that. It must therefore cover every route, separate hook time from Paprika's
- * own time - and it must not start collecting personal data on its own.
- */
 @ExtendWith({TestRunner.class})
 class RequestLogTelemetryIntegrationTest {
 
@@ -78,7 +73,6 @@ class RequestLogTelemetryIntegrationTest {
 
             assertThat(entry.getInteger("hookCount"), equalTo(1));
             assertThat(entry.getLong("hookTotalMs"), greaterThanOrEqualTo(30L));
-            // The hook waited inside the request, so the request cannot have been faster.
             assertThat(entry.getLong("execTimeMs"), greaterThanOrEqualTo(entry.getLong("hookTotalMs")));
 
             List<Document> hooks = entry.getList("hooks", Document.class);
@@ -127,13 +121,11 @@ class RequestLogTelemetryIntegrationTest {
             assertThat(createRecord(collection).getStatusCode(), equalTo(StatusCodes.CREATED));
 
             Document request = awaitEntry(eq("url", "/api/collections/" + collection));
-            // Bound to this request's id, not just to "a hook entry": an after-hook is written
-            // past the response, so an entry another test left behind would satisfy the poll
-            // immediately and be compared against this request.
+            // Bound to this request's id: an after-hook is written past the response, so another
+            // test's leftover entry would otherwise satisfy the poll.
             Document hookEntry = awaitEntry(
                     and(eq("type", "hook"), eq("requestId", request.getString("requestId"))));
 
-            // An after-hook finishes past the response, so it cannot be a field of the request.
             assertThat(hookEntry.getString("requestId"), equalTo(request.getString("requestId")));
             assertThat(hookEntry.getString("url"), containsString(hook.name()));
             assertThat(hookEntry.getInteger("statusCode"), equalTo(200));
@@ -200,11 +192,8 @@ class RequestLogTelemetryIntegrationTest {
     }
 
     /**
-     * {@code X-Forwarded-For} is written by the caller, so it can name anything at all. A host
-     * name used to be handed to the resolver and whatever came back was logged as the caller's
-     * address; now nothing is logged, in either mode. {@code localhost} is the case that makes
-     * this deterministic - it resolves without a network, so it is the one name that would
-     * certainly have been stored.
+     * A caller-written host name must not be resolved and logged as an address. {@code localhost}
+     * resolves without a network, which makes this deterministic.
      */
     @Test
     void aHeaderThatNamesNoAddressIsNotLogged() {
@@ -225,7 +214,6 @@ class RequestLogTelemetryIntegrationTest {
         }
     }
 
-    /** X-Real-IP is the fallback when there is no forwarded-for, and it is checked the same way. */
     @Test
     void theRealIpFallbackIsValidatedToo() {
         SettingsService settings = Application.getInstance(SettingsService.class);
@@ -285,10 +273,6 @@ class RequestLogTelemetryIntegrationTest {
         }
     }
 
-    /**
-     * What the admin UI's live mode asks for: only what was logged at or after a cursor. Anything
-     * older must stay out, or a live tail would repeat history on every tick.
-     */
     @Test
     void theListEndpointReturnsOnlyEntriesAtOrAfterTheSinceCursor() {
         TestRequest.post("/api/auth/login")
@@ -305,22 +289,17 @@ class RequestLogTelemetryIntegrationTest {
         assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));
         try {
             JsonNode body = JsonUtils.getMapper().readTree(list.getContent());
-            // No total: counting the whole log on every live tick is what makes polling expensive.
+            // No total: counting the whole log on every live tick would make polling expensive.
             assertThat(body.has("total"), equalTo(false));
             assertThat(body.get("limit").asInt(), equalTo(20));
             body.get("items").forEach(item ->
                     assertThat(item.get("timestamp").asText(), greaterThanOrEqualTo(cursor)));
-            // The bound is inclusive, so the entry the cursor points at is part of the answer.
             assertThat(body.get("items").findValuesAsText("id"), hasItem(older.getString("id")));
         } catch (Exception e) {
             throw new AssertionError("Unreadable request log response: " + list.getContent(), e);
         }
     }
 
-    /**
-     * Operating the admin UI is a constant stream of its own requests. Logging them by default
-     * would bury the traffic of the API the log is actually about.
-     */
     @Test
     void successfulAdminUiTrafficIsNotLoggedByDefault() {
         var cookies = utils.AdminTestUtils.loginAsAdminWithDefaultTenant();
@@ -328,11 +307,9 @@ class RequestLogTelemetryIntegrationTest {
 
         assertThat(settings.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(findLatest(and(eq("url", "/api/admin/settings"), eq("statusCode", 200))), nullValue());
-        // The login that produced the session is admin plane traffic too, and it succeeded.
         assertThat(findLatest(and(eq("url", "/authenticate"), eq("statusCode", 302))), nullValue());
     }
 
-    /** Auditing who changed what is the reason the filter can be switched off. */
     @Test
     void adminUiTrafficIsLoggedWhenTheOperatorAsksForIt() {
         SettingsService settings = Application.getInstance(SettingsService.class);
@@ -350,7 +327,6 @@ class RequestLogTelemetryIntegrationTest {
         }
     }
 
-    /** A rejected superadmin login is a security event, not admin UI noise - it stays logged. */
     @Test
     void failedAdminRequestsAreLoggedEvenWhileAdminTrafficIsFiltered() {
         TestRequest.post("/api/admin/login")
@@ -362,7 +338,6 @@ class RequestLogTelemetryIntegrationTest {
         assertThat(entry.getInteger("statusCode"), greaterThanOrEqualTo(400));
     }
 
-    /** Live mode is a read of the same log, so it needs the same admin session - not less. */
     @Test
     void theSinceReadRequiresAnAdminSession() {
         TestResponse list = TestRequest.get("/api/admin/request-logs?limit=20&since=1970-01-01T00:00:00Z").execute();

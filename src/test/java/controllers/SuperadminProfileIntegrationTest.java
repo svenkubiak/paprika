@@ -18,17 +18,10 @@ import java.util.Base64;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * The profile a superadmin keeps of their own account. Everything here acts on the account behind
- * the session, so the tests sign in and then only ever talk about "me" - there is deliberately no
- * route that takes a user id.
- * <p>
- * The test classes share one application and one database, so each test puts the account back the
- * way it found it.
- */
+/** The test classes share one application and database, so each test restores the account it changed. */
 @ExtendWith({TestRunner.class})
 class SuperadminProfileIntegrationTest {
-    /** A real 1x1 PNG - small enough to inline, and Tika has to recognise it as an image. */
+    /** A real 1x1 PNG, because Tika has to recognise it as an image. */
     private static final String PNG_1X1 =
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -62,10 +55,7 @@ class SuperadminProfileIntegrationTest {
         assertThat(response.getContent(), containsString("valid email address"));
     }
 
-    /**
-     * Storing an address must never count as owning it: until the confirmation link comes back, the
-     * account is in the same state as one without an address, and nothing is sent there.
-     */
+    /** Until the confirmation link comes back, nothing may be sent to a stored address. */
     @Test
     void aStoredAddressStaysUnconfirmedAndKeepsTheAlertOff() {
         HttpCookie auth = AdminTestUtils.loginAsAdmin();
@@ -122,11 +112,7 @@ class SuperadminProfileIntegrationTest {
                 equalTo(StatusCodes.NOT_FOUND));
     }
 
-    /**
-     * The declared type only decides how the bytes would be handed back, so it cannot be the thing
-     * that is trusted: a document announced as a PNG would otherwise be served with a content type
-     * that makes a browser render it.
-     */
+    /** The declared type is untrusted: a document announced as PNG would be served as one and rendered. */
     @Test
     void anImageThatIsNotAnImageIsRejected() {
         HttpCookie auth = AdminTestUtils.loginAsAdmin();

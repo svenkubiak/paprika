@@ -9,7 +9,6 @@ export type NavItem = {
   active: boolean
 }
 
-/** Instance-wide navigation, shown in the header menu instead of the tenant-scoped sidebar. */
 export function useGeneralNav() {
   const route = useRoute()
   const { bootstrap } = useBootstrap()

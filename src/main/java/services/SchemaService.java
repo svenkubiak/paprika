@@ -49,9 +49,7 @@ public class SchemaService {
         List<CollectionDefinition> collections = StreamSupport
                 .stream(tenantCollections.metaCollections(ctx).find().spliterator(), false)
                 .filter(c -> !c.isSystem() || SystemCollections.USERS.equals(c.name()))
-                // An import rejects a definition without fields or indexes, so an export must
-                // never produce one - otherwise a row that predates that rule would turn into a
-                // backup the instance refuses to read back.
+                // Import rejects missing fields/indexes, so export must never produce them.
                 .map(SchemaService::withCompleteLists)
                 .toList();
 
@@ -63,16 +61,13 @@ public class SchemaService {
     }
 
     public SchemaImportResult importSchema(TenantContext ctx, SchemaExportDto schema) {
-        // Entries the import would skip anyway must not be validated, otherwise the file could be
-        // rejected over a collection that was never going to be touched.
+        // Skipped entries are not validated, so they cannot reject the whole file.
         List<CollectionDefinition> applicable = schema.collections().stream()
                 .filter(SchemaService::isApplicable)
                 .toList();
 
-        // Everything below runs before the first write: an import that fails halfway through
-        // would leave the tenant with some collections migrated and some not, and no way to tell
-        // which - and for the hooks, with none at all, because they are dropped before they are
-        // re-inserted.
+        // All validation runs before the first write: a half-applied import would leave some
+        // collections migrated and no hooks at all, since hooks are dropped before re-insertion.
         rejectIncompleteDefinitions(applicable);
 
         List<PlannedCollection> plan = plan(ctx, applicable);
@@ -109,12 +104,7 @@ public class SchemaService {
                 rulesPreserved);
     }
 
-    /**
-     * Turns the file into the definitions that would be stored, without storing them. Validation
-     * needs the finished article: what an entry means depends on the collection it replaces (its
-     * id, its system flag, the rules it keeps) and, for {@code users}, on the core fields the
-     * server owns regardless of what the file says.
-     */
+    // Validation needs the definitions exactly as they would be stored (ids, system flag, kept rules, users core fields).
     private List<PlannedCollection> plan(TenantContext ctx, List<CollectionDefinition> applicable) {
         List<PlannedCollection> plan = new ArrayList<>();
 
@@ -122,9 +112,8 @@ public class SchemaService {
             CollectionDefinition existing = tenantCollections.findDefinition(ctx, incoming.name());
             boolean isUsers = SystemCollections.USERS.equals(incoming.name());
 
-            // The users collection owns its credential fields and its unique username index. An
-            // import may add custom fields, never take the core away - duplicate usernames in a
-            // tenant is not a state the application can recover from.
+            // An import may add custom users fields but never remove the core fields or the
+            // unique username index.
             List<FieldDefinition> fields = isUsers
                     ? SystemCollectionService.mergeUsersFields(incoming.fields())
                     : incoming.fields();
@@ -143,12 +132,8 @@ public class SchemaService {
                 continue;
             }
 
-            // A file without a rules object is taken as "not specified", not as "no rules".
-            // Applying the null would fall through rulesOrDefault() to locked() and silently
-            // cut off API access to a collection that was working a moment ago - which is the
-            // safe direction, but not something an import of a hand-edited or pre-rules
-            // schema should do behind the admin's back. Rules that are present are applied
-            // as they are, including a deliberate full lock.
+            // Missing rules mean "not specified": applying null would fall through to locked()
+            // and silently cut off API access. Present rules apply as-is, including a full lock.
             CollectionRules rules = incoming.rules();
             boolean rulesPreserved = rules == null;
             if (rulesPreserved) {
@@ -168,27 +153,21 @@ public class SchemaService {
     }
 
     /**
-     * The same invariants the meta API enforces when a collection is saved by hand: rules are a
-     * closed allowlist, field names are checked, indexes have to be buildable. A schema file is
-     * an exchange artifact - it arrives from other environments, repositories and third parties -
-     * so it must not be able to create a state the API itself refuses.
-     * <p>
-     * Membership rules resolve against the file first and the database second: a full schema
-     * brings its membership collection along, and that entry is not stored yet.
+     * A schema file must not create a state the meta API itself refuses. Membership rules resolve
+     * against the file first, since its membership collection is not stored yet.
      */
     private void rejectInvalidDefinitions(TenantContext ctx, List<PlannedCollection> plan) {
         List<String> problems = new ArrayList<>();
 
         Map<String, CollectionDefinition> incoming = new LinkedHashMap<>();
         for (PlannedCollection planned : plan) {
-            // Two entries for one collection would be inserted twice and collide on the unique
-            // name index - after the first one was already written.
+            // Would otherwise collide on the unique name index after the first write.
             if (incoming.put(planned.definition().name(), planned.definition()) != null) {
                 problems.add(planned.definition().name() + ": the file contains more than one entry for it");
             }
         }
 
-        // The tenant as it will be after the import: an import adds and replaces, it never removes
+        // An import adds and replaces, it never removes.
         Map<String, CollectionDefinition> resulting = new LinkedHashMap<>();
         tenantCollections.metaCollections(ctx).find().forEach(stored -> resulting.put(stored.name(), stored));
         resulting.putAll(incoming);
@@ -229,10 +208,6 @@ public class SchemaService {
         }
     }
 
-    /**
-     * @param isNew          whether the definition creates a collection rather than replacing one
-     * @param rulesPreserved whether the file carried no rules and the existing ones were kept
-     */
     private record PlannedCollection(CollectionDefinition definition, boolean isNew, boolean rulesPreserved) {}
 
     private static boolean isApplicable(CollectionDefinition incoming) {
@@ -244,12 +219,7 @@ public class SchemaService {
                 || SystemCollections.USERS.equals(incoming.name());
     }
 
-    /**
-     * Unlike the rules, fields and indexes are what a schema import is for, so a missing one is
-     * not "leave it alone" - it is an incomplete file. Applying it would wipe the schema of an
-     * existing collection, or store a definition the rest of the code has to null-check forever.
-     * Every problem in the file is reported at once so one attempt is enough to fix it.
-     */
+    // Unlike missing rules, missing fields or indexes would wipe an existing schema, so they are rejected.
     private static void rejectIncompleteDefinitions(List<CollectionDefinition> collections) {
         List<String> problems = new ArrayList<>();
 
@@ -283,11 +253,7 @@ public class SchemaService {
         );
     }
 
-    /**
-     * The hooks as they would be stored: new ids, forward headers normalized. Built before the
-     * validation runs so that what is checked is exactly what is written - a header that only
-     * becomes blocked after normalization must not slip through.
-     */
+    // Normalized before validation, so a header that is only blocked after normalization cannot slip through.
     private static List<HookDefinition> plannedHooks(List<HookDefinition> hooks) {
         if (hooks == null || hooks.isEmpty()) {
             return List.of();
@@ -343,12 +309,7 @@ public class SchemaService {
         applyIndexes(ctx, definition);
     }
 
-    /**
-     * An import is not allowed to fail over an index: the definition it belongs to is already
-     * stored, and data that stands in the way of a unique index is something the admin has to
-     * clean up afterwards. Matching indexes are left alone, changed ones (unique flipped, fields
-     * or direction edited) are rebuilt.
-     */
+    // Must not fail the import: the definition is already stored, and conflicting data is for the admin to clean up.
     private void applyIndexes(TenantContext ctx, CollectionDefinition definition) {
         if (definition.indexes() == null) {
             return;
@@ -361,11 +322,6 @@ public class SchemaService {
         }
     }
 
-    /**
-     * @param rulesPreserved How many existing collections kept their rules because the imported
-     *                       file did not carry any. Reported so that an import which silently
-     *                       leaves rules untouched is visible rather than guesswork.
-     */
     public record SchemaImportResult(
             int collectionsCreated,
             int collectionsUpdated,

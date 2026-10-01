@@ -74,10 +74,7 @@ public class RealtimeService {
         return revoke(client -> tenantId.equals(client.tenantId()) && userId.equals(client.userId()));
     }
 
-    /**
-     * Closes the streams of an account in every tenant. A superadmin is not bound to one tenant,
-     * so their streams may have been opened with tokens for several.
-     */
+    // A superadmin is not bound to one tenant, so their streams may span several.
     public int revokeUserEverywhere(String userId) {
         if (StringUtils.isBlank(userId)) {
             return 0;
@@ -134,10 +131,8 @@ public class RealtimeService {
             return false;
         }
 
-        // A client id is handed to whoever opens the stream, and the stream itself is not
-        // authenticated. Once a client has been claimed it therefore stays bound to that user:
-        // a second caller must not be able to attach its own identity - and with it its own
-        // subscriptions - to a stream someone else is reading.
+        // The stream itself is unauthenticated, so a claimed client stays bound to its user:
+        // nobody else may attach their identity to a stream someone else is reading.
         if (client.isAuthenticated() && !auth.id().equals(client.userId())) {
             return false;
         }
@@ -204,12 +199,7 @@ public class RealtimeService {
         });
     }
 
-    /**
-     * The delivery check is the same rule decision the API makes, with the same inputs - tenant
-     * context included, so a membership rule resolves here exactly as it does on
-     * {@code GET /api/collections/...}. A client must never receive through the stream what a
-     * request would have refused it.
-     */
+    // Same rule decision and inputs as the API: the stream must never deliver what a request would refuse.
     static boolean shouldDeliver(
             RealtimeClient client,
             String eventTenantId,
@@ -278,7 +268,6 @@ public class RealtimeService {
                 continue;
             }
             String trimmed = subscription.trim();
-            // The users collection cannot be subscribed to over realtime.
             if (targetsUsersCollection(trimmed)) {
                 continue;
             }
@@ -332,8 +321,7 @@ public class RealtimeService {
             return;
         }
 
-        // Undertow formats the SSE frame itself (event / id / data). Passing a
-        // pre-built frame via send(String) would nest it inside another data: line.
+        // Undertow formats the SSE frame itself; a pre-built frame would be nested in another data: line.
         connection.send(
                 data,
                 StringUtils.isBlank(eventName) ? null : eventName,

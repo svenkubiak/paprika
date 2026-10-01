@@ -47,9 +47,8 @@ class RuleServiceTest {
     }
 
     /**
-     * The "auth" rule normalizes to "auth.id != null", a comparison without any record field.
-     * It must not be mistaken for an unsatisfiable condition, or a list would come back empty for
-     * exactly the callers the rule grants access to, while VIEW on the same records succeeds.
+     * "auth" normalizes to "auth.id != null" with no record field; mistaking it for unsatisfiable
+     * would empty the list for exactly the callers VIEW grants access to.
      */
     @Test
     void authListRuleMatchesEveryRecordForAuthenticatedCaller() {
@@ -119,11 +118,7 @@ class RuleServiceTest {
         ruleService.validateRules(rules);
     }
 
-    /**
-     * Without a tenant context the membership cannot be looked up. Both entry points have to say
-     * "no" then - a null list filter is refused by the caller, and canAccess denies outright.
-     * Never an empty filter, which would return the whole collection.
-     */
+    /** Without a tenant context both entry points must deny; an empty filter would return the whole collection. */
     @Test
     void membershipRulesDenyWhenTheLookupCannotRun() {
         AuthContext user = AuthContext.of("user-1", Role.USER, "tenant-1");

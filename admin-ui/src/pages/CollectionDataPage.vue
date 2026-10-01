@@ -31,8 +31,7 @@ const editorRecord = ref<Record<string, unknown>>({})
 const saving = ref(false)
 const bulkDeleteOpen = ref(false)
 const recordDeleteOpen = ref(false)
-// The delete confirmation is reached from the editor sheet and from a row action, so the record it
-// refers to cannot be read off the editor state.
+// Reached from the editor sheet and a row action, so it cannot be read off the editor state.
 const deletingRecord = ref<Record<string, unknown> | null>(null)
 
 /** Identifies the newest record request so an overtaken one cannot write its result. */
@@ -97,19 +96,15 @@ const summary = computed(() => {
   return `${from}–${to} of ${total.value} records`
 })
 
-// Switching collections in the sidebar keeps this component mounted, so everything derived from
-// the previous one has to be dropped by hand. The definition is the one that mattered: it drives
-// the table columns and the sort options, and reloading only the records left the new collection's
-// rows rendered through the old collection's columns - which looked like the page had not reacted
-// at all until a detour through another tab remounted it.
+// Switching collections keeps this component mounted, so everything derived from the previous one -
+// above all the definition, which drives columns and sort options - has to be reset by hand.
 watch(collection, async () => {
   if (isUsers.value) return
 
   definition.value = null
   records.value = []
   total.value = 0
-  // Sort and search belong to the collection that was on screen; a sort field that does not exist
-  // in the new collection would silently sort on nothing.
+  // A sort field that does not exist in the new collection would silently sort on nothing.
   search.value = ''
   sortField.value = 'updatedAt'
   sortDirection.value = 'desc'
@@ -158,9 +153,7 @@ async function refreshRecords() {
   try {
     const offset = (page.value - 1) * pageSize.value
     const result = await api.listRecords(collection.value, offset, pageSize.value)
-    // A collection switch resets the page, so two requests can be in flight at once - same for
-    // clicking through pages quickly. Only the newest may write, otherwise a slower response
-    // overwrites what the user is actually looking at.
+    // Collection switches and quick paging can overlap requests; only the newest may write.
     if (request !== latestRecordsRequest) return
     records.value = result.items
     total.value = result.total
@@ -219,9 +212,8 @@ async function openEditRecord(record: Record<string, unknown>) {
 
 function buildDefaultRecord(): Record<string, unknown> {
   const fields = definition.value?.fields || []
-  // Defaults first: applyDefaultsToRecord only fills fields that are still missing, so the
-  // empty-string placeholders must be written after it ran - otherwise every configured default
-  // would be shadowed by an empty string.
+  // Defaults first: applyDefaultsToRecord only fills missing fields, so the empty-string
+  // placeholders must come after it or they would shadow every default.
   const withDefaults = applyDefaultsToRecord(fields, {})
   for (const field of fields) {
     if (field.type === 'FILE' || field.type === 'BOOLEAN') continue
@@ -242,11 +234,6 @@ function buildDefaultRecord(): Record<string, unknown> {
   return withDefaults
 }
 
-/**
- * The record editor marks the fields itself; the toast only reports that nothing was saved and
- * how much there is to fix. It used to carry the first message of the first field, which was the
- * only place it appeared.
- */
 function onValidationError(message: string) {
   toast.add({
     title: 'Record not saved',

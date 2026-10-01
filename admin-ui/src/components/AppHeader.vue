@@ -112,9 +112,8 @@ function toggleColorMode() {
       </div>
 
       <div class="flex items-center gap-2">
-        <!-- Instance-wide navigation used to sit in the sidebar, which is otherwise entirely
-             tenant-scoped. It is the only way to reach these pages, so it needs real menu
-             semantics: keyboard navigation, Esc, and focus returning to the trigger. -->
+        <!-- The only way to reach these pages, so it needs real menu semantics: keyboard
+             navigation, Esc, and focus returning to the trigger. -->
         <UDropdownMenu
           :items="generalNavItems"
           :content="{ align: 'end' }"
@@ -128,8 +127,7 @@ function toggleColorMode() {
           />
         </UDropdownMenu>
 
-        <!-- The picture and the name of the account this session belongs to, and the way to the
-             page that changes them. Deliberately not a menu: there is exactly one destination. -->
+        <!-- Deliberately not a menu: there is exactly one destination. -->
         <UButton
           to="/admin/profile"
           variant="ghost"

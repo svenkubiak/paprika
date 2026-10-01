@@ -117,8 +117,7 @@ public class AuthController {
                     registerDto.password()).orElse(null);
 
             if (user == null) {
-                // Hashing the new password competes for the same Argon2 slots a login needs, and
-                // none became free in time. Same answer as an over-capacity login.
+                // No Argon2 slot became free in time; same answer as an over-capacity login.
                 return Response.status(StatusCodes.TOO_MANY_REQUESTS)
                         .header("Retry-After", "1")
                         .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"));
@@ -141,9 +140,7 @@ public class AuthController {
     }
 
     public Response login(@NotNull(message = "Request body is required") @Valid LoginDto loginDto, Request request) {
-        // The tenant the login is for, not the request's context: that one may stem from a bearer
-        // token of another tenant. Without a tenant there is nobody whose hooks could guard it,
-        // and the login below fails anyway.
+        // The login's tenant, not the request context: that may stem from another tenant's bearer token.
         TenantContext ctx = tenantService.resolveLoginTenant(loginDto.tenant())
                 .map(tenant -> TenantContext.guest(tenant.id(), tenant.databaseName()))
                 .orElse(null);
@@ -178,12 +175,8 @@ public class AuthController {
         return response;
     }
 
-    /**
-     * Mints a session for another user of the caller's own tenant, without a password. Meant for a
-     * trusted backend that authenticated the user against an external identity provider itself.
-     * The tenant comes from the caller's bearer token only - a tenant in the body would be a
-     * cross-tenant vector - and the caller has to be listed in the tenant's {@code tokenIssuers}.
-     */
+    // The tenant comes from the caller's bearer token only; a tenant in the body would be a
+    // cross-tenant vector.
     public Response issueToken(@NotNull(message = "Request body is required") @Valid IssueTokenDto issueTokenDto, Request request) {
         TenantContext ctx = TenantContextHolder.get(request);
         TokenIssueResult result = tenantUserService.resolveTokenIssue(ctx, issueTokenDto.userId());
@@ -222,7 +215,7 @@ public class AuthController {
         Optional<AuthContext> auth = session
                 .map(AuthService.TokenSession::auth)
                 .flatMap(tenantUserService::resolveActiveUser);
-        // The session start travels along, so refreshing does not extend the session past its maximum
+        // The session start travels along, so refreshing cannot extend a session past its maximum.
         Optional<TokenPair> pair = auth.flatMap(user -> authService.renewTokenPair(session.orElseThrow(), user));
 
         if (pair.isEmpty()) {
@@ -235,14 +228,8 @@ public class AuthController {
         return response;
     }
 
-    /**
-     * Ends every session of the caller: all access and refresh tokens issued so far stop working,
-     * on every device, and open realtime streams are closed. A single session cannot be ended on
-     * its own - the tokens carry no state that could single one out.
-     * <p>
-     * Only an access token can log out. An API key is a credential of its own, and it is revoked
-     * where it was issued.
-     */
+    // Ends every session of the caller: tokens carry no state that could single one out. API keys
+    // cannot log out; they are revoked where they were issued.
     public Response logout(Request request) {
         Optional<AuthService.TokenSession> session = authService.resolveBearerSession(request);
         if (session.isEmpty()) {
@@ -297,11 +284,8 @@ public class AuthController {
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         } catch (MangooHashingException e) {
-            // Hashing the new password needs the same Argon2 slot a login does. The reset token
-            // is already claimed at this point, so the caller has to request a new link - the
-            // alternative, hashing before the token is claimed, would make every invalid token
-            // cost an Argon2 computation and hand an attacker the amplification the slot limit
-            // exists to prevent.
+            // The token is already claimed, so the caller needs a new link. Hashing before claiming
+            // would make every invalid token cost an Argon2 run, an amplification for attackers.
             return Response.status(StatusCodes.TOO_MANY_REQUESTS)
                     .header("Retry-After", "1")
                     .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"));
@@ -343,11 +327,7 @@ public class AuthController {
         return tenantService.findBySlug(slug.trim()).filter(TenantDefinition::isActive).orElse(null);
     }
 
-    /**
-     * Builds the recovery link Paprika emails. If the tenant's configured URL contains a
-     * {@code {token}} placeholder it is substituted; otherwise the token is appended as a query
-     * parameter. The token is URL-safe, so no additional encoding is needed.
-     */
+    // The token is URL-safe, so no additional encoding is needed.
     static String buildLink(String baseUrl, String token) {
         if (baseUrl.contains("{token}")) {
             return baseUrl.replace("{token}", token);
@@ -364,11 +344,8 @@ public class AuthController {
         return issueTokenForUser(auth.orElseThrow(), request);
     }
 
-    /**
-     * The token response both token-issuing paths share: the hook driven
-     * {@code beforeLogin}/{@code issueTokenFor} and {@code POST /api/auth/issue-token}. Both look
-     * like a login to everything downstream, so both fire {@code afterLogin}.
-     */
+    // Shared by beforeLogin/issueTokenFor and /api/auth/issue-token; both look like a login
+    // downstream, so both fire afterLogin.
     private Response issueTokenForUser(AuthContext auth, Request request) {
         Response response = authResponseService.toTokenResponse(authService.createTokenPair(auth));
         fireAfterForUser(auth, HookEvent.afterLogin, request, null);

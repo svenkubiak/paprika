@@ -22,13 +22,10 @@ import type {
 
 export class ApiError extends Error {
   status: number
-  /** Set when the request failed because the admin session is gone, not because of its payload. */
   sessionExpired: boolean
   /**
-   * Set when the request never reached an application answer - the connection failed, timed out,
-   * or a proxy answered for a server that is not there. Telling this apart from a 401 matters:
-   * both used to end up in the same catch, so a restart signed everybody out of a session that
-   * was still perfectly valid.
+   * No application answer at all (connection failed, timed out, or a proxy answered). Kept apart
+   * from a 401 so a restart does not sign everybody out of a still-valid session.
    */
   networkError: boolean
 
@@ -45,8 +42,7 @@ export function isNetworkError(error: unknown): boolean {
   return error instanceof ApiError && error.networkError
 }
 
-/** Without this a server that accepts the connection but does not answer yet (it is still
- *  starting) leaves the router guard awaiting forever, i.e. the app hangs on its placeholder. */
+/** Otherwise a server that is still starting (accepts, never answers) hangs the router guard. */
 const REQUEST_TIMEOUT_MS = 15_000
 
 /** What a reverse proxy answers while the application behind it is restarting. */
@@ -55,9 +51,8 @@ const UPSTREAM_STATUS = new Set([502, 503, 504])
 const LOGIN_PATH = '/login'
 
 /**
- * Endpoints where a 401 is the normal answer to a wrong credential rather than a session that ran
- * out. These are the ones used to get a session in the first place, so bouncing them to the login
- * page would loop and swallow the "wrong password" the user needs to see.
+ * Endpoints where a 401 means a wrong credential, not an expired session; bouncing them to the
+ * login page would loop and swallow the error.
  */
 const CREDENTIAL_ENDPOINTS = new Set([
   '/api/admin/login',
@@ -72,24 +67,17 @@ type SessionExpiredHandler = () => void
 let sessionExpiredHandler: SessionExpiredHandler | undefined
 let sessionExpiredNotified = false
 
-/**
- * Installed by the router. Keeping the navigation out of this module is what stops an expired
- * session from being answered twice - once by a full page load started here and once by the
- * router guard that catches the error below. Those two raced each other, and the loser was an
- * aborted navigation with an empty <div id="app">.
- */
+/** Installed by the router: navigating from here too raced the router guard into a blank page. */
 export function onSessionExpired(handler: SessionExpiredHandler): void {
   sessionExpiredHandler = handler
 }
 
-/** Lets the login page report that a session exists again. */
 export function resetSessionExpired(): void {
   sessionExpiredNotified = false
 }
 
 function sessionExpired(): never {
-  // A page can fire several requests at once, and all of them fail the same way - only the first
-  // one gets to trigger the handler.
+  // Concurrent requests all fail the same way; only the first triggers the handler.
   if (!sessionExpiredNotified) {
     sessionExpiredNotified = true
     sessionExpiredHandler?.()
@@ -99,10 +87,8 @@ function sessionExpired(): never {
 }
 
 /**
- * An expired admin session reaches the client in two shapes: the meta and admin API answer with a
- * 401 from AdminAuthFilter, while a route bound withAuthentication() redirects to the login page
- * and fetch follows that transparently, leaving a 200 that carries the admin UI shell. Both mean
- * the same thing and neither is something a calling page can do anything useful with.
+ * An expired session arrives either as a 401 (meta/admin API) or as a 200 carrying the admin UI
+ * shell, because fetch follows the login redirect of withAuthentication() routes.
  */
 function guardSession(response: Response, url: string): void {
   if (CREDENTIAL_ENDPOINTS.has(url)) {
@@ -123,13 +109,10 @@ function parseErrorMessage(body: string, fallback: string): string {
         .join(', ')
     }
     if (data.errors) {
-      // mangoo builds this from a HashMap, so the order is arbitrary - sort it to keep the
-      // message stable when more than one field failed.
+      // mangoo builds this from a HashMap; sort so the message is stable.
       const entries = Object.entries(data.errors).sort(([a], [b]) => a.localeCompare(b))
-      // The key is whatever the violated constraint sits on, which for a body-level @NotNull is
-      // the Java parameter name (`registerDto`). Naming the key only helps when there is more
-      // than one message to tell apart, so a single violation is shown on its own - that also
-      // keeps internal parameter names out of the UI.
+      // A body-level @NotNull is keyed by the Java parameter name, so keys are only shown when
+      // there is more than one message - that also keeps internal names out of the UI.
       const fields =
         entries.length > 1
           ? entries.map(([field, message]) => (field ? `${field}: ${message}` : message))
@@ -159,8 +142,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
       }
     })
   } catch (error) {
-    // fetch only rejects when there was no HTTP answer at all - a dead connection, a refused
-    // one, or the timeout above.
+    // fetch only rejects without any HTTP answer: dead or refused connection, or the timeout above.
     throw new ApiError('The server could not be reached', 0, false, true)
   }
 
@@ -180,8 +162,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   try {
     data = body ? JSON.parse(body) : null
   } catch {
-    // Not JSON, so this did not come from the application: an error page from whatever sits in
-    // front of it. Reporting the HTML verbatim helps nobody.
+    // Not JSON, so an error page from whatever sits in front of the application.
     if (!response.ok) {
       throw new ApiError('The server returned an unexpected response', response.status, false, true)
     }
@@ -297,11 +278,7 @@ export const api = {
     return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/users`)
   },
 
-  /**
-   * `customFields` carries the fields of the tenant's own users schema. They are sent alongside
-   * the core fields, which is what the admin API expects: everything that is not username, email
-   * or password is validated against that schema.
-   */
+  /** Everything but username, email and password is validated against the tenant's users schema. */
   createTenantUser(
     tenantId: string,
     username: string,
@@ -354,11 +331,10 @@ export const api = {
       name: string
       userId: string
       expiresAt?: string | null
-      /** Only settable here: the flag cannot be changed after creation. */
+      /** Creation-only. */
       bypassRules?: boolean
-      /** Only settable here either: the flag cannot be changed after creation. */
+      /** Creation-only. */
       bypassHooks?: boolean
-      /** Source ranges in CIDR notation; empty or omitted means the key works from anywhere. */
       allowedCidrs?: string[]
     }
   ): Promise<CreatedApiKey> {
@@ -376,10 +352,7 @@ export const api = {
     })
   },
 
-  /**
-   * The only part of an existing key that can be changed. The bypass flags stay creation-only
-   * because they hand out reach; this one takes reach away, and hosts move.
-   */
+  /** The only changeable part of a key: the bypass flags grant reach, this one takes it away. */
   updateApiKeyAllowedCidrs(
     tenantId: string,
     keyId: string,
@@ -395,7 +368,7 @@ export const api = {
     )
   },
 
-  /** Stops the key from authenticating, but keeps its record visible in the list. */
+  /** Stops the key from authenticating, but keeps its record in the list. */
   revokeApiKey(tenantId: string, keyId: string): Promise<void> {
     return request(
       `/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys/${encodeURIComponent(keyId)}/revoke`,
@@ -403,7 +376,6 @@ export const api = {
     )
   },
 
-  /** Removes the record as well - the key is gone from the list afterwards. */
   deleteApiKey(tenantId: string, keyId: string): Promise<void> {
     return request(
       `/api/meta/tenants/${encodeURIComponent(tenantId)}/api-keys/${encodeURIComponent(keyId)}`,
@@ -634,7 +606,6 @@ export const api = {
     return request('/api/admin/profile')
   },
 
-  /** Stores the address and mails the confirmation link to it. */
   updateProfileEmail(email: string): Promise<SuperadminProfile> {
     return request('/api/admin/profile/email', {
       method: 'POST',
@@ -759,7 +730,7 @@ export const api = {
     collections: number
     documents: number
     files: number
-    // Where the server saved the state from before the import, so a wrong restore can be undone
+    // Where the server saved the pre-import state, so a wrong restore can be undone
     snapshot: string
   }> {
     const formData = new FormData()
@@ -790,10 +761,7 @@ export const api = {
     )
   },
 
-  /**
-   * One live-mode tick: the same filtered read, bounded to what was logged at or after `since`.
-   * The bound is inclusive on the server, so the caller has to drop entries it already shows.
-   */
+  /** `since` is inclusive on the server, so the caller has to drop entries it already shows. */
   listRequestLogsSince(
     since: string,
     limit: number,

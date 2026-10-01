@@ -16,11 +16,7 @@ public record TenantDefinition(
         String passwordResetUrl,
         String emailVerificationUrl,
         List<String> webhookAllowlist,
-
-        /**
-         * IDs of users of this tenant that may mint a session for any other user of the same
-         * tenant through {@code POST /api/auth/issue-token}. Empty means nobody can.
-         */
+        // Users that may mint a session for any other user of the tenant via /api/auth/issue-token.
         List<String> tokenIssuers) {
 
     public static final String COLLECTION = "tenants";

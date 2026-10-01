@@ -42,10 +42,7 @@ const form = ref({
 
 const membershipFields = ref<FieldDefinition[]>([])
 
-/**
- * Kept out of the template: the sentence names the literal field 'id', and the explanation is long
- * enough that it belongs behind the info toggle rather than under the control.
- */
+/** Kept out of the template because the sentence quotes the literal field 'id'. */
 const groupRecordFieldDetails =
   "Choose 'id' if the records of this collection are the groups themselves - then create needs " +
   'another preset, because nobody can be a member of a group that does not exist yet.'
@@ -88,9 +85,8 @@ const ruleLevelChoices = [
   { label: 'Public', value: '*', icon: 'i-lucide-globe', preset: 'public' as RulePreset },
   { label: 'Signed in', value: 'auth', icon: 'i-lucide-user-check', preset: 'auth' as RulePreset },
   { label: 'Own records', value: 'owner', icon: 'i-lucide-user-cog', preset: 'owner' as RulePreset },
-  // "Group members" needs a group field on the records, which a user record does not have;
-  // "Group peers" compares the record id against the members, which only makes sense where the
-  // records are the users. The backend rejects the other combination on save.
+  // "Group members" needs a group field, which user records lack; "Group peers" only makes sense
+  // where the records are the users. The backend rejects the other combination on save.
   { label: 'Group members', value: 'group', icon: 'i-lucide-users', preset: 'group' as RulePreset },
   { label: 'Group peers', value: 'peers', icon: 'i-lucide-users-round', preset: 'peers' as RulePreset }
 ]
@@ -145,10 +141,8 @@ const allLevels = computed(() => [
 const usesMembershipRules = computed(() => allLevels.value.some(isMembershipLevel))
 const usesGroupRules = computed(() => allLevels.value.some((level) => level === 'group'))
 
-// The own collection stays in the list: a membership collection that scopes itself is how an
-// application shows the member list of a group - my memberships name my groups, and every row of
-// those groups is visible. The resolver queries the memberships once and applies the result, so
-// this is not a circular reference.
+// The own collection stays in the list: a self-scoping membership collection is how a group's
+// member list is shown. Not circular - the resolver queries the memberships once.
 const collectionOptions = computed(() =>
   (bootstrap.value?.collections ?? []).map((name) => ({
     label: name === collection.value ? `${name} (this collection — the memberships themselves)` : name,
@@ -164,16 +158,13 @@ function lookupFieldOptions(fields: FieldDefinition[]) {
 }
 
 const membershipFieldOptions = computed(() => lookupFieldOptions(membershipFields.value))
-// "id" is offered on top of the declared fields: it configures the third shape of the preset -
-// the records of this collection *are* the groups, so there is no field pointing at one.
+// "id": the records of this collection are themselves the groups.
 const recordFieldOptions = computed(() => [
   { label: 'id (the record is the group)', value: 'id' },
   ...lookupFieldOptions(definition.value?.fields ?? [])
 ])
 
-// The field selectors can only be filled once the membership collection's schema is known, and
-// that is a separate request - the rules page only ever loads its own collection. Unless the
-// memberships are this collection, in which case the schema is already on screen.
+// The membership collection's schema needs its own request, unless it is this collection.
 watch(
   () => form.value.groupCollection,
   async (name) => {
@@ -193,9 +184,7 @@ watch(
   }
 )
 
-// Reloading on a collection change as well as on mount: a deep link or the browser's
-// back button can move straight from one collection's tab to another's, which reuses
-// this component and would otherwise leave the previous collection on screen.
+// Also reload on a collection change: navigating between collections reuses this component.
 onMounted(loadDefinition)
 watch(collection, loadDefinition)
 

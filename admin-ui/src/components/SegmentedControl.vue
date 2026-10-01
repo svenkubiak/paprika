@@ -1,11 +1,4 @@
 <script setup lang="ts">
-/**
- * A row of mutually exclusive options, all of them visible.
- *
- * Used where a select would hide two or three choices behind a menu: the tri-state of an optional
- * boolean (true / false / not set) and the form-versus-JSON switch of the record editor. A select
- * stays the right control for a list of *values* - this one is for a handful of *states*.
- */
 withDefaults(
   defineProps<{
     modelValue: string

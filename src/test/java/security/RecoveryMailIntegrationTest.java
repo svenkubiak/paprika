@@ -26,20 +26,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * The password reset and email verification mails - the one outbound channel the
- * {@code OutboundSecretLeakIntegrationTest} could not cover, because it needs an SMTP server.
- * <p>
- * These mails carry a credential: whoever receives the link can take over the account. Two
- * properties therefore matter and are asserted here against a real SMTP server (GreenMail on the
- * port the test configuration points at):
- * <ul>
- *   <li>the mail goes to the address <b>stored on the user record</b>, never to an address the
- *       caller supplied, and</li>
- *   <li>the raw token exists only in that mail - never in the HTTP response, and never in the
- *       database, which only holds its hash.</li>
- * </ul>
- * Tenant scoping is verified as well: a token minted in one tenant must not reset an account in
- * another, even when both use the same email address.
+ * Recovery mails carry a credential: they must go only to the stored address, and the raw token must
+ * appear in neither the HTTP response nor the database. Needs a real SMTP server (GreenMail).
  */
 @ExtendWith({TestRunner.class})
 class RecoveryMailIntegrationTest {
@@ -98,7 +86,6 @@ class RecoveryMailIntegrationTest {
                 user.getString("resetTokenHash"), not(equalTo(token)));
         assertThat(user.toJson(), not(containsString(token)));
 
-        // The token from the mail actually works, and only once
         assertThat(resetPassword(token, NEW_PASSWORD).getStatusCode(), equalTo(200));
         assertThat(login(username, NEW_PASSWORD).getStatusCode(), equalTo(200));
         assertThat("a consumed token must not work twice",
@@ -106,12 +93,8 @@ class RecoveryMailIntegrationTest {
     }
 
     /**
-     * The address in the request only selects a user, it is never used as the recipient: an address
-     * nobody owns must not produce a mail at all, and must not be distinguishable from one that
-     * does (the endpoint answers 200 either way, so accounts cannot be probed).
-     * <p>
-     * The lookup ignores case and surrounding whitespace, because mail addresses are not case
-     * sensitive in practice and a user must not lose access to recovery over how they typed it.
+     * The request address only selects a user and is never the recipient; unknown addresses answer 200
+     * too, so accounts cannot be probed.
      */
     @Test
     void anAddressNobodyOwnsProducesNoMailWhileCasingDoesNotMatter() throws Exception {
@@ -140,7 +123,6 @@ class RecoveryMailIntegrationTest {
         Application.getInstance(TenantService.class).update(
                 other.id(), null, null, null, null, true, null, null, RESET_URL, null, null);
 
-        // Same email address in the other tenant
         Application.getInstance(TenantUserService.class)
                 .createUser(other, username, email, PASSWORD);
 
@@ -183,10 +165,6 @@ class RecoveryMailIntegrationTest {
         assertThat(body, not(containsString(user.getString("verifyTokenHash"))));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
-
     private static MimeMessage awaitSingleMail() throws Exception {
         assertThat("expected a mail to be delivered", greenMail.waitForIncomingEmail(5000, 1), is(true));
         MimeMessage[] messages = greenMail.getReceivedMessages();
@@ -198,7 +176,6 @@ class RecoveryMailIntegrationTest {
         return com.icegreen.greenmail.util.GreenMailUtil.getWholeMessage(message);
     }
 
-    /** Pulls the token out of the link the mail carries, whatever shape the tenant configured. */
     private static String extractToken(String body) {
         java.util.regex.Matcher matcher = java.util.regex.Pattern
                 .compile("(?:token=|/verify/)([A-Za-z0-9_-]{20,})")

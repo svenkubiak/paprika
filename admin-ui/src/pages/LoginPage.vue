@@ -55,15 +55,14 @@ async function completeLogin() {
   // There is a session again, so the next one that runs out has to be reported again.
   resetSessionExpired()
   await load(true)
-  // `redirect` is set when the SPA itself bounced us here, `origin` when the server did - mangoo
-  // appends it to its login redirect because authentication.origin is on.
+  // `redirect` is set when the SPA bounced us here, `origin` when mangoo's login redirect did
+  // (authentication.origin).
   await router.replace(localPath(route.query.redirect) ?? localPath(route.query.origin) ?? '/')
 }
 
 /**
- * Both parameters arrive in a URL anyone can hand out, so only a plain path on this origin is
- * accepted. Rejecting a leading double slash matters: it would otherwise read as a
- * protocol-relative URL to a foreign host.
+ * Both parameters arrive in a URL anyone can hand out, so only a local path is accepted. A leading
+ * double slash would read as a protocol-relative URL to a foreign host.
  */
 function localPath(value: unknown): string | undefined {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
@@ -106,8 +105,6 @@ function backToCredentials() {
         class="mb-4"
       />
 
-      <!-- Being timed out is not an error the user did anything wrong to cause, so this reads as
-           information and gives way to a real error once they try to sign in. -->
       <UAlert
         v-else-if="sessionExpired"
         color="info"

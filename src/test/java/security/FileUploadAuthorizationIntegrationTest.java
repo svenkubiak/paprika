@@ -30,16 +30,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Authorization and input limits on the file upload path.
- * <p>
- * The authorization matrix covers records; uploads are a second write path with its own rules:
- * a multipart request reaches {@code ApiMultipartFilter} and {@code FileFieldService} before the
- * record is touched, files are written to disk outside the database, and the constraints
- * (mime type, size, count) are the only thing standing between a tenant user and the instance's
- * storage. A denial therefore has to mean two things here: no record change *and* no file on disk.
- * <p>
- * The mime type check is deliberately exercised with a lying client: the declared
- * {@code Content-Type} of a part must not be what the server bases its decision on.
+ * Uploads are a second write path that writes to disk outside the database, so a denial must mean no
+ * record change and no file on disk. The declared part Content-Type must not be trusted.
  */
 @ExtendWith({TestRunner.class})
 class FileUploadAuthorizationIntegrationTest {
@@ -59,10 +51,6 @@ class FileUploadAuthorizationIntegrationTest {
         ownerToken = login("upload-owner", OWNER_PASSWORD);
         strangerToken = login("upload-stranger", STRANGER_PASSWORD);
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Authorization
-    // ---------------------------------------------------------------------------------------
 
     @Test
     void aStrangerCanNeitherAttachToNorDeleteFromAnotherUsersRecord() throws IOException {
@@ -100,11 +88,6 @@ class FileUploadAuthorizationIntegrationTest {
         assertThat("a denied upload must not leave a file behind", storedFiles(), equalTo(filesBefore));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Input limits - the only thing between a tenant user and the instance storage
-    // ---------------------------------------------------------------------------------------
-
-    /** The client declares text/plain but sends html: the server has to detect the real type. */
     @Test
     void theDeclaredContentTypeOfAPartIsNotTrusted() throws IOException {
         String collection = "upload_mime_" + DbUtils.id();
@@ -143,11 +126,7 @@ class FileUploadAuthorizationIntegrationTest {
         assertThat(storedFiles(), equalTo(filesBefore));
     }
 
-    /**
-     * More file parts than a field allows are rejected outright. Partially storing them and
-     * answering 201 would hide the loss from the caller, so the request fails instead - and nothing
-     * is written to disk.
-     */
+    /** Partially storing and answering 201 would hide the loss, so the request fails and nothing is written. */
     @Test
     void moreFilesThanTheFieldAllowsAreRejectedAndNothingIsStored() throws IOException {
         String collection = "upload_count_" + DbUtils.id();
@@ -172,7 +151,6 @@ class FileUploadAuthorizationIntegrationTest {
                 nullValue());
     }
 
-    /** A file field can only be written through multipart, never through plain json. */
     @Test
     void aFileFieldCannotBeSetThroughJson() {
         String collection = "upload_json_" + DbUtils.id();
@@ -190,10 +168,6 @@ class FileUploadAuthorizationIntegrationTest {
         assertThat(create.getStatusCode(), equalTo(400));
         assertThat(create.getContent(), containsString("multipart/form-data"));
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
 
     private static String ownerCollection() throws IOException {
         String collection = "upload_owner_" + DbUtils.id();
@@ -236,7 +210,6 @@ class FileUploadAuthorizationIntegrationTest {
                 .first();
     }
 
-    /** Number of files currently on disk for this tenant - a denial must not change it. */
     private static long storedFiles() throws IOException {
         Path root = Application.getInstance(FileStorageService.class).root()
                 .resolve(context().effectiveTenantId());

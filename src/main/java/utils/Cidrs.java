@@ -8,39 +8,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Parsing, normalisation and matching of CIDR ranges - the only form in which Paprika expresses
- * "this address, or one of these addresses".
- * <p>
- * Deliberately nothing else: no hostnames, no wildcards, no geo lookup. All three would need to
- * be resolved at request time and would thereby put an external dependency - and its latency and
- * failure modes - into the authentication path. A CIDR is decided by arithmetic on bytes that are
- * already in hand.
- * <p>
- * The work is split so that the expensive half happens once: {@link #normalize(String)} parses,
- * validates and rewrites a range into its canonical form when it is <em>stored</em>, and
- * {@link #contains(List, InetAddress)} only compares bytes when a request arrives.
- */
+// Deliberately CIDR only: hostnames or geo lookups would put an external dependency into the auth path.
+// Ranges are parsed and canonicalised at write time; the request path only compares bytes.
 public final class Cidrs {
     private static final int IPV4_BITS = 32;
     private static final int IPV6_BITS = 128;
 
-    /** The 80 zero bits plus 16 one bits that prefix an IPv4-mapped IPv6 address (::ffff:a.b.c.d). */
     private static final int IPV4_MAPPED_PREFIX_LENGTH = 12;
 
     private Cidrs() {
     }
 
-    /**
-     * The canonical form of one range, or an {@link IllegalArgumentException} naming what is
-     * wrong with it. A range is never silently dropped: an operator who mistypes one of three
-     * ranges would otherwise end up with a key that is open to a network they never listed.
-     * <p>
-     * A bare address is accepted as a convenience and becomes a single-host range ({@code /32}
-     * or {@code /128}), and host bits below the prefix are masked off, so {@code 10.200.0.7/24}
-     * is stored - and shown back - as {@code 10.200.0.0/24}. Both happen here, at write time:
-     * the request path should compare bytes, not re-interpret text on every call.
-     */
+    // An invalid range throws instead of being dropped, which could open a key to unlisted networks
     public static String normalize(String value) {
         String trimmed = StringUtils.trimToNull(value);
         if (trimmed == null) {
@@ -63,8 +42,7 @@ public final class Cidrs {
             }
         }
 
-        // ofLiteral parses and never resolves. getByName would hand anything that is not a
-        // literal to DNS, which would turn a stored range into a name lookup with a moving answer.
+        // ofLiteral never resolves; getByName would send non-literals to DNS
         InetAddress address;
         try {
             address = InetAddress.ofLiteral(literal);
@@ -85,10 +63,6 @@ public final class Cidrs {
         return format(mask(bytes, prefix), prefix);
     }
 
-    /**
-     * Normalises a whole list, dropping blank entries and duplicates while keeping the order the
-     * operator entered. Throws on the first entry that is not a valid range.
-     */
     public static List<String> normalizeAll(List<String> values) {
         if (values == null || values.isEmpty()) {
             return List.of();
@@ -104,13 +78,7 @@ public final class Cidrs {
         return List.copyOf(normalized);
     }
 
-    /**
-     * Whether {@code address} falls into any of the (already normalised) ranges.
-     * <p>
-     * An empty list answers {@code false}: this method says "the address is in the list", and the
-     * caller decides what an empty list means. A {@code null} address is not in any range either,
-     * which is what makes an unknown source fail closed rather than open.
-     */
+    // A null address matches nothing, so an unknown source fails closed
     public static boolean contains(List<String> cidrs, InetAddress address) {
         if (cidrs == null || cidrs.isEmpty() || address == null) {
             return false;
@@ -140,8 +108,7 @@ public final class Cidrs {
             return false;
         }
 
-        // Families are compared as they are: a /24 of IPv4 does not cover an IPv6 caller, and
-        // saying otherwise would be a guess about what the operator meant.
+        // An IPv4 range never covers an IPv6 caller
         if (network.length != candidate.length) {
             return false;
         }
@@ -161,13 +128,7 @@ public final class Cidrs {
         return (network[fullBytes] & mask) == (candidate[fullBytes] & mask);
     }
 
-    /**
-     * An IPv4-mapped IPv6 address ({@code ::ffff:a.b.c.d}) reduced to its four IPv4 bytes.
-     * <p>
-     * Java normally hands back an {@link Inet4Address} for those already, but a dual-stack
-     * listener is exactly the place where that is worth not relying on: the same caller must not
-     * match an IPv4 range on one socket configuration and fall through on another.
-     */
+    /** Unmaps ::ffff:a.b.c.d itself rather than relying on Java returning an {@link Inet4Address}. */
     private static byte[] unmap(byte[] bytes) {
         if (bytes.length != 16) {
             return bytes;
@@ -218,12 +179,7 @@ public final class Cidrs {
         return text.toString();
     }
 
-    /**
-     * RFC 5952 text for an IPv6 address: lower case, no leading zeroes, the longest run of zero
-     * groups collapsed to {@code ::}. Java's own {@code getHostAddress} writes all eight groups
-     * out, which is correct but turns a stored {@code 2a01:db8::/32} into something an operator
-     * does not recognise as the range they typed.
-     */
+    // RFC 5952 form; getHostAddress writes all eight groups, which operators would not recognise
     private static String formatIpv6(byte[] bytes) {
         int[] groups = new int[8];
         for (int i = 0; i < 8; i++) {

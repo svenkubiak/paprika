@@ -12,11 +12,6 @@ import services.AdminSettingsService;
 
 import java.util.Objects;
 
-/**
- * Instance-wide settings. Everything that belongs to the signed-in superadmin personally - password,
- * two-factor authentication, email address, profile picture, login alert - lives on
- * {@link AdminProfileController} instead.
- */
 @FilterWith(AdminAuthFilter.class)
 public class AdminSettingsController {
     private final AdminSettingsService adminSettingsService;

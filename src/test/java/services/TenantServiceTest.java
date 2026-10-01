@@ -42,9 +42,8 @@ class TenantServiceTest {
         TenantService tenantService = Application.getInstance(TenantService.class);
         SettingsService settingsService = Application.getInstance(SettingsService.class);
 
-        // The test instance starts on an empty database, so the bootstrapped tenant is the first
-        // one that ever existed - and the default is written down instead of being inferred from
-        // its slug.
+        // The test instance starts empty, so the bootstrapped tenant is the first ever; the default flag
+        // is stored rather than inferred from the slug.
         TenantDefinition bootstrapped = tenantService.findBySlug("default").orElseThrow();
 
         assertThat(settingsService.get(SettingKeys.DEFAULT_TENANT_ID, null), is(bootstrapped.id()));
@@ -55,9 +54,8 @@ class TenantServiceTest {
         TenantService tenantService = Application.getInstance(TenantService.class);
         TenantDefinition bootstrapped = tenantService.findBySlug("default").orElseThrow();
 
-        // Renamed rather than deleted: the database behind this tenant is what the other test
-        // classes work on. For ensureDefaultTenant() both are the same situation - no tenant
-        // carries the bootstrap slug any more - and it used to recreate one on every start.
+        // Renamed rather than deleted: other test classes work on this tenant's database. For
+        // ensureDefaultTenant() both mean no tenant carries the bootstrap slug any more.
         rename(tenantService, bootstrapped.id(), "renamed-bootstrap-slug");
         try {
             int before = tenantService.listAll().size();
@@ -178,11 +176,8 @@ class TenantServiceTest {
     }
 
     /**
-     * Switches off every active tenant except the given ones and returns what was switched off.
-     * <p>
-     * The cases around "exactly one active tenant" cannot be reached by deleting: the test
-     * classes share one database, and the tenant the rest of them works on has to survive. The
-     * caller puts the tenants back with {@link #reactivate(TenantService, List)} in a finally.
+     * "Exactly one active tenant" cannot be reached by deleting, since the classes share one database.
+     * The caller restores with {@link #reactivate(TenantService, List)} in a finally.
      */
     private static List<String> deactivateAllActiveExcept(TenantService tenantService, String... keep) {
         Set<String> kept = Set.of(keep);

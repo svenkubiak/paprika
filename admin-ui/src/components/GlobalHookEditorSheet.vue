@@ -42,10 +42,7 @@ const emit = defineEmits<{
 const { bootstrap } = useBootstrap()
 const secretVisible = ref(false)
 
-/**
- * Kept out of the template because the route contains braces, which the template would read as an
- * interpolation.
- */
+/** Kept out of the template: the route's braces would be read as an interpolation. */
 const fileRoutesDetails =
   'The hook then runs on /api/collections/{collection}/{id}/files/{field} as well - one hook ' +
   'roundtrip per file request. An image list fires many of them at once, so the hook needs its ' +

@@ -23,11 +23,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
-/**
- * A download used to carry no cache header at all, so every view transferred the whole file again.
- * The id of a stored file identifies its content - a replacement always gets a new id - so it is a
- * valid strong validator.
- */
+/** A replaced file always gets a new id, so the file id is a valid strong validator. */
 @ExtendWith({TestRunner.class})
 class CollectionFileCachingIntegrationTest {
 

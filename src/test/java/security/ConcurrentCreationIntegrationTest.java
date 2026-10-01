@@ -25,18 +25,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Uniqueness has to hold under concurrency, not only in the check that precedes an insert.
- * <p>
- * "Is this name still free? Then insert it" are two operations, and two requests arriving together
- * both pass the check. Whether that matters depends on what the name means: a duplicate collection
- * definition is a correctness problem with security impact, because the name is what every request
- * resolves its rules through - with two definitions under one name, an admin editing the rules may
- * be editing the one that is not being served.
- * <p>
- * Losing such a race must read like a detected conflict - a client error, never a server error.
- * That also covers the framework: up to mangoo I/O 10.12.1 parallel requests sporadically produced
- * a 500 because its attachment key was built lazily on an unsynchronized static field (fixed in
- * 10.12.2).
+ * Check-then-insert is two operations, so uniqueness must hold under concurrency. Two collection
+ * definitions under one name would let an admin edit rules that are not being served. A lost race must
+ * be a client error, never a 500.
  */
 @ExtendWith({TestRunner.class})
 class ConcurrentCreationIntegrationTest {
@@ -56,11 +47,7 @@ class ConcurrentCreationIntegrationTest {
         admin = AdminTestUtils.loginAsAdminWithDefaultTenant();
     }
 
-    /**
-     * Registration is enabled on the shared default tenant above. Leaving it that way would make
-     * every later class that expects the bootstrap default order dependent - exactly the kind of
-     * cross class leakage that only surfaces on a build server, where classes run in another order.
-     */
+    /** Registration is enabled on the shared default tenant; leaving it on makes later classes order-dependent. */
     @AfterAll
     static void restoreRegistrationFlag() {
         Application.getInstance(TenantService.class).update(
@@ -125,11 +112,7 @@ class ConcurrentCreationIntegrationTest {
                 equalTo(1L));
     }
 
-    /**
-     * Concurrent updates of the same record are last write wins by design - there is no optimistic
-     * locking for plain field updates. What must hold is that the record stays one consistent
-     * document from one of the writers, rather than a mix of several.
-     */
+    /** Plain field updates are last-write-wins by design; the record must still be one writer's document, not a mix. */
     @Test
     void concurrentRecordUpdatesLeaveOneConsistentRecord() throws Exception {
         String collection = "race_rec_" + DbUtils.id().substring(0, 8);
@@ -156,8 +139,6 @@ class ConcurrentCreationIntegrationTest {
                 record.getString("title"), startsWith("update-"));
     }
 
-    // ---------------------------------------------------------------------------------------
-
     private static long created(List<Integer> statuses) {
         return statuses.stream().filter(status -> status >= 200 && status < 300).count();
     }
@@ -166,7 +147,6 @@ class ConcurrentCreationIntegrationTest {
         return statuses.stream().filter(status -> status >= 500).count();
     }
 
-    /** Releases all attempts at once, so they genuinely overlap instead of running in sequence. */
     private static List<Integer> inParallel(IndexedCall call) throws Exception {
         ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_ATTEMPTS);
         CountDownLatch start = new CountDownLatch(1);

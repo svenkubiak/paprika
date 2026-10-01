@@ -33,8 +33,7 @@ public class AuthResponseService {
             case EMAIL_NOT_VERIFIED -> Response.forbidden()
                     .bodyJson(Map.of("error", "Email address is not verified"))
                     .end();
-            // Deliberately the same answer for every caller: the instance is busy, which is a
-            // statement about the server and not about the account that was named.
+            // Same answer for every caller: it describes the server, never the named account
             case AT_CAPACITY -> Response.status(StatusCodes.TOO_MANY_REQUESTS)
                     .header("Retry-After", "1")
                     .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"))

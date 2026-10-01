@@ -45,14 +45,10 @@ public final class FieldSchemaValidation {
             }
             validateImageWidths(options.imageWidths());
         } else if (options.imageWidths() != null && !options.imageWidths().isEmpty()) {
-            // The option only has meaning for stored files; accepting it elsewhere would suggest it
-            // does something on a field where nothing will ever be scaled.
             throw new IllegalArgumentException("imageWidths is only available on FILE fields");
         }
 
         if (type != FieldType.STRING && Boolean.TRUE.equals(options.multiline())) {
-            // The option only picks the input widget of a STRING field; accepted elsewhere it would
-            // suggest an effect it does not have - an email over two lines is not an email.
             throw new IllegalArgumentException("multiline is only available on STRING fields");
         }
 
@@ -136,8 +132,7 @@ public final class FieldSchemaValidation {
         }
 
         if (field.type() == FieldType.STRING || field.type() == FieldType.EMAIL || field.type() == FieldType.URL) {
-            // Same order as the runtime validators: a default that is already too long is not
-            // matched against the pattern on top.
+            // Same order as the runtime validators: a too-long default is not pattern-matched.
             if (FieldConstraintUtils.validateTextLength(
                     field.name(), value.asText(), field.optionsOrDefault(), result)) {
                 FieldConstraintUtils.validatePattern(field.name(), value.asText(), field.optionsOrDefault(), result);
@@ -195,11 +190,7 @@ public final class FieldSchemaValidation {
         return values.stream().map(String::trim).filter(value -> !value.isBlank()).distinct().toList();
     }
 
-    /**
-     * Every width is one additional stored copy of every uploaded image, so both the count and the
-     * size are capped. Both limits are named in the message, because the admin UI shows it verbatim
-     * and an unexplained rejection is the worst kind.
-     */
+    // Every width is one more stored copy of every uploaded image, hence count and size are capped.
     private static void validateImageWidths(List<Integer> widths) {
         if (widths == null || widths.isEmpty()) {
             return;

@@ -11,23 +11,14 @@ import org.apache.logging.log4j.Logger;
 import java.util.Objects;
 
 /**
- * Sends the mails Paprika produces itself - tenant-user recovery (password reset, email
- * verification) and the superadmin mails (invite, address confirmation, login alert) - over the
- * instance's global SMTP configuration. Delivery is best-effort: {@code Mail.send()} sends
- * asynchronously, and an unconfigured or failed send is logged, never surfaced to the caller, so the
- * auth endpoints can keep their uniform responses. Recovery links are built by the caller and point
- * at the tenant's own app.
+ * Best-effort delivery: failures are logged, never surfaced, so the auth endpoints keep their
+ * uniform responses.
  */
 @Singleton
 public class MailService {
     private static final Logger LOG = LogManager.getLogger(MailService.class);
 
-    /**
-     * Underscore rather than hyphen on purpose: mangoo derives the environment variable of a
-     * config key by upper-casing it and replacing dots with underscores, and nothing else. A
-     * key named {@code smtp.from-name} would derive {@code SMTP_FROM-NAME}, which no POSIX
-     * shell can set - the {@code SMTP_FROM_NAME} the installers write would never arrive.
-     */
+    // Underscore, not hyphen: mangoo maps only dots to underscores, and SMTP_FROM-NAME cannot be set in a shell.
     public static final String SMTP_FROM_NAME_KEY = "smtp.from_name";
 
     private final Config config;
@@ -88,11 +79,6 @@ public class MailService {
         send(toEmail, "You've been invited as a Paprika superadmin", text, html);
     }
 
-    /**
-     * Confirms the address a superadmin stored on their own profile. Deliberately worded for the
-     * admin control plane rather than reusing the tenant-user wording: the account this confirms is
-     * the one that operates the whole instance.
-     */
     public void sendSuperadminEmailVerification(String toEmail, String link, String username) {
         String greeting = StringUtils.isNotBlank(username) ? username : "there";
         String text = "Hi " + greeting + ",\n\n"
@@ -112,11 +98,6 @@ public class MailService {
         send(toEmail, "Confirm your Paprika superadmin email address", text, html);
     }
 
-    /**
-     * Tells a superadmin that their account was used from a device Paprika has not seen before.
-     * The user agent and IP address are only passed through into this mail - neither is stored, the
-     * account only keeps a hash of the two.
-     */
     public void sendSuperadminLoginAlert(
             String toEmail,
             String username,
@@ -157,10 +138,7 @@ public class MailService {
                 + "<td style=\"padding:2px 0;word-break:break-all\">" + escape(value) + "</td></tr>";
     }
 
-    /**
-     * The user agent is attacker-controlled and ends up in an HTML mail, so it is escaped rather
-     * than trusted. It is the only value in these mails that does not come from Paprika itself.
-     */
+    // The user agent is attacker-controlled and ends up in an HTML mail.
     private static String escape(String value) {
         return value
                 .replace("&", "&amp;")

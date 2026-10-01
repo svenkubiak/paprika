@@ -39,10 +39,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Hook targets are arbitrary external URLs, so the envelope must never carry credentials from the
- * triggering request. A hook can opt in to extra headers via forwardHeaders (an external
- * authorizer needs to see what the client sent to legitimize itself), but never to the blocked
- * ones and never without configuration.
+ * Hook targets are arbitrary external URLs, so the envelope must never carry the caller's
+ * credentials; forwardHeaders can opt in to extra headers, but never to the blocked ones.
  */
 @ExtendWith({TestRunner.class})
 class HookHeaderForwardingIntegrationTest {
@@ -66,11 +64,9 @@ class HookHeaderForwardingIntegrationTest {
             String payload = received.get();
             assertThat(payload, notNullValue());
 
-            // The hook must have fired and carried the benign headers ...
             assertThat(payload, containsString("\"headers\""));
             assertThat(payload.toLowerCase(Locale.ROOT), containsString("content-type"));
 
-            // ... but none of the caller's credentials.
             assertThat(payload, not(containsString("ADMIN_SESSION_JWT_VALUE")));
             assertThat(payload, not(containsString("super-secret-api-key")));
             assertThat(payload, not(containsString(token)));
@@ -78,7 +74,6 @@ class HookHeaderForwardingIntegrationTest {
             assertThat(payload.toLowerCase(Locale.ROOT), not(containsString("cookie")));
             assertThat(payload.toLowerCase(Locale.ROOT), not(containsString("x-api-key")));
 
-            // A hook without forwardHeaders sees the fixed allowlist and nothing else.
             assertThat(headerNames(payload), everyItem(in(DEFAULT_HEADERS)));
         } finally {
             collections.deleteHook(ctx, hook.id());
@@ -106,7 +101,6 @@ class HookHeaderForwardingIntegrationTest {
             assertThat(headerNames(payload), hasItem("x-app-key-id"));
             assertThat(payload, containsString("app-key-42"));
 
-            // Not configured, so it stays out even though the client sent it.
             assertThat(headerNames(payload), not(hasItem("x-other-header")));
             assertThat(payload, not(containsString("not-forwarded-value")));
         } finally {
@@ -116,7 +110,6 @@ class HookHeaderForwardingIntegrationTest {
         }
     }
 
-    /** HTTP header names are case-insensitive, so a differently cased configuration must match. */
     @Test
     void configuredHeaderMatchesRegardlessOfCase() throws IOException {
         String collection = seedCollection();
@@ -167,7 +160,7 @@ class HookHeaderForwardingIntegrationTest {
         }
     }
 
-    /** Second line of defence: even a row written straight into MongoDB must not leak these. */
+    /** Second line of defence behind the meta API validation. */
     @Test
     void blockedHeadersNeverReachTheHookEvenWhenStoredInTheDatabase() throws IOException {
         String collection = seedCollection();
@@ -279,7 +272,6 @@ class HookHeaderForwardingIntegrationTest {
                 null);
     }
 
-    /** Creates a record with a credential-carrying request and returns the caller's token. */
     private String triggerHook(String collection) {
         String username = "hook-header-user-" + DbUtils.id();
         Application.getInstance(UserService.class).createUser(username, null, "secret-password-123");

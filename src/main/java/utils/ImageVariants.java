@@ -22,56 +22,25 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Scales an uploaded image down to a configured width, using nothing but the JDK's ImageIO.
- * <p>
- * Only the formats ImageIO can both read and write without an additional library are supported.
- * WebP in particular can be read by newer JDKs but not written, so a WebP upload keeps its
- * original and is always served unscaled - adding an encoder would mean adding a dependency.
- * <p>
- * Variants are produced once, after the file is stored (see {@code ImageVariantQueue}). Scaling on
- * download would let any caller spend server time by asking for arbitrary widths, and would have
- * to be redone on every request.
- */
+// JDK ImageIO only: WebP can be read but not written, so WebP is served unscaled.
+// Variants are produced once after storing; scaling on download would let callers burn CPU.
 public final class ImageVariants {
 
-    /** Mime types ImageIO can read <em>and</em> write out of the box. */
     private static final Map<String, String> WRITABLE_FORMATS = Map.of(
             "image/jpeg", "jpg",
             "image/png", "png",
             "image/gif", "gif");
 
-    /** Formats that carry no alpha channel and therefore need an opaque target raster. */
     private static final Set<String> OPAQUE_FORMATS = Set.of("jpg");
 
-    /**
-     * The largest image that will be decoded, in pixels.
-     * <p>
-     * {@code maxSize} bounds the <em>compressed</em> bytes, which is precisely what a decompression
-     * bomb gets around: the dimensions a file declares in its header cost nothing to write down,
-     * but {@code ImageIO.read} allocates the full raster for them - four bytes per pixel - before
-     * anything gets a chance to look at how big it turned out. A PNG of uniform colour compresses
-     * by a factor in the thousands, so a file well inside the 4 MB transport limit can declare a
-     * raster larger than the heap of any ordinary instance.
-     * <p>
-     * 30 megapixels is ~120 MiB of raster and far above anything that legitimately arrives inside
-     * that 4 MB limit: even a well-compressed JPEG needs roughly a byte per three pixels, which
-     * puts a real photograph that fits through the upload at well under half this budget.
-     */
+    // Decompression-bomb guard: maxSize only bounds compressed bytes, but ImageIO allocates the full
+    // raster (4 bytes/pixel) the header declares. 30 MP (~120 MiB) is far above any real 4 MB upload.
     public static final long MAX_PIXELS = 30_000_000L;
 
     private ImageVariants() {
     }
 
-    /**
-     * The number of pixels an image declares in its header, without decoding it.
-     * <p>
-     * {@code ImageReader#getWidth}/{@code #getHeight} read the header only - for PNG that is the
-     * 13 byte IHDR chunk - so this answers what a decode would cost before paying it.
-     *
-     * @return the declared pixel count, or {@code -1} when it cannot be determined (an unsupported
-     *         type, or a file no reader will touch - both end up rejected elsewhere)
-     */
+    // Reads the header only, so it answers what a decode would cost before paying it; -1 if unknown
     public static long declaredPixels(byte[] source, String mimeType) throws IOException {
         if (source == null || !isSupported(mimeType)) {
             return -1;
@@ -97,11 +66,7 @@ public final class ImageVariants {
         }
     }
 
-    /**
-     * Whether this image is small enough to decode. An image whose size cannot be read is treated
-     * as acceptable here - it fails later in the decode, which costs nothing, rather than turning
-     * every unreadable file into a rejected upload.
-     */
+    // An unreadable size passes here; such a file fails cheaply in the decode instead
     public static boolean withinPixelBudget(byte[] source, String mimeType) throws IOException {
         long pixels = declaredPixels(source, mimeType);
         return pixels < 0 || pixels <= MAX_PIXELS;
@@ -111,33 +76,13 @@ public final class ImageVariants {
         return mimeType != null && WRITABLE_FORMATS.containsKey(mimeType.toLowerCase());
     }
 
-    /**
-     * Scales {@code source} down to {@code targetWidth}, keeping the aspect ratio.
-     *
-     * @return the encoded variant, or {@code null} when the image is not wider than the target
-     *         (a variant is only ever a smaller copy, never an upscale) or cannot be decoded
-     * @throws IOException when reading or writing the image fails
-     */
+    // Returns null when the image is not wider than the target: never upscales
     public static byte[] scaleToWidth(byte[] source, String mimeType, int targetWidth) throws IOException {
         return scaleToWidths(source, mimeType, List.of(targetWidth)).get(targetWidth);
     }
 
-    /**
-     * Scales {@code source} down to every width in {@code targetWidths} from a single decode.
-     * <p>
-     * The decode is what costs memory, and it is made small before it happens: the reader skips
-     * rows and columns ({@link ImageReadParam#setSourceSubsampling}) so that the raster it builds
-     * is only as wide as the widest variant needs - a uniform 30 megapixel JPEG then decodes to a
-     * few megabytes instead of 120. The last step from there to each width is a regular bilinear
-     * downscale, which is all the old full-resolution path did as well: bilinear samples four
-     * pixels per target pixel, so at these ratios it skipped most of the source just the same.
-     * The EXIF orientation is applied to each small variant after scaling, rather than to the full
-     * image before it, which used to allocate a second full-size raster just to turn it.
-     *
-     * @return the encoded variants by width; a width the image is not wider than gets none (a
-     *         variant is only ever a smaller copy), and an image that cannot be decoded gets none
-     * @throws IOException when reading or writing the image fails
-     */
+    // Single decode with source subsampling, so the raster is only as wide as the widest variant.
+    // EXIF orientation is applied after scaling to avoid a second full-size raster.
     public static Map<Integer, byte[]> scaleToWidths(byte[] source, String mimeType, List<Integer> targetWidths)
             throws IOException {
 
@@ -147,17 +92,13 @@ public final class ImageVariants {
 
         String format = WRITABLE_FORMATS.get(mimeType.toLowerCase());
 
-        // Checked again here, not only in the caller that validates the upload: this is the line
-        // that allocates, and a future caller that forgets the check must not be able to get past
-        // it. Reading the header a second time costs a few dozen bytes.
+        // Re-checked here because this is where the allocation happens; callers may forget the check
         if (!withinPixelBudget(source, mimeType)) {
             throw new IOException("Refusing to decode an image of " + declaredPixels(source, mimeType)
                     + " pixels, the budget is " + MAX_PIXELS);
         }
 
-        // ImageIO drops the EXIF metadata when re-encoding, so the orientation has to be baked into
-        // the pixels. Without this a phone photo would be correct as the original and tilted in
-        // every variant - a defect that only shows up when someone looks at it.
+        // ImageIO drops EXIF on re-encode, so the orientation has to be baked into the pixels
         int orientation = ExifOrientation.of(source, mimeType);
         boolean swapsAxes = orientation >= 5 && orientation <= 8;
 
@@ -207,10 +148,7 @@ public final class ImageVariants {
         }
     }
 
-    /**
-     * Scales the image, still in its stored orientation, to the size that is {@code displayWidth}
-     * wide once the EXIF orientation has been applied - for a quarter turn that is its height.
-     */
+    // Scales in stored orientation to a size that is displayWidth wide after EXIF rotation
     private static BufferedImage scaleForDisplayWidth(
             BufferedImage image,
             int displayWidth,
@@ -302,14 +240,8 @@ public final class ImageVariants {
         return transform;
     }
 
-    /**
-     * The mirror on the anti-diagonal: {@code (x, y) -> (height - y, width - x)}.
-     * <p>
-     * Built as the transpose followed by a half turn, because the half turn then happens inside
-     * the <em>transposed</em> raster - which is {@code height} wide and {@code width} high, so
-     * the translation takes those two in that order. Getting that pair the wrong way round moved
-     * the whole image outside the target raster and produced a blank variant.
-     */
+    // Transpose then half turn inside the transposed raster (height wide, width high), so the
+    // translation is (height, width); swapping them yields a blank variant.
     private static AffineTransform transverse(int width, int height) {
         AffineTransform transform = AffineTransform.getTranslateInstance(height, width);
         transform.scale(-1, -1);
@@ -329,11 +261,7 @@ public final class ImageVariants {
         return transform;
     }
 
-    /**
-     * Reads the EXIF orientation tag straight out of the JPEG byte stream. The JDK exposes JPEG
-     * metadata only as a raw {@code unknown} marker segment, so the APP1 segment is walked by hand
-     * rather than pulling in an EXIF library.
-     */
+    // The JDK exposes JPEG EXIF only as a raw marker segment, so APP1 is parsed by hand
     static final class ExifOrientation {
         private static final int ORIENTATION_TAG = 0x0112;
 
@@ -347,8 +275,7 @@ public final class ImageVariants {
             try {
                 return read(source);
             } catch (RuntimeException e) {
-                // A malformed EXIF block is not a reason to refuse the variant; the unrotated
-                // image is still the best answer available.
+                // A malformed EXIF block must not prevent the variant
                 return 1;
             }
         }

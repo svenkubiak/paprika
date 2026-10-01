@@ -7,9 +7,8 @@ import java.util.List;
 import java.util.Objects;
 
 public final class RuleEvaluator {
-    // Marks an auth value that cannot be known for the current caller, e.g. auth.id of a guest.
-    // Kept distinct from null so that a missing record field never compares equal to it:
-    // Objects.equals(null, null) would otherwise let a guest match an ownerless record.
+    // An auth value unknown for the caller (auth.id of a guest). Distinct from null so a guest
+    // never matches an ownerless record via Objects.equals(null, null).
     private static final Object UNKNOWN = new Object();
 
     private RuleEvaluator() {

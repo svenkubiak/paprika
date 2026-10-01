@@ -17,14 +17,8 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
 /**
- * Reproduces what mangoo does with {@code config.yaml} at startup: the active environment is
- * merged onto the defaults and the result is flattened into dotted keys.
- * <p>
- * The merge only recurses when <em>both</em> sides are maps ({@code MangooUtils#mergeMaps}). An
- * environment that overrides a nested block with a scalar therefore replaces the whole subtree,
- * and the keys below it stop existing - silently, because every reader falls back to its
- * hardcoded default. That is a class of bug a config file cannot show you by looking at it,
- * which is why it is asserted here.
+ * mangoo merges environment maps only when both sides are maps, so an environment that overrides a
+ * nested block with a scalar silently drops every key below it. Asserted here because it cannot be seen.
  */
 class ConfigYamlTest {
 
@@ -38,20 +32,13 @@ class ConfigYamlTest {
                 prod.get(FileStorageService.STORAGE_KEY), equalTo("env{}"));
     }
 
-    /**
-     * The environment variable name mangoo derives from the key. Spelled out so that renaming
-     * the key without renaming it in the installers, the compose file and the docs fails here
-     * rather than in somebody's deployment.
-     */
+    /** Renaming the key without the installers, compose file and docs must fail here, not in a deployment. */
     @Test
     void theStorageKeyMapsToTheDocumentedEnvironmentVariable() {
         assertThat(envVariableFor(FileStorageService.STORAGE_KEY), equalTo("PAPRIKA_STORAGE"));
     }
 
-    /**
-     * mangoo replaces "." with "_" but leaves every other character alone, so a key with a
-     * hyphen derives a variable name no shell can set. Such a key must not be an env{} override.
-     */
+    /** mangoo only replaces "." with "_", so a hyphenated key derives a variable no shell can set. */
     @Test
     void noProductionOverrideDerivesAnUnsettableEnvironmentVariable() {
         flatten("prod").forEach((key, value) -> {
@@ -64,10 +51,8 @@ class ConfigYamlTest {
     }
 
     /**
-     * For the application's own keys the defaults have to carry a value: mangoo drops an env{}
-     * whose variable is unset, so a key without a default simply is not there and every reader
-     * falls back to whatever it hardcoded. Framework keys are excluded - mangoo brings its own
-     * defaults for those.
+     * mangoo drops an env{} whose variable is unset, so a Paprika key without a default silently
+     * vanishes. Framework keys are excluded; mangoo brings its own defaults.
      */
     @Test
     void everyPaprikaPlaceholderHasADefaultToFallBackOn() {
@@ -82,7 +67,6 @@ class ConfigYamlTest {
         });
     }
 
-    /** The same trap as the storage key, on the one other hand-written key with a compound name. */
     @Test
     void theSmtpSenderNameMapsToTheDocumentedEnvironmentVariable() {
         assertThat(envVariableFor(services.MailService.SMTP_FROM_NAME_KEY), equalTo("SMTP_FROM_NAME"));

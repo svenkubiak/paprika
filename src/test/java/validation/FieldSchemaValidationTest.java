@@ -69,7 +69,6 @@ class FieldSchemaValidationTest {
                 () -> FieldSchemaValidation.validateFieldDefinition(field));
     }
 
-    /** The option only means something where files are stored. */
     @Test
     void rejectsImageWidthsOnANonFileField() {
         FieldDefinition field = new FieldDefinition(
@@ -85,7 +84,6 @@ class FieldSchemaValidationTest {
                 () -> FieldSchemaValidation.validateFieldDefinition(field));
     }
 
-    /** multiline only picks the input widget of a STRING field. */
     @Test
     void acceptsMultilineOnAStringField() {
         FieldDefinition field = new FieldDefinition(

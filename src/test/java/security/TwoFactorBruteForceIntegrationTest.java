@@ -18,16 +18,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Executable specification of the attempt budget on the superadmin's second factor.
- * <p>
- * A TOTP code is six digits: one in a million per 30 second window. That is only a second factor
- * for as long as something limits how often it may be guessed. Nothing did - a wrong code left the
- * pending 2FA session untouched, so whoever held a password could keep guessing against the same
- * session indefinitely, and at a few attempts per second the odds pass 50% within two days. Behind
- * that code sits the one identity that can export every tenant's database.
- * <p>
- * The budget has to live on the server: the pending session is a JWT in a cookie, so a counter
- * kept in it would simply be replayed at zero by resending the earlier cookie.
+ * Six-digit TOTP is only a second factor while guesses are limited. The budget must live on the
+ * server: a counter in the pending-session JWT cookie could be replayed at zero.
  */
 @ExtendWith({TestRunner.class})
 class TwoFactorBruteForceIntegrationTest {
@@ -38,7 +30,6 @@ class TwoFactorBruteForceIntegrationTest {
         String userId = superadminId();
         users.clearTwoFactorFailures(userId);
 
-        // Budget is spent without ever locking
         Optional<java.time.Instant> lock = Optional.empty();
         int attempts = 0;
         while (lock.isEmpty() && attempts < 20) {
@@ -66,7 +57,7 @@ class TwoFactorBruteForceIntegrationTest {
         }
         assertThat(first, notNullValue());
 
-        // Whoever keeps guessing must not be able to keep the rightful owner out any longer
+        // A guesser must not be able to extend the lockout of the rightful owner
         java.time.Instant afterMore = users.recordTwoFactorFailure(userId).orElseThrow();
 
         assertThat("a lock that renews itself would be a denial of service against the superadmin",
@@ -92,8 +83,7 @@ class TwoFactorBruteForceIntegrationTest {
                     .withContentType("application/json")
                     .execute();
 
-            // Without a pending session the request is refused earlier, which is also a refusal -
-            // what must never happen is that a locked account still gets its code checked.
+            // A refusal before the code check is fine; a locked account must never get its code checked.
             assertThat("a locked second factor must not be answered with a token",
                     response.getStatusCode(), not(equalTo(200)));
             assertThat(response.getContent(), not(containsString("accessToken")));
@@ -119,8 +109,7 @@ class TwoFactorBruteForceIntegrationTest {
         assertThat(users.isTwoFactorLocked(userId), is(true));
 
         try {
-            // 32 random characters cannot be guessed, so keeping it usable costs nothing - and it
-            // is the way out when someone locks the account by guessing at it.
+            // 32 random characters cannot be guessed, and the fallback is the way out of a guessing lockout.
             assertThat("the fallback code has to survive a lock",
                     users.consumeTotpFallbackCode(userId, fallback), is(true));
         } finally {

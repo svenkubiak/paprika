@@ -2,28 +2,9 @@ package models;
 
 import org.apache.commons.lang3.StringUtils;
 
-/**
- * The rule configuration of one collection.
- * <p>
- * Besides the five operation rules it carries the configuration the non-constant presets need.
- * {@code ownerField} belongs to the {@code owner} preset; the four {@code group*} fields belong to
- * the {@code group} and {@code peers} presets, which decide access through a membership record in
- * a second collection:
- *
- * <pre>
- * groupCollection   crew_members   the collection holding the memberships
- * groupMemberField  user           field in there pointing at the user
- * groupField        crew           field in there pointing at the group
- * groupRecordField  crew           field of *this* collection carrying the group ("group" only)
- * </pre>
- *
- * {@code groupRecordField} may also be {@code "id"}: then the records of this collection are the
- * groups themselves - the case of a {@code teams} collection, where every member of a team reaches
- * its record. Create is not available in that shape; see {@code RuleService}.
- *
- * Like the owner field, this is configuration of the collection rather than part of the rule
- * string: the rule values stay a fixed allowlist.
- */
+// The group* fields configure the group/peers presets via a membership collection; keeping them out
+// of the rule strings keeps those a fixed allowlist. groupRecordField "id" means the records are the
+// groups themselves (no create then, see RuleService).
 public record CollectionRules(
         String listRule,
         String viewRule,
@@ -36,11 +17,6 @@ public record CollectionRules(
         String groupField,
         String groupRecordField
 ) {
-    /**
-     * Rules without any membership configuration - the shape every collection had before the
-     * {@code group}/{@code peers} presets existed. Kept so that the many call sites that do not
-     * care about memberships stay readable.
-     */
     public CollectionRules(
             String listRule,
             String viewRule,
@@ -59,10 +35,7 @@ public record CollectionRules(
         return ownerField != null && !ownerField.isBlank() ? ownerField : "owner";
     }
 
-    /**
-     * Whether the membership lookup itself is configured. {@code groupRecordField} is not part of
-     * this: only the {@code group} preset needs it, {@code peers} matches on the record id.
-     */
+    // groupRecordField is excluded: only the group preset needs it, peers matches on the record id.
     public boolean hasMembershipLookup() {
         return StringUtils.isNotBlank(groupCollection)
                 && StringUtils.isNotBlank(groupMemberField)

@@ -251,13 +251,7 @@ public class HookService {
                 false);
     }
 
-    /**
-     * Runs the global beforeRequest hooks for a file route (download/delete of a file field).
-     * The collection scope applies as on any other collection route, and only hooks that opted
-     * into file routes run at all. The record is deliberately not loaded: beforeRequest is the
-     * upfront filter, not the lifecycle event, and a read per download would be a permanent cost
-     * for a value the hook does not get on collection routes either.
-     */
+    // The record is deliberately not loaded: beforeRequest does not get it on collection routes either.
     public HookExecutionResult runBeforeRequestForFileRoute(
             TenantContext ctx,
             CollectionDefinition definition,
@@ -394,8 +388,7 @@ public class HookService {
     }
 
     /**
-     * Runs blocking auth hooks (beforeRegister/beforeLogin/beforeRefresh) for the users collection.
-     * These do not run the global beforeRequest hooks (those already run via ApiBeforeRequestHookFilter).
+     * Global beforeRequest hooks already ran via ApiBeforeRequestHookFilter.
      * The body must never contain the plaintext password.
      */
     public HookExecutionResult runAuthBefore(TenantContext ctx, HookEvent event, Request request, JsonNode body) {
@@ -422,9 +415,6 @@ public class HookService {
         return HookExecutionResult.proceed(currentBody);
     }
 
-    /**
-     * Fires non-blocking auth hooks (afterRegister/afterLogin/afterRefresh) for the users collection.
-     */
     public void fireAuthAfter(
             TenantContext ctx,
             HookEvent event,
@@ -578,8 +568,6 @@ public class HookService {
                 throw new IOException(result.error());
             }
 
-            // Async hooks finish after the response is gone, so they get their own log entry
-            // instead of a field on the request they were triggered by.
             boolean accepted = result.status() >= 200 && result.status() < 300;
             requestLogService.recordHookExecution(
                     ctx,
@@ -597,11 +585,7 @@ public class HookService {
         }
     }
 
-    /**
-     * Loopback/private/link-local/multicast targets are blocked unless the tenant has explicitly
-     * allowlisted that exact {@code host:port}, closing the SSRF hole a shared multi-tenant instance
-     * would otherwise have if any tenant could point a hook at another tenant's internal services.
-     */
+    // SSRF guard: internal targets are blocked unless the tenant allowlisted that exact host:port.
     private static void validateNoSsrf(URI uri, TenantDefinition tenant) {
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
@@ -637,8 +621,7 @@ public class HookService {
                 || address.isMulticastAddress()) {
             return true;
         }
-        // isSiteLocalAddress() only recognizes the deprecated IPv6 fec0::/10 range, not the
-        // fc00::/7 Unique Local Address range in actual use today (RFC 4193).
+        // isSiteLocalAddress() only covers the deprecated fec0::/10, not the fc00::/7 ULA range (RFC 4193).
         return address instanceof Inet6Address && (address.getAddress()[0] & 0xfe) == 0xfc;
     }
 
@@ -656,12 +639,7 @@ public class HookService {
         return tenantService.findById(ctx.effectiveTenantId()).orElse(null);
     }
 
-    /**
-     * The cap is enforced again at dispatch, not only on save: a blocking hook holds the request
-     * thread for as long as its timeout allows, so a record that reached the database by another
-     * route - a direct write, a restored backup, a future import path - must not be able to pin
-     * a worker indefinitely.
-     */
+    // Enforced again at dispatch: a hook stored by another route must not pin a worker indefinitely.
     static int effectiveTimeoutMs(HookDefinition hook) {
         return Math.min(hook.timeoutOrDefault(), MAX_TIMEOUT_MS);
     }
@@ -686,11 +664,6 @@ public class HookService {
         return request.send();
     }
 
-    /**
-     * simple-http exposes GET/POST/PUT/PATCH/DELETE as separate factory methods rather than
-     * an arbitrary method string. validate() rejects anything outside ALLOWED_METHODS, so this
-     * should only ever see one of those five.
-     */
     private static Http httpFor(String method, String url) {
         return switch (method) {
             case "GET" -> Http.get(url);
@@ -709,12 +682,8 @@ public class HookService {
             JsonNode root = JsonUtils.getMapper().readTree(responseBody);
             boolean continueOperation = !root.has("continue") || root.get("continue").asBoolean(true);
 
-            /*
-             * Order matters: an explicit continue:false is a rejection, even when it arrives with a
-             * non-2xx status. Checking the HTTP status first would turn such a response into a hook
-             * failure, which failOpen would then wave through - the exact opposite of what the hook
-             * asked for. Do not reorder these two branches.
-             */
+            // Do not reorder: continue:false must be checked before the HTTP status, or failOpen
+            // would wave a non-2xx rejection through.
             if (!continueOperation) {
                 if (hook.event() == HookEvent.beforeLogin) {
                     JsonNode issueTokenFor = root.get("issueTokenFor");
@@ -728,11 +697,7 @@ public class HookService {
 
                 int status = Math.max(response.status(), 400);
 
-                /*
-                 * Never echo the hook envelope back: "continue" and friends are Paprika's internal
-                 * protocol with the hook, not part of the API contract the client knows. A null body
-                 * makes HookResponseHelper fall back to the default error message.
-                 */
+                // Never echo the hook envelope back to the client; null falls back to the default error.
                 String errorBody = null;
 
                 JsonNode error = root.get("error");
@@ -772,12 +737,7 @@ public class HookService {
         return HookExecutionResult.proceedUnchanged();
     }
 
-    /**
-     * A hook may pick the status of its own rejection - it knows the reason, Paprika does not - but
-     * only within 400-599. Anything else (a 2xx that would make the client believe the write
-     * succeeded, a redirect nobody asked for, or no integer at all) is a misconfiguration and is
-     * logged and ignored rather than silently delivered.
-     */
+    // Only 400-599: a 2xx would make the client believe the rejected write succeeded.
     private static int resolveErrorStatus(JsonNode statusNode, int fallback, HookDefinition hook) {
         if (statusNode == null || statusNode.isNull()) {
             return fallback;

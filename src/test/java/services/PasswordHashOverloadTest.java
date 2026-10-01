@@ -25,19 +25,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 
 /**
- * Executable specification of what an instance answers when it cannot hash right now.
- * <p>
- * mangoo caps how many Argon2id computations run at once and rejects with a
- * {@link MangooHashingException} once a caller waited longer than
- * {@code authentication.hashing.timeout}. That is a statement about the server, not about the
- * credentials that were named, and the whole point of the separate {@code AT_CAPACITY} outcome is
- * that it does not read as a credential error: answering 401 would tell the rightful owner their
- * password is wrong and would tell an attacker their guess failed when it was never checked.
- * <p>
- * The refusal is provoked by overriding the hashing on the service rather than by saturating the
- * real limit. Saturating it from out here cannot be made reliable: the semaphore is fair and every
- * caller shares one timeout, so the callers queued ahead of a login give up before the login's own
- * deadline and hand it the slot instead of starving it.
+ * A hashing capacity refusal must not read as a credential error. Provoked by overriding the hashing,
+ * because mangoo's fair semaphore and shared timeout make saturating the real limit unreliable.
  */
 @ExtendWith({TestRunner.class})
 class PasswordHashOverloadTest {
@@ -64,11 +53,7 @@ class PasswordHashOverloadTest {
                 result.status(), equalTo(TenantLoginResult.Status.AT_CAPACITY));
     }
 
-    /**
-     * The unknown-username branch hashes too, so that the response time does not give account
-     * existence away. It therefore has to be refused exactly like the known one - a refusal that
-     * only happened for missing users would hand out the very thing that branch exists to hide.
-     */
+    /** The unknown-username branch hashes too; refusing only that one would reveal account existence. */
     @Test
     void theRefusalIsTheSameForAKnownAndAnUnknownUsername() {
         TenantUserService users = refusingTenantUsers();
@@ -100,10 +85,6 @@ class PasswordHashOverloadTest {
         assertThat("a refusal is not a sign-in", result.auth(), equalTo(Optional.empty()));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // The HTTP answer the outcome turns into
-    // ---------------------------------------------------------------------------------------
-
     @Test
     void theTenantLoginRefusalBecomesA429WithARetryAfter() {
         Response response = Application.getInstance(AuthResponseService.class)
@@ -133,11 +114,6 @@ class PasswordHashOverloadTest {
         assertThat(response.getBody(), containsString("Too many authentication requests"));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Fixture
-    // ---------------------------------------------------------------------------------------
-
-    /** The real service, with every path that would hash refusing the way mangoo refuses. */
     private static TenantUserService refusingTenantUsers() {
         return new TenantUserService(
                 Application.getInstance(TenantDatabaseResolver.class),

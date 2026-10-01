@@ -45,11 +45,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * The file routes (/api/collections/{collection}/{id}/files/{field}[/{fileId}]) were the one data
- * plane a global beforeRequest hook never saw, so a hook acting as an external authorizer did not
- * decide over downloads and file deletions. It does now - but only when the hook opted in via
- * includeFileRoutes, because an existing hook was written for a different set of routes and a
- * guard that rejects the unknown would otherwise block every download after an upgrade.
+ * A global beforeRequest hook sees the file routes only with includeFileRoutes: an existing guard
+ * that rejects unknown routes would otherwise block every download after an upgrade.
  */
 @ExtendWith({TestRunner.class})
 class FileRouteBeforeRequestHookIntegrationTest {
@@ -78,13 +75,11 @@ class FileRouteBeforeRequestHookIntegrationTest {
             assertThat(envelope.get("context").get("collection").asText(), equalTo(fixture.collection()));
             assertThat(envelope.get("context").get("recordId").asText(), equalTo(fixture.recordId()));
             assertThat(envelope.get("context").get("http").get("method").asText(), equalTo("GET"));
-            // The hook filter runs after ApiAuthFilter, so a guard can recognize the caller.
             assertThat(envelope.get("context").get("auth").get("id").asText(),
                     equalTo(record(fixture.collection(), fixture.recordId()).getString("owner")));
             assertThat(envelope.get("context").get("auth").get("role").asText(), not(emptyString()));
             assertThat(envelope.get("context").get("http").get("path").asText(),
                     equalTo(downloadUrl(fixture)));
-            // beforeRequest is the upfront filter, not the lifecycle event: no record is loaded.
             assertThat(envelope.get("data").get("body").isNull(), equalTo(true));
             assertThat(envelope.get("data").get("record").isNull(), equalTo(true));
 
@@ -127,7 +122,6 @@ class FileRouteBeforeRequestHookIntegrationTest {
         }
     }
 
-    /** The regression test for the opt-in: an existing hook keeps seeing no file traffic. */
     @Test
     void aHookWithoutTheFileRouteOptInIsNotInvoked() throws IOException {
         Fixture fixture = fixture();
@@ -149,7 +143,6 @@ class FileRouteBeforeRequestHookIntegrationTest {
         }
     }
 
-    /** The collection scope applies here as on any other collection route. */
     @Test
     void aHookScopedToOtherCollectionsIsNotInvoked() throws IOException {
         Fixture fixture = fixture();
@@ -270,7 +263,6 @@ class FileRouteBeforeRequestHookIntegrationTest {
         }
     }
 
-    /** The other two routes - download and delete without an explicit file id - are guarded too. */
     @Test
     void theSingleFileRoutesAreGuardedAsWell() throws IOException {
         Fixture fixture = fixture(1);
@@ -302,7 +294,6 @@ class FileRouteBeforeRequestHookIntegrationTest {
         }
     }
 
-    /** A hook must not become an oracle for which collections exist. */
     @Test
     void anUnknownCollectionStays404AndFiresNoHook() throws IOException {
         Fixture fixture = fixture();
@@ -384,10 +375,7 @@ class FileRouteBeforeRequestHookIntegrationTest {
                 .execute();
     }
 
-    /**
-     * The file field holds more than one file, so a file request addresses the file explicitly -
-     * which exercises the downloadWithId/deleteFileById routes.
-     */
+    /** A multi-file field, so requests address the file id (downloadWithId/deleteFileById routes). */
     private static String downloadUrl(Fixture fixture) {
         return fieldPath(fixture) + "/" + fixture.fileId();
     }
@@ -479,7 +467,6 @@ class FileRouteBeforeRequestHookIntegrationTest {
         return "http://127.0.0.1:" + port + "/hook";
     }
 
-    /** A port that was bound once and released again: nothing answers there. */
     private static int closedPort() throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         int port = server.getAddress().getPort();

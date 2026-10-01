@@ -54,16 +54,12 @@ class MetaGlobalHooksIntegrationTest {
         assertThat(deleted.getStatusCode(), equalTo(StatusCodes.OK));
     }
 
-    /**
-     * The file-route switch is off unless the operator sets it, and it must survive a save so the
-     * admin UI can read it back - otherwise the opt-in silently resets on every edit.
-     */
+    /** The opt-in must round-trip, or it silently resets on every edit in the admin UI. */
     @Test
     void includeFileRoutesDefaultsToOffAndRoundTripsThroughTheApi() {
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
 
-        // Disabled on purpose: a global hook is tenant-wide, an enabled leftover would gate every
-        // other request in this suite.
+        // Disabled: an enabled tenant-wide leftover would gate every other request in the suite.
         TestResponse create = AdminTestUtils.postWithAdminCookies(
                 "/api/meta/global-hooks",
                 cookies,

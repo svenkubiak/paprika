@@ -20,20 +20,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * The rule semantics on unit level: the same promises the HTTP matrix verifies end to end, but
- * evaluated directly against the engine.
- * <p>
- * Two properties matter most here and are asserted explicitly for every combination:
- * <ul>
- *   <li><b>LIST and VIEW must agree.</b> They take different code paths -
- *       {@link RuleToMongoConverter} builds a query, {@link RuleEvaluator} decides in memory - and a
- *       disagreement between them is either a leak (list shows what view forbids) or a broken
- *       rule (list hides what view allows). Both real defects of that shape were of this kind.</li>
- *   <li><b>An unauthenticated caller never matches.</b> A rule must be satisfied by a proven
- *       identity, never by the absence of one.</li>
- * </ul>
- * Being free of I/O, these tests are also what mutation testing runs against
- * ({@code mvn -P mutation test}).
+ * LIST (RuleToMongoConverter) and VIEW (RuleEvaluator) take different code paths and must agree; an
+ * unauthenticated caller must never match. Free of I/O, so mutation testing runs against it.
  */
 class RuleSemanticsTest {
     private static final Bson DENIED = Filters.eq("id", "__paprika_denied__");
@@ -52,10 +40,6 @@ class RuleSemanticsTest {
     private static Document ownerless() {
         return new Document("id", "record-1");
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Rule modes
-    // ---------------------------------------------------------------------------------------
 
     @Test
     void blankRuleIsLockedAndNeverGrantsAnything() {
@@ -101,10 +85,6 @@ class RuleSemanticsTest {
             return true;
         }
     }
-
-    // ---------------------------------------------------------------------------------------
-    // LIST and VIEW must agree, for every rule, caller and record
-    // ---------------------------------------------------------------------------------------
 
     private static Stream<Arguments> ruleCallerRecord() {
         List<Arguments> arguments = new java.util.ArrayList<>();
@@ -158,10 +138,6 @@ class RuleSemanticsTest {
         return true;
     }
 
-    // ---------------------------------------------------------------------------------------
-    // A caller without a proven identity never matches
-    // ---------------------------------------------------------------------------------------
-
     @Test
     void guestNeverMatchesAnAuthOrOwnerRule() {
         for (String rule : new String[] {"auth", "owner"}) {
@@ -199,9 +175,7 @@ class RuleSemanticsTest {
         assertThat(ruleService.listFilter("owner", field, USER), is(Filters.eq(field, "user-1")));
     }
 
-    // ---------------------------------------------------------------------------------------
     // Create: the record does not exist yet, so the body stands in for it
-    // ---------------------------------------------------------------------------------------
 
     @Test
     void createUnderOwnerRuleAssignsTheCallerAsOwner() {
@@ -247,10 +221,6 @@ class RuleSemanticsTest {
         assertThat(ruleService.canAccess("auth", OWNER_FIELD, USER, null, Map.of()), is(true));
         assertThat(ruleService.canAccess("auth", OWNER_FIELD, GUEST, null, Map.of()), is(false));
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Rule selection per operation
-    // ---------------------------------------------------------------------------------------
 
     @Test
     void eachOperationUsesItsOwnRule() {

@@ -5,22 +5,14 @@ import auth.AuthContext;
 import java.util.Optional;
 
 public record TenantLoginResult(TenantLoginResult.Status status, Optional<AuthContext> auth) {
-    /**
-     * There is deliberately no status for "this username exists in more than one tenant": that
-     * is information about another tenant's user base, and an unauthenticated caller would get
-     * it for free. Such a login is answered as invalid credentials and logged on the server.
-     */
+    // Deliberately no status for "username exists in several tenants": that would leak other
+    // tenants' users, so such a login is answered as invalid credentials.
     public enum Status {
         SUCCESS,
         INVALID_CREDENTIALS,
         TENANT_NOT_FOUND,
         EMAIL_NOT_VERIFIED,
-
-        /**
-         * No Argon2 slot became free in time, so the password was never verified. Says nothing
-         * about the credentials, and it is reached for a known and an unknown username alike, so
-         * it cannot be used to tell an existing account from a missing one.
-         */
+        // Reached for known and unknown usernames alike, so it reveals nothing about accounts.
         AT_CAPACITY
     }
 

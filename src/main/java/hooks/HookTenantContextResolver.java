@@ -18,10 +18,8 @@ import java.util.Optional;
 
 @Singleton
 public class HookTenantContextResolver {
-    // Unauthenticated recovery routes whose controller works on the tenant named in the body. The
-    // hooks have to run for that same tenant: the default tenant as a fallback would hand a
-    // foreign tenant's reset and verification tokens to its hook targets. Prefixes rather than
-    // exact paths, so a route variant fails closed instead of falling back. No match, no hooks.
+    // Hooks must run for the tenant named in the body: falling back to the default tenant would hand
+    // a foreign tenant's reset/verification tokens to its hook targets. Prefixes so variants fail closed.
     private static final List<String> RECOVERY_PATH_PREFIXES = List.of(
             "/api/auth/password/",
             "/api/auth/verify/");
@@ -52,8 +50,7 @@ public class HookTenantContextResolver {
             return fallback;
         }
 
-        // The tenant comes from the body only, never from the fallback: that may be the context
-        // of a bearer token of another tenant that the client happened to send along
+        // Body only, never the fallback: that may stem from another tenant's bearer token sent along.
         if (path.startsWith("/api/auth/login")) {
             return tenantFromBody(request, true);
         }
@@ -69,13 +66,7 @@ public class HookTenantContextResolver {
         return fallback;
     }
 
-    /**
-     * The tenant named in the body's {@code tenant}. Without one, a login is for the default tenant
-     * - the same rule {@link TenantService#resolveLoginTenant} applies to the login itself - and
-     * every other route has none.
-     *
-     * @return {@code null} when no tenant applies, so no hook runs
-     */
+    // null means no tenant applies, so no hook runs.
     private TenantContext tenantFromBody(Request request, boolean defaultWithoutSlug) {
         try {
             JsonNode body = JsonUtils.getMapper().readTree(StringUtils.defaultString(request.getBody()));

@@ -61,10 +61,6 @@ const hookInvocations = computed(() => entry.value?.hooks || [])
 
 const hookTotalMs = computed(() => entry.value?.hookTotalMs ?? 0)
 
-/**
- * What the request cost without its hooks. Hooks are remote calls Paprika only waits for, so
- * seeing both numbers separately is the difference between "Paprika is slow" and "your hook is".
- */
 const appTimeMs = computed(() => {
   const total = entry.value?.execTimeMs
   if (total == null) return null
@@ -87,10 +83,6 @@ function outcomeColor(outcome: string) {
   }
 }
 
-/**
- * An error can come from Paprika's own handling or from a hook that rejected the call, and those
- * are two different things to debug - so the heading says which one it was.
- */
 const errorSource = computed(() => {
   if (isHookEntry.value) return 'hook'
   if (entry.value?.hookBlocked) {
@@ -99,11 +91,6 @@ const errorSource = computed(() => {
   return 'request'
 })
 
-/**
- * The logged message is often a bare code (`invalid_token`, `Forbidden`), which says what was
- * refused but not what that means. The status code is the part that does, so the error is shown
- * as both: the code with its meaning, and the message underneath.
- */
 const STATUS_MEANING: Record<number, string> = {
   400: 'Bad Request \u2013 the payload or its parameters were not understood',
   401: 'Unauthorized \u2013 no valid credential was presented',

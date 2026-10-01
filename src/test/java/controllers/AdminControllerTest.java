@@ -21,15 +21,7 @@ import static org.hamcrest.Matchers.*;
 @ExtendWith({TestRunner.class})
 public class AdminControllerTest {
 
-    /**
-     * An unauthenticated browser hitting the admin UI has to land on the login page. Getting this
-     * wrong is not a redirect to the wrong place, it is no redirect at all: mangoo falls back to
-     * its default error page and the whole UI looks broken, so the Location header is asserted
-     * rather than just the status code.
-     *
-     * The origin parameter comes from authentication.origin and is what lets the login page send
-     * the user back to the page they were on, so it is part of the contract here.
-     */
+    /** The Location header is asserted, since a wrong setup makes mangoo fall back to its error page. */
     @Test
     public void testIndexPageRedirectsToLogin() {
         TestResponse response = TestRequest.get("/").withDisabledRedirects().execute();
@@ -39,10 +31,6 @@ public class AdminControllerTest {
         assertThat(response.getHeader("Location"), equalTo("/login?origin=%2F"));
     }
 
-    /**
-     * The path the session ran out on has to survive the redirect, otherwise signing back in
-     * always dumps the admin on the dashboard instead of the page they were working on.
-     */
     @Test
     public void testTheRedirectKeepsTheRequestedPath() {
         TestResponse response = TestRequest.get("/admin/tenants").withDisabledRedirects().execute();
@@ -51,11 +39,7 @@ public class AdminControllerTest {
         assertThat(response.getHeader("Location"), equalTo("/login?origin=%2Fadmin%2Ftenants"));
     }
 
-    /**
-     * Every client side route of the admin UI needs a server side counterpart. Without one a
-     * reload (or any full page load the SPA triggers itself) ends on the framework's 404 page
-     * instead of the UI, and an expired session there never even reaches the login redirect.
-     */
+    /** Without a server-side route, a reload of an SPA route ends on the framework's 404 page. */
     @Test
     public void testEveryAdminUiRouteIsServedByTheShell() {
         for (String path : new String[]{
@@ -70,12 +54,7 @@ public class AdminControllerTest {
         }
     }
 
-    /**
-     * The bootstrap payload is how the admin UI asks whether it still has a session, so it must
-     * answer that question in JSON rather than by redirecting to the login page - a redirect
-     * arrives at the SPA as an HTML body with status 200, which it cannot tell from real data.
-     * What it must not do is hand out anything about the instance to a caller without a session.
-     */
+    /** A redirect would reach the SPA as an HTML body with status 200, indistinguishable from data. */
     @Test
     public void testBootstrapReportsAMissingSessionAsJson() {
         TestResponse response = TestRequest.get("/admin/bootstrap").withDisabledRedirects().execute();
@@ -88,10 +67,6 @@ public class AdminControllerTest {
         assertThat(response.getContent(), containsString("\"activeTenant\":null"));
     }
 
-    /**
-     * The login page must be reachable no matter what state the instance is in - it used to run
-     * through a filter that answers with 403 whenever it cannot resolve a tenant.
-     */
     @Test
     public void testTheLoginPageIsServedWithoutATenant() {
         TestResponse response = TestRequest.get("/login").execute();
@@ -100,11 +75,7 @@ public class AdminControllerTest {
         assertThat(response.getContent(), containsString("id=\"app\""));
     }
 
-    /**
-     * The admin and meta API do not redirect - they sit behind AdminAuthFilter and answer an
-     * expired cookie with a 401, which is the signal the admin UI turns into the "you have been
-     * signed out" notice. A different status here would leave that notice unreachable.
-     */
+    /** The admin UI turns this 401 into its "signed out" notice. */
     @Test
     public void testTheAdminApiAnswersAnExpiredSessionWithUnauthorized() {
         TestResponse response = TestRequest.get("/api/meta/tenants").execute();
@@ -115,16 +86,14 @@ public class AdminControllerTest {
 
     @Test
     void oneTimeSetupTokenCreatesSuperadminPassword() {
-        // Ensures "admin" is a completed superadmin before we create a second one below,
-        // so the cleanup at the end of this test can actually delete it.
+        // "admin" must be a completed superadmin, so the cleanup below can delete the second one
         AdminTestUtils.prepareAdminPassword();
         String username = "setup-" + CommonUtils.uuidV7();
         SystemUserService users = Application.getInstance(SystemUserService.class);
         String token = users.createSuperadminSetup(username, null);
 
-        // The cleanup has to run even when an assertion below fails: a completed superadmin left in
-        // the DB would let lastSuperadminCannotBeRemoved delete "admin" on the next test run,
-        // cascading failures across the whole suite.
+        // Cleanup must run even on failure: a leftover superadmin would let lastSuperadminCannotBeRemoved
+        // delete "admin" on the next run.
         SystemUserService.DeleteOutcome cleanup;
         try {
             TestResponse login = TestRequest.post("/api/admin/login")
@@ -135,9 +104,7 @@ public class AdminControllerTest {
             assertThat(login.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
             assertThat(login.getCookie("paprika-authentication"), nullValue());
 
-            // Sends a complete body on purpose: with only token and password this would be
-            // rejected by Bean Validation for the missing username and would never reach the
-            // password length rule it is here to cover.
+            // A complete body, or Bean Validation rejects it before the password length rule
             TestResponse shortPassword = TestRequest.post("/api/admin/setup")
                     .withStringBody(
                             "{\"token\":\"" + token + "\",\"username\":\"" + username + "\",\"password\":\"too-short\"}")
@@ -156,8 +123,7 @@ public class AdminControllerTest {
             assertThat(completed.getCookie("paprika-authentication"), not(nullValue()));
             assertThat(users.authenticateSuperadmin(username, "permanent-password-123").isPresent(), equalTo(true));
 
-            // Complete body again, so the rejection can only come from the consumed token and
-            // not from a field the request happens to be missing.
+            // A complete body, so the rejection can only come from the consumed token
             TestResponse replay = TestRequest.post("/api/admin/setup")
                     .withStringBody(
                             "{\"token\":\"" + token + "\",\"username\":\"" + username + "\",\"password\":\"another-password-123\"}")
@@ -171,16 +137,12 @@ public class AdminControllerTest {
                     .orElse(SystemUserService.DeleteOutcome.NOT_FOUND);
         }
 
-        // Only reached when the body passed - a silently failed cleanup would poison later classes.
+        // A silently failed cleanup would poison later classes
         assertThat("the superadmin created here must not outlive this test",
                 cleanup, equalTo(SystemUserService.DeleteOutcome.DELETED));
     }
 
-    /**
-     * The version the admin UI shows comes from paprika-version.properties, which only carries a
-     * real value once Maven resource filtering has run. A missing or unfiltered file degrades to
-     * "unknown" rather than failing, so nothing else would notice the build config breaking.
-     */
+    /** An unfiltered paprika-version.properties degrades silently to "unknown", so only this notices. */
     @Test
     void bootstrapReportsTheBuildVersion() {
         HttpCookie authentication = AdminTestUtils.loginAsAdmin();

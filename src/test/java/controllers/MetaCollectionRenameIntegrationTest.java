@@ -30,15 +30,8 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
 /**
- * Renaming a collection moves two things that have to stay in step: the definition, which is what
- * every request resolves a collection through, and the MongoDB collection holding the records.
- * <p>
- * The rename used to happen first and the definition was stored last, with the index sync in
- * between - so an index the request could not build answered 400 <em>after</em> the data had
- * already moved. The definition then still named the old collection, which no longer existed:
- * every record was gone as far as the API was concerned, and the next write created a fresh empty
- * one under the old name. What these tests hold onto is that a refused rename leaves the
- * collection exactly as it was, and an accepted one moves both halves.
+ * A rename moves the definition and the MongoDB collection, which must stay in step: a refused
+ * rename leaves both as they were, an accepted one moves both.
  */
 @ExtendWith({TestRunner.class})
 class MetaCollectionRenameIntegrationTest {
@@ -62,28 +55,21 @@ class MetaCollectionRenameIntegrationTest {
 
         assertThat(renamed.getContent(), renamed.getStatusCode(), equalTo(StatusCodes.OK));
 
-        // The definition moved, keeping its identity.
         assertThat(collections.findDefinition(ctx, before), nullValue());
         CollectionDefinition definition = collections.findDefinition(ctx, after);
         assertThat(definition, notNullValue());
         assertThat(definition.id(), equalTo(id));
 
-        // ... and so did the records, index included.
         assertThat(collections.dataCollection(ctx, after).countDocuments(), is(2L));
         assertThat(physicalCollections(ctx), hasItem(CollectionName.physicalTenantData(after)));
         assertThat(physicalCollections(ctx), not(hasItem(CollectionName.physicalTenantData(before))));
         assertThat(hasIndex(collections, ctx, after), is(true));
 
-        // The record is readable under the new name and gone under the old one.
         assertThat(read(after, recordId).getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(read(before, recordId).getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
     }
 
-    /**
-     * The regression. A unique index over data that is already ambiguous cannot be built, which is
-     * a 400 - and a 400 has to mean nothing happened. Renaming in the same request must not turn
-     * that refusal into a collection whose records no longer have a definition pointing at them.
-     */
+    /** A 400 for an unbuildable index must mean nothing moved, including the rename. */
     @Test
     void aRefusedIndexChangeInTheSameRequestLeavesTheCollectionUnrenamed() {
         String before = "rename_reject_" + DbUtils.id();
@@ -102,15 +88,12 @@ class MetaCollectionRenameIntegrationTest {
         assertThat(rejected.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
         assertThat(rejected.getContent(), containsString("title_idx"));
 
-        // The definition still names the collection it named before.
         assertThat(collections.findDefinition(ctx, after), nullValue());
         CollectionDefinition definition = collections.findDefinition(ctx, before);
         assertThat(definition, notNullValue());
         assertThat(definition.name(), equalTo(before));
 
-        // And both records are still where that definition says they are - this is the assertion
-        // the old order of operations failed: the data had moved to the new physical collection
-        // while the definition kept pointing at the old one.
+        // The data must not have moved to the new physical collection while the definition stayed
         assertThat(physicalCollections(ctx), not(hasItem(CollectionName.physicalTenantData(after))));
         assertThat(collections.dataCollection(ctx, before).countDocuments(), is(2L));
         assertThat(read(before, recordId).getStatusCode(), equalTo(StatusCodes.OK));
@@ -120,11 +103,6 @@ class MetaCollectionRenameIntegrationTest {
         assertThat(list.getContent(), containsString(recordId));
     }
 
-    /**
-     * A rename onto a name that is taken is a conflict, and it is detected before anything moves -
-     * two definitions under one name is the state the unique index on {@code name} exists to
-     * prevent.
-     */
     @Test
     void renamingOntoAnExistingCollectionIsRejectedWithoutMovingAnything() {
         String before = "rename_clash_" + DbUtils.id();
@@ -150,11 +128,7 @@ class MetaCollectionRenameIntegrationTest {
         assertThat(read(before, recordId).getStatusCode(), equalTo(StatusCodes.OK));
     }
 
-    /**
-     * Without a rename the index sync behaves as it always did: a refused change reports what is
-     * wrong and stores nothing. Kept here so that moving the sync in front of the rename is not
-     * paid for with a regression on the far more common path.
-     */
+    /** Guards the common path against regressions from running the index sync before the rename. */
     @Test
     void aRefusedIndexChangeWithoutARenameStillStoresNothing() {
         String collection = "rename_none_" + DbUtils.id();
@@ -174,10 +148,6 @@ class MetaCollectionRenameIntegrationTest {
         assertThat(collections.dataCollection(ctx, collection).countDocuments(), is(2L));
         assertThat(read(collection, recordId).getStatusCode(), equalTo(StatusCodes.OK));
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
 
     private static String uniqueTitleIndex(boolean unique) {
         return """

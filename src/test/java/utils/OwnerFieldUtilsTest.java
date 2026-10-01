@@ -64,10 +64,7 @@ class OwnerFieldUtilsTest {
         assertThat(document.get("owner"), nullValue());
     }
 
-    /**
-     * Which field an owner rule binds to is derived from the schema: the first relation pointing at
-     * the users collection. Getting this wrong would silently scope records by the wrong field.
-     */
+    /** Getting this wrong would silently scope records by the wrong field. */
     @Test
     void ownerFieldIsDerivedFromTheFirstUsersRelation() {
         CollectionDefinition definition = new CollectionDefinition(
@@ -117,7 +114,6 @@ class OwnerFieldUtilsTest {
                 equalTo(true));
     }
 
-    /** An owner is only assigned when a rule actually depends on ownership. */
     @Test
     void ownerIsOnlyAssignedWhenARuleDependsOnIt() {
         AuthContext auth = AuthContext.of("user-1", "user", "tenant-1");

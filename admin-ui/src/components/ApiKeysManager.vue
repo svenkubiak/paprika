@@ -43,10 +43,7 @@ const form = ref<{
   allowedCidrs: ''
 })
 
-/**
- * One range per line or comma separated - the server normalises and rejects what it cannot
- * parse, so nothing is validated twice here.
- */
+/** The server normalises and rejects unparsable ranges, so nothing is validated here. */
 function parseCidrs(value: string): string[] {
   return value
     .split(/[\n,;]+/)
@@ -54,7 +51,7 @@ function parseCidrs(value: string): string[] {
     .filter((entry) => entry.length > 0)
 }
 
-/** Shown exactly once, right after creating: the server cannot hand it out again. */
+/** Shown once right after creating: the server cannot hand it out again. */
 const createdKey = ref<string | null>(null)
 const copied = ref(false)
 

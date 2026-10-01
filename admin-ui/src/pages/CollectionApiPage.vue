@@ -38,9 +38,7 @@ async function loadDefinition() {
   }
 }
 
-// Reloading on a collection change as well as on mount: a deep link or the browser's back button
-// can move straight from one collection's tab to another's, which reuses this component and would
-// otherwise leave the previous collection on screen.
+// Also reload on a collection change: navigating between collections reuses this component.
 onMounted(loadDefinition)
 watch(collection, loadDefinition)
 

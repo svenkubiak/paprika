@@ -23,22 +23,8 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
 /**
- * The EXIF orientation baked into an image variant, checked by where the pixels end up.
- * <p>
- * ImageIO drops the EXIF metadata when it re-encodes, so the rotation has to be applied to the
- * raster before the variant is written - and a wrong affine transform is invisible in every
- * assertion that only looks at the dimensions. Orientation 7 was built from the width and the
- * height the wrong way round and moved the whole image outside the target raster, which produced
- * a variant that was entirely blank. Every orientation is therefore asserted by the colour of its
- * four corners, not by its size.
- * <p>
- * The source image carries one colour per quadrant, so a corner names exactly which part of the
- * original was mapped onto it:
- *
- * <pre>
- *   RED    GREEN
- *   BLUE   WHITE
- * </pre>
+ * ImageIO drops EXIF on re-encode, so the rotation is baked into the raster; a wrong transform keeps
+ * the dimensions, so corners are asserted by colour. Source quadrants: RED GREEN / BLUE WHITE.
  */
 class ImageVariantsTest {
 
@@ -47,17 +33,11 @@ class ImageVariantsTest {
     private static final int SOURCE_HEIGHT = 120;
     private static final int TARGET_WIDTH = 60;
 
-    /** The quadrant colours, in the order {@link #corners} reports them. */
     private static final List<Color> PALETTE = List.of(Color.RED, Color.GREEN, Color.BLUE, Color.WHITE);
 
     /**
-     * Where each orientation has to put the four source quadrants, as the target's corners read
-     * top-left, top-right, bottom-left, bottom-right.
-     * <p>
-     * 1 is the identity, 2/4 mirror, 3 is a half turn, 6/8 are the quarter turns and 5/7 mirror on
-     * the two diagonals. The diagonal cases are the ones worth reading twice: 5 (transpose) keeps
-     * the top-left and bottom-right corners where they are and swaps the other two, 7 (transverse)
-     * does the opposite.
+     * Corners read top-left, top-right, bottom-left, bottom-right. 5 (transpose) keeps top-left and
+     * bottom-right and swaps the other two, 7 (transverse) does the opposite.
      */
     private static Stream<Arguments> orientations() {
         return Stream.of(
@@ -88,12 +68,6 @@ class ImageVariantsTest {
         assertThat(corners(variant), equalTo(expectedCorners));
     }
 
-    /**
-     * The defect itself, stated the way it showed up: the transverse variant was not merely
-     * rotated the wrong way, it contained no image at all. A single-colour raster is what
-     * "the transform put everything outside the target" looks like from the outside, and the
-     * corner assertion above would also catch it - but only this one says why.
-     */
     @Test
     void theTransverseOrientationDoesNotProduceABlankVariant() throws Exception {
         BufferedImage variant = variantOf(jpegWithOrientation(quadrantImage(), 7));
@@ -111,10 +85,7 @@ class ImageVariantsTest {
         assertThat(corners(variant), equalTo(List.of(Color.RED, Color.GREEN, Color.BLUE, Color.WHITE)));
     }
 
-    /**
-     * EXIF only defines 1 to 8. A value outside that range is a broken file, not an instruction,
-     * and the unrotated image stays the best answer available.
-     */
+    /** EXIF only defines 1 to 8; anything else is a broken file and the unrotated image is kept. */
     @ParameterizedTest(name = "orientation {0}")
     @ValueSource(ints = {0, 9, 255})
     void anOrientationOutsideTheDefinedRangeIsIgnored(int orientation) throws Exception {
@@ -124,7 +95,6 @@ class ImageVariantsTest {
         assertThat(corners(variant), equalTo(List.of(Color.RED, Color.GREEN, Color.BLUE, Color.WHITE)));
     }
 
-    /** A malformed APP1 segment must not cost the variant - it is read for the rotation only. */
     @Test
     void aTruncatedExifSegmentDoesNotFailTheVariant() throws Exception {
         byte[] withExif = jpegWithOrientation(quadrantImage(), 7);
@@ -140,17 +110,12 @@ class ImageVariantsTest {
         assertThat(corners(variant), equalTo(List.of(Color.RED, Color.GREEN, Color.BLUE, Color.WHITE)));
     }
 
-    /** A variant is only ever a smaller copy: an original at or below the target width gets none. */
     @Test
     void anImageThatIsNotWiderThanTheTargetGetsNoVariant() throws Exception {
         assertThat(ImageVariants.scaleToWidth(quadrantImage(), JPEG, SOURCE_WIDTH), nullValue());
         assertThat(ImageVariants.scaleToWidth(quadrantImage(), JPEG, SOURCE_WIDTH + 1), nullValue());
     }
 
-    /**
-     * Orientation 6 turns a landscape original into a portrait one, so the width that decides
-     * whether a variant is produced at all is the width <em>after</em> the rotation.
-     */
     @Test
     void theRotatedWidthDecidesWhetherAVariantIsProduced() throws Exception {
         byte[] rotated = jpegWithOrientation(quadrantImage(), 6);
@@ -160,20 +125,12 @@ class ImageVariantsTest {
         assertThat(ImageVariants.scaleToWidth(rotated, JPEG, SOURCE_HEIGHT - 10), notNullValue());
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
-
     private static BufferedImage variantOf(byte[] jpeg) throws Exception {
         byte[] variant = ImageVariants.scaleToWidth(jpeg, JPEG, TARGET_WIDTH);
         return variant == null ? null : ImageIO.read(new ByteArrayInputStream(variant));
     }
 
-    /**
-     * The four corner quadrants as the palette colour each of them is closest to. Sampled in the
-     * middle of a quadrant and matched by nearest neighbour, because JPEG is lossy and the four
-     * colours are far enough apart for the nearest one to be unambiguous.
-     */
+    /** Sampled mid-quadrant and matched to the nearest palette colour, because JPEG is lossy. */
     private static List<Color> corners(BufferedImage image) {
         int left = image.getWidth() / 4;
         int right = image.getWidth() * 3 / 4;
@@ -226,7 +183,6 @@ class ImageVariantsTest {
         return false;
     }
 
-    /** One colour per quadrant, so a corner of the variant names the part of the source it came from. */
     private static byte[] quadrantImage() throws Exception {
         BufferedImage image = new BufferedImage(SOURCE_WIDTH, SOURCE_HEIGHT, BufferedImage.TYPE_INT_RGB);
         Graphics2D graphics = image.createGraphics();
@@ -248,7 +204,6 @@ class ImageVariantsTest {
         return out.toByteArray();
     }
 
-    /** Wraps a JPEG in an APP1/EXIF segment carrying nothing but the orientation tag. */
     private static byte[] jpegWithOrientation(byte[] jpeg, int orientation) {
         byte[] exif = exifSegment(orientation);
         byte[] result = new byte[jpeg.length + exif.length];

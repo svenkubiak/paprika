@@ -18,11 +18,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
-/**
- * The admin user editor writes and reads the fields a tenant added to its own users schema, not
- * just the core fields. Without this the custom part of the schema is invisible in the admin UI and
- * can only be maintained through {@code /api/collections/users}.
- */
 @ExtendWith({TestRunner.class})
 class TenantUsersCustomFieldsIntegrationTest {
 
@@ -56,7 +51,7 @@ class TenantUsersCustomFieldsIntegrationTest {
             assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
             assertThat(create.getContent(), containsString("\"displayName\":\"Custom Fields\""));
             assertThat(create.getContent(), containsString("\"loyaltyPoints\":42"));
-            // Credentials must not leak just because the response is no longer a fixed whitelist.
+            // Credentials must not leak now that the response is no longer a fixed whitelist
             assertThat(create.getContent(), not(containsString("passwordHash")));
             assertThat(create.getContent(), not(containsString("passwordSalt")));
 
@@ -81,7 +76,6 @@ class TenantUsersCustomFieldsIntegrationTest {
 
             assertThat(update.getStatusCode(), equalTo(StatusCodes.OK));
             assertThat(update.getContent(), containsString("\"displayName\":\"Renamed\""));
-            // A null value clears the field rather than storing a null.
             assertThat(update.getContent(), not(containsString("loyaltyPoints")));
 
             AdminTestUtils.deleteWithAdminCookies(usersUrl + "/" + userId, cookies);

@@ -36,10 +36,8 @@ const titleClass = {
 
 <template>
   <div class="flex items-center gap-3">
-    <!-- The artwork is a single-colour silhouette (black pixels plus an alpha channel), so it
-         is drawn as a mask filled with the current text colour rather than as an image. A black
-         <img> is invisible on a dark background, and a second, inverted file would be a copy to
-         keep in sync for a logo that has no colours of its own. -->
+    <!-- A mask filled with the text colour: the artwork is a black silhouette, which would be
+         invisible as an <img> on a dark background. -->
     <span
       class="app-logo shrink-0 text-default"
       :class="imageClass[size]"

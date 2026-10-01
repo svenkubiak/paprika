@@ -12,10 +12,8 @@ import { useGlobalHookEditorSheet } from '@/composables/useGlobalHookEditorSheet
 const route = useRoute()
 const router = useRouter()
 
-// The app is mounted before the first navigation resolves so a failure has something to render
-// into. Until it has resolved there is no route to show yet - hence a placeholder rather than
-// the shell of a page the user may not even end up on. A navigation that never settles shows
-// this instead of a blank document.
+// Placeholder until the first navigation resolves: the app mounts before that so a failing
+// navigation has something to render into.
 const routerReady = ref(false)
 void router.isReady().then(
   () => {

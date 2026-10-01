@@ -44,8 +44,7 @@ class RuleEvaluatorTest {
         RuleNode node = RuleParser.parse(ruleService.normalizeRule("owner", "owner"));
         Document ownerless = new Document("title", "created via admin ui");
 
-        // Both sides resolve to "no value"; treating that as a match would hand every ownerless
-        // record to anonymous callers.
+        // Both sides resolve to "no value"; a match would hand every ownerless record to anonymous callers.
         assertThat(RuleEvaluator.evaluate(node, RuleEvaluationContext.of(AuthContext.guest(), ownerless)), is(false));
         assertThat(RuleEvaluator.evaluate(node, RuleEvaluationContext.of(AuthContext.guest(), null)), is(false));
     }

@@ -31,18 +31,9 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Executable specification of the pixel budget on decoded uploads.
- * <p>
- * {@code maxSize} bounds the compressed bytes of an upload, which is exactly what a decompression
- * bomb sidesteps: the dimensions in an image header cost nothing to write down, and
- * {@code ImageIO.read} allocates four bytes per declared pixel before anything can look at how
- * large the result is. A file comfortably inside the 4 MB transport limit can therefore ask for a
- * raster bigger than the heap, and the {@code catch (IOException | RuntimeException)} around the
- * variant code does not catch the {@code OutOfMemoryError} that follows - it is an {@code Error}.
- * <p>
- * The budget is checked against the header, before the decode and before the first byte reaches
- * storage. The oversized image used here is an ordinary one-bit-per-pixel bitmap: genuinely that
- * many pixels, cheap to hold in the test, and it exercises the same check a hostile file would.
+ * maxSize bounds compressed bytes, which a decompression bomb sidesteps: ImageIO allocates per declared
+ * pixel and the resulting OutOfMemoryError escapes catch (IOException | RuntimeException). The budget
+ * is checked against the header, before decode and before storage.
  */
 @ExtendWith({TestRunner.class})
 class ImageDecodeBudgetIntegrationTest {
@@ -65,8 +56,7 @@ class ImageDecodeBudgetIntegrationTest {
     void refusesToDecodeBeyondTheBudget() throws IOException {
         byte[] png = onePixelPerBitPng(WIDE, TALL);
 
-        // The guard sits on the line that allocates, not only in the caller, so a future caller
-        // that forgets to validate cannot walk past it
+        // The guard sits on the allocating line, so a future caller that forgets to validate cannot bypass it
         IOException thrown = assertThrows(IOException.class,
                 () -> ImageVariants.scaleToWidth(png, "image/png", 128));
         assertThat(thrown.getMessage(), containsString("Refusing to decode"));
@@ -82,8 +72,7 @@ class ImageDecodeBudgetIntegrationTest {
         byte[] oversized = onePixelPerBitPng(WIDE, TALL);
 
         Document record = new Document();
-        // The good file is listed first on purpose: validation runs over the whole field before
-        // the storing loop starts, so neither of them may end up on disk.
+        // Good file first on purpose: validation covers the whole field before storing, so neither may land on disk.
         Map<String, List<MultipartSupport.UploadedFile>> uploads = Map.of("attachment", List.of(
                 new MultipartSupport.UploadedFile("fine.png", small, "image/png"),
                 new MultipartSupport.UploadedFile("huge.png", oversized, "image/png")));
@@ -127,8 +116,7 @@ class ImageDecodeBudgetIntegrationTest {
         FileFieldService files = Application.getInstance(FileFieldService.class);
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
 
-        // Nothing decodes this upload, so its dimensions are nobody's business - it is bytes like
-        // any other file. Refusing it here would be a limit the vulnerability never justified.
+        // Nothing decodes this upload, so its dimensions must not be limited.
         Document record = new Document();
         files.applyUploads(
                 ctx,
@@ -143,10 +131,8 @@ class ImageDecodeBudgetIntegrationTest {
 
     @Test
     void aHardFailureWhileStoringLeavesNothingBehind() throws IOException {
-        // The decode no longer runs in the request, but an upload of several files can still fail
-        // hard halfway through - memory pressure from elsewhere is enough. When it does, the first
-        // original is already in storage and no record will ever point at it. The cleanup has to
-        // cover Error too.
+        // A multi-file upload can still fail hard halfway (e.g. memory pressure), leaving an orphaned
+        // original in storage. The cleanup has to cover Error too.
         HeapExhaustedOnVariant storage = new HeapExhaustedOnVariant(Application.getInstance(Config.class));
         FileFieldService files = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
@@ -167,15 +153,7 @@ class ImageDecodeBudgetIntegrationTest {
                 storedFileCount(), equalTo(before));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Fixture
-    // ---------------------------------------------------------------------------------------
-
-    /**
-     * A real, valid PNG of the given size, stored one bit per pixel. That keeps the test's own
-     * memory in the single-digit megabytes while the file honestly declares every one of those
-     * pixels - which is what the budget is read against.
-     */
+    /** One bit per pixel keeps test memory small while the header honestly declares every pixel. */
     private static byte[] onePixelPerBitPng(int width, int height) throws IOException {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -208,7 +186,6 @@ class ImageDecodeBudgetIntegrationTest {
         throw new IllegalStateException("No stored file in " + value);
     }
 
-    /** Files below the storage root, as a before/after measure for "nothing was written". */
     private static long storedFileCount() throws IOException {
         java.nio.file.Path root = Application.getInstance(FileStorageService.class).root();
         if (!java.nio.file.Files.exists(root)) {
@@ -219,10 +196,7 @@ class ImageDecodeBudgetIntegrationTest {
         }
     }
 
-    /**
-     * Stands in for a heap that runs out mid-upload: the first file is written, every write after
-     * it fails with an {@code Error}, which no {@code catch (IOException | RuntimeException)} sees.
-     */
+    /** Simulates heap exhaustion mid-upload: writes after the first throw an Error, not an exception. */
     private static final class HeapExhaustedOnVariant extends FileStorageService {
         private final AtomicInteger stores = new AtomicInteger();
 

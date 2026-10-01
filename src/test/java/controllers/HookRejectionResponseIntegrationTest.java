@@ -40,11 +40,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 
-/**
- * A blocking hook decides *that* an operation is rejected and may pick the status of its rejection,
- * but it must not be able to make a rejection look like a success (or a redirect) to the client,
- * and its envelope vocabulary ("continue") must not leak into the API response.
- */
+/** A hook may pick its rejection status, but never make a rejection look like a success or redirect. */
 @ExtendWith({TestRunner.class})
 class HookRejectionResponseIntegrationTest {
 
@@ -125,10 +121,7 @@ class HookRejectionResponseIntegrationTest {
         assertThat(response.getContent(), not(containsString("continue")));
     }
 
-    /**
-     * A rejection carried by a 4xx response is a rejection, not a hook outage - otherwise failOpen
-     * would wave through exactly the write the hook refused.
-     */
+    /** Treating a 4xx as an outage would let failOpen wave through the write the hook refused. */
     @Test
     void rejectionDeliveredWithHttp403StaysARejectionEvenWithFailOpen() throws IOException {
         TestResponse response = rejectWith("""

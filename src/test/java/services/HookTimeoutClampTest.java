@@ -8,10 +8,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 
 /**
- * The 30s cap is checked when a hook is saved, but a blocking hook holds the request thread for
- * as long as its timeout allows - so the value that actually reaches the HTTP client has to be
- * capped as well. A record can reach the database without passing validate(): a direct write, a
- * restored backup, a migration.
+ * A blocking hook holds the request thread for its whole timeout, and records can bypass validate()
+ * (direct write, restored backup), so the value reaching the HTTP client is capped too.
  */
 class HookTimeoutClampTest {
 
@@ -27,7 +25,6 @@ class HookTimeoutClampTest {
                 equalTo(1_500));
     }
 
-    /** The defaults are below the cap and must not be rewritten by the clamp. */
     @Test
     void theDefaultsAreUnaffected() {
         assertThat(HookService.effectiveTimeoutMs(hookWithTimeout(null, HookEvent.beforeCreate)),

@@ -10,12 +10,8 @@ import java.util.List;
 import java.util.Objects;
 
 public final class RuleToMongoConverter {
-    /**
-     * The filter that matches no record. Public because the membership presets in
-     * {@link RuleService} build their list filter outside the expression engine and have to be
-     * able to say "nothing" with exactly the same query - never with {@link Filters#empty()},
-     * which would return the entire collection.
-     */
+    // Matches no record. Public so callers can express "nothing" without Filters.empty(),
+    // which would match the entire collection.
     public static final Bson IMPOSSIBLE = Filters.eq("id", "__paprika_denied__");
 
     private RuleToMongoConverter() {
@@ -61,11 +57,8 @@ public final class RuleToMongoConverter {
             }
         }
 
-        // A comparison between an auth value and a literal, e.g. "auth.id != null" of the "auth"
-        // rule, involves no record field at all. It is constant for the whole request and decides
-        // whether every record matches or none does. Without this, such a rule would fall through
-        // to the "no field" branch below and silently return an empty list to a caller that VIEW
-        // grants access to.
+        // auth-vs-literal (e.g. "auth.id != null") is constant per request; it must not fall through
+        // to the "no field" branch, which would return an empty list to a permitted caller.
         Bson authLiteral = authLiteralComparison(left, operator, right, auth);
         if (authLiteral != null) {
             return authLiteral;
@@ -92,15 +85,8 @@ public final class RuleToMongoConverter {
         };
     }
 
-    /**
-     * Evaluates a comparison of an {@code auth.*} value against a literal, or returns null when the
-     * nodes are not of that shape.
-     * <p>
-     * An auth value that cannot be resolved for the caller - {@code auth.id} of a guest - makes the
-     * comparison fail for every operator, mirroring the UNKNOWN handling of
-     * {@link RuleEvaluator}, so that a rule can never be satisfied by the absence of an
-     * authenticated caller.
-     */
+    // An unresolvable auth value (auth.id of a guest) fails every operator, mirroring RuleEvaluator's
+    // UNKNOWN handling, so a rule is never satisfied by the absence of an authenticated caller.
     private static Bson authLiteralComparison(RuleNode left, String operator, RuleNode right, AuthContext auth) {
         Object authValue;
         Object literal;
@@ -126,8 +112,7 @@ public final class RuleToMongoConverter {
         return switch (operator) {
             case "=" -> Objects.equals(authValue, literal) ? Filters.empty() : IMPOSSIBLE;
             case "!=" -> Objects.equals(authValue, literal) ? IMPOSSIBLE : Filters.empty();
-            // Ordering comparisons on auth values are not part of the supported rule set,
-            // so deny rather than guess
+            // Ordering comparisons on auth values are unsupported: deny rather than guess
             default -> IMPOSSIBLE;
         };
     }

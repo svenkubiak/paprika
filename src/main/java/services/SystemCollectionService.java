@@ -51,15 +51,8 @@ public class SystemCollectionService {
     }
 
     /**
-     * The collections of the system database and the indexes they carry - without the
-     * bootstrapping that surrounds them at startup.
-     * <p>
-     * Separate because a backup restore needs exactly this half and none of the other: dropping
-     * a collection drops its indexes, and the restore replaces the system collections wholesale,
-     * so it has to put the indexes back or the uniqueness of a superadmin username and of a
-     * tenant slug quietly stops being enforced until the next restart. Calling
-     * {@link #ensureSystemCollections()} there would be wrong - it would bootstrap a superadmin
-     * and a default tenant into a state the archive defines deliberately.
+     * Without bootstrapping, for backup restore: it must re-create the dropped unique indexes but
+     * must not bootstrap a superadmin or default tenant into the restored state.
      */
     public void ensureSystemStructure() {
         ensureSuperadminUsersCollection();
@@ -141,11 +134,7 @@ public class SystemCollectionService {
         );
     }
 
-    /**
-     * The server-owned core fields of the users collection. {@code passwordSalt}/{@code passwordHash}
-     * are internal and never part of the editable schema; {@code password} is a virtual, write-only
-     * field consumed by {@link utils.UserRecordUtils} on data-plane writes.
-     */
+    // password is a virtual, write-only field consumed by UserRecordUtils; salt and hash are never in the schema.
     static List<FieldDefinition> canonicalUserFields() {
         return List.of(
                 new FieldDefinition("username", FieldType.STRING, true, false, null),
@@ -167,11 +156,6 @@ public class SystemCollectionService {
                 true);
     }
 
-    /**
-     * Merges admin-supplied fields for the users collection with the server-owned core fields:
-     * the core fields are always re-injected (canonical order/type), legacy/internal fields are
-     * dropped, and any additional custom fields are preserved in their given order.
-     */
     public static List<FieldDefinition> mergeUsersFields(List<FieldDefinition> incoming) {
         List<FieldDefinition> merged = new java.util.ArrayList<>(canonicalUserFields());
         Set<String> coreNames = canonicalUserFields().stream()
@@ -196,7 +180,6 @@ public class SystemCollectionService {
         return merged;
     }
 
-    /** Ensures the admin-supplied indexes for the users collection keep the unique username index. */
     public static List<IndexDefinition> mergeUsersIndexes(List<IndexDefinition> incoming) {
         List<IndexDefinition> merged = new java.util.ArrayList<>();
         boolean hasUsernameIndex = false;
@@ -207,11 +190,8 @@ public class SystemCollectionService {
                     continue;
                 }
                 if (USERNAME_INDEX.equals(index.name()) || coversUsernameOnly(index)) {
-                    // Matched by covered field, not only by name: the schema editor derives index
-                    // names from the field name, so the unique username index comes back as
-                    // "idx_username". Comparing names alone would let that through and re-inject
-                    // the canonical index on top - two indexes on { username: 1 }, which MongoDB
-                    // rejects with an IndexOptionsConflict and the admin UI sees as a 500.
+                    // Matched by field too: the schema editor renames it to "idx_username", and a
+                    // second index on { username: 1 } fails with IndexOptionsConflict.
                     if (hasUsernameIndex) {
                         continue;
                     }
@@ -237,10 +217,6 @@ public class SystemCollectionService {
                 && "username".equals(index.fields().getFirst().field());
     }
 
-    /**
-     * Reconciles a persisted users definition with the current canonical shape, preserving custom
-     * fields and admin-configured rules. Returns a new definition (system flag preserved).
-     */
     static CollectionDefinition reconcileUsersDefinition(CollectionDefinition existing) {
         return new CollectionDefinition(
                 existing.id(),

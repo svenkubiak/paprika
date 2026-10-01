@@ -30,8 +30,7 @@ import static org.hamcrest.Matchers.not;
 @ExtendWith({TestRunner.class})
 class CollectionFilterIntegrationTest {
 
-    // 1. The filter is only ever anded onto the rule filter. User A filtering for a value that only
-    //    B's records carry must yield an empty list - never B's records, never a 403 detour.
+    // The filter is only ever anded onto the rule filter: empty list, never B's records or a 403.
     @Test
     void filterNeverEscapesOwnerScope() {
         UserService userService = Application.getInstance(UserService.class);
@@ -58,7 +57,6 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), containsString("\"items\":[]"));
     }
 
-    // 2. A LOCKED list rule stays 403 even with a filter present.
     @Test
     void filterOnLockedCollectionStillForbidden() {
         UserService userService = Application.getInstance(UserService.class);
@@ -77,7 +75,6 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
     }
 
-    // 3. total must reflect the filter, not just items.
     @Test
     void totalRespectsFilter() {
         String collection = "notes_filter_total_" + DbUtils.id();
@@ -96,7 +93,6 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), not(containsString("drop")));
     }
 
-    // 4. Unknown field is a 400, not a silently swallowed filter.
     @Test
     void unknownFieldReturnsBadRequest() {
         String collection = "notes_filter_unknown_" + DbUtils.id();
@@ -110,7 +106,7 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), containsString("Unknown filter field: nope"));
     }
 
-    // 5. Boolean and number conversion: a plain string compare would never match the stored value.
+    // A plain string compare would never match the stored boolean or number.
     @Test
     void booleanFilterMatchesStoredBoolean() {
         String collection = "flags_filter_bool_" + DbUtils.id();
@@ -191,7 +187,6 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
     }
 
-    // 6. JSON and FILE are not filterable.
     @Test
     void jsonFieldReturnsBadRequest() {
         String collection = "docs_filter_json_" + DbUtils.id();
@@ -228,7 +223,6 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), containsString("not filterable"));
     }
 
-    // 7. No filter: behavior is unchanged.
     @Test
     void withoutFilterBehaviorIsUnchanged() {
         String collection = "notes_filter_none_" + DbUtils.id();
@@ -245,7 +239,6 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), containsString("A"));
         assertThat(response.getContent(), containsString("B"));
 
-        // An empty filter parameter must behave identically to no filter at all.
         TestResponse empty = TestRequest.get(
                         "/api/collections/" + collection + "?offset=0&limit=25&filter=")
                 .execute();
@@ -253,7 +246,6 @@ class CollectionFilterIntegrationTest {
         assertThat(empty.getContent(), containsString("\"total\":2"));
     }
 
-    // 8. A value containing a colon and a URL-encoded value are parsed correctly.
     @Test
     void valueWithColonAndUrlEncodingIsParsed() {
         String collection = "users_filter_colon_" + DbUtils.id();
@@ -279,7 +271,7 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), not(containsString("OTHER")));
     }
 
-    // 9. Admin bypass stores Filters.empty() as the list filter; anding a client filter must work.
+    // Admin bypass stores Filters.empty() as the list filter; anding a client filter must work.
     @Test
     void adminBypassWithFilterWorks() {
         String collection = "notes_filter_admin_" + DbUtils.id();
@@ -298,7 +290,6 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), not(containsString("drop")));
     }
 
-    // 10. Pagination applies to the filtered set.
     @Test
     void paginationAppliesToFilteredSet() {
         String collection = "items_filter_page_" + DbUtils.id();
@@ -321,7 +312,6 @@ class CollectionFilterIntegrationTest {
                 .execute();
 
         assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
-        // total is the filtered count, the page carries at most limit items.
         assertThat(response.getContent(), containsString("\"total\":5"));
         assertThat(response.getContent(), not(containsString("drop")));
     }

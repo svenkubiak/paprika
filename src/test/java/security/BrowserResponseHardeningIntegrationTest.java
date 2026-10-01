@@ -19,18 +19,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * The server side half of the admin UI's XSS protection.
- * <p>
- * The UI itself renders everything through Vue's text interpolation (there is no {@code v-html},
- * no {@code innerHTML} and no dynamic {@code :href} anywhere in {@code admin-ui/src}), so markup in
- * tenant data cannot become markup in the DOM. What the server still has to get right is that such
- * data never reaches the browser in a context where the browser itself would render it: a JSON
- * response served as {@code text/html}, or a response without {@code nosniff}, would make the
- * escaping in the UI irrelevant.
- * <p>
- * A tenant user controls collection names, record contents, file names and - through validation
- * errors - parts of the responses an admin later opens in the browser. This suite pushes markup
- * through those paths and asserts the response is never browser-renderable.
+ * Server-side half of the admin UI's XSS protection: tenant-controlled markup must never reach the
+ * browser in a renderable context (JSON as text/html, missing nosniff).
  */
 @ExtendWith({TestRunner.class})
 class BrowserResponseHardeningIntegrationTest {
@@ -55,7 +45,6 @@ class BrowserResponseHardeningIntegrationTest {
         assertJsonOnly("record list", list);
         assertThat("the value is returned as data, not swallowed", list.getContent(), containsString("script"));
 
-        // The admin UI reads the same records through the admin session
         AdminTestUtils.AdminCookies admin = AdminTestUtils.loginAsAdminWithDefaultTenant();
         assertJsonOnly("record list (admin session)",
                 AdminTestUtils.getWithAdminCookies("/api/collections/" + collection + "?offset=0&limit=25", admin));
@@ -63,10 +52,6 @@ class BrowserResponseHardeningIntegrationTest {
                 AdminTestUtils.getWithAdminCookies("/api/meta/collections/" + collection, admin));
     }
 
-    /**
-     * Validation errors echo field names and values back. They are the most direct way of getting
-     * attacker controlled text into a response an admin looks at.
-     */
     @Test
     void validationErrorsEchoingInputAreNeverServedAsHtml() {
         String collection = "xss_validation_" + DbUtils.id();
@@ -84,7 +69,6 @@ class BrowserResponseHardeningIntegrationTest {
         assertJsonOnly("validation error", unknownField);
     }
 
-    /** A collection name is admin controlled and ends up in URLs, logs and error bodies. */
     @Test
     void unknownCollectionErrorsAreNeverServedAsHtml() {
         TestResponse response = TestRequest.get("/api/collections/" + escapeUrl(IMG_XSS)).execute();
@@ -94,10 +78,6 @@ class BrowserResponseHardeningIntegrationTest {
                 contentType(response), not(containsStringIgnoringCase("text/html")));
     }
 
-    /**
-     * The admin UI itself: the shell is the only HTML the server serves, and it has to carry the
-     * headers that keep a compromised or malicious response from doing damage.
-     */
     @Test
     void theAdminUiShellCarriesItsSecurityHeaders() {
         TestResponse response = TestRequest.get("/login").execute();
@@ -116,10 +96,6 @@ class BrowserResponseHardeningIntegrationTest {
                 header(response, "Referrer-Policy"), equalToIgnoringCase("no-referrer"));
     }
 
-    /**
-     * An uploaded file is the one place where attacker controlled bytes are served back verbatim.
-     * Anything that could be rendered has to be forced into a download.
-     */
     @Test
     void uploadedHtmlIsForcedIntoADownload() {
         String collection = "xss_file_" + DbUtils.id();
@@ -132,8 +108,7 @@ class BrowserResponseHardeningIntegrationTest {
 
         String recordId = TenantTestUtils.seedRecord(collection, "with attachment");
 
-        // No file stored: the point here is the response contract of the download route, which
-        // must not turn into an html rendering context for any mime type
+        // No file stored: only the download route's response contract matters, for any mime type
         TestResponse download = TestRequest.get(
                 "/api/collections/" + collection + "/" + recordId + "/files/attachment").execute();
 
@@ -144,10 +119,6 @@ class BrowserResponseHardeningIntegrationTest {
             assertThat(header(download, "Content-Security-Policy"), containsString("sandbox"));
         }
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
 
     private static void assertJsonOnly(String what, TestResponse response) {
         assertThat(what + " must be served as json", contentType(response), containsString("application/json"));

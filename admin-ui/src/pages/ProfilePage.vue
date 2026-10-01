@@ -9,7 +9,7 @@ import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
 import type { SuperadminProfile, TwoFactorSetupResult } from '@/types'
 
-/** What the picture is scaled to before it is sent; the server rejects anything much larger. */
+/** The picture is scaled to this before sending; the server rejects anything much larger. */
 const AVATAR_SIZE = 256
 
 const toast = useAppToast()
@@ -50,7 +50,6 @@ const smtpConfigured = computed(() => profile.value?.smtpConfigured === true)
 const hasEmail = computed(() => !!profile.value?.email)
 const emailChanged = computed(() => email.value.trim().toLowerCase() !== (profile.value?.email || ''))
 
-/** The alert needs somewhere to send to and something to send with, and says which one is missing. */
 const loginAlertBlockedReason = computed(() => {
   if (!smtpConfigured.value) {
     return 'Configure SMTP on this instance to use sign-in alerts.'
@@ -110,8 +109,7 @@ async function saveEmail() {
   try {
     const next = await api.updateProfileEmail(email.value.trim())
     apply(next)
-    // Reloading the whole bootstrap payload is deliberate: nothing else keeps the header in sync
-    // with an account that just changed.
+    // Reload the whole bootstrap payload: nothing else keeps the header in sync with the account.
     await load(true)
     notifyVerificationSent(next, 'Email address saved')
   } catch (error) {
@@ -227,21 +225,13 @@ async function removeAvatar() {
 }
 
 /**
- * Scales and centre-crops the picked file to a square PNG in the browser. Doing it here keeps the
- * upload small enough to live on the account record, and it is also what makes the picture safe to
- * store: the canvas only ever produces image data, so nothing of the original file survives.
- *
- * The file is decoded with createImageBitmap instead of being handed to an <img> as an object
- * URL. That URL has the blob: scheme, which the img-src directive of the Content Security Policy
- * does not cover - 'self' never matches blob:, so the browser refused to load it and every
- * upload failed as "not an image", whatever the file actually was. Decoding the file directly
- * needs no URL at all, so the policy can stay as strict as it is.
+ * Re-encoded through a canvas: keeps the upload small and leaves nothing of the original file.
+ * Decoded with createImageBitmap because the CSP's img-src 'self' does not match blob: URLs.
  */
 async function toSquareDataUrl(file: File): Promise<string> {
   let bitmap: ImageBitmap
   try {
-    // Phone photos are usually stored sideways with an EXIF tag saying which way is up. An <img>
-    // applies that tag on its own; a bitmap has to be asked for it.
+    // Unlike an <img>, a bitmap only applies the EXIF orientation of phone photos when asked.
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   } catch {
     throw new Error('This file is not an image Paprika can read')

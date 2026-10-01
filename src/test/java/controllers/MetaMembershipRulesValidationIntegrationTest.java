@@ -19,12 +19,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 
-/**
- * A membership rule without a complete configuration is rejected while the collection is saved.
- * The alternative - storing it and denying every request at runtime - would look like a broken
- * application instead of a typo, and a rule that does not mean what it says is the worst outcome
- * on this page.
- */
+/** An incomplete membership rule is refused on save rather than stored and denying every request. */
 @ExtendWith({TestRunner.class})
 class MetaMembershipRulesValidationIntegrationTest {
     private static final String MEMBERSHIPS = "val_memberships";
@@ -97,10 +92,6 @@ class MetaMembershipRulesValidationIntegrationTest {
         assertThat(response.getContent(), containsString("peers"));
     }
 
-    /**
-     * "id" is the group collection itself: the record is the group. The only system field that may
-     * be used here - a timestamp is not an identity.
-     */
     @Test
     void theRecordIdIsAcceptedAsTheRecordField() {
         String collection = "val_self_" + DbUtils.id();
@@ -116,14 +107,7 @@ class MetaMembershipRulesValidationIntegrationTest {
         assertThat(stored.groupRecordField(), equalTo("id"));
     }
 
-    /**
-     * A membership collection may point at itself: the caller's own membership records name the
-     * groups, and every membership record of those groups becomes visible - the member list of a
-     * group. Nothing about that is circular, so nothing refuses it.
-     * <p>
-     * The rules are saved the way the Rules tab saves them, with a PATCH on the existing
-     * collection.
-     */
+    /** Saved with a PATCH on the existing collection, as the Rules tab does. */
     @Test
     void theCollectionItselfIsAcceptedAsTheMembershipCollection() {
         String collection = "val_selfmem_" + DbUtils.id();
@@ -144,7 +128,7 @@ class MetaMembershipRulesValidationIntegrationTest {
         assertThat(stored.groupRecordField(), equalTo("crew"));
     }
 
-    /** A create rule on the record's own id could never be satisfied, so it is not stored. */
+    /** A create rule on the record's own id could never be satisfied. */
     @Test
     void aGroupCreateRuleOnTheRecordIdIsRejected() {
         String collection = "val_self_create_" + DbUtils.id();
@@ -158,7 +142,6 @@ class MetaMembershipRulesValidationIntegrationTest {
                 .findDefinition(TenantTestUtils.defaultTenantContext(), collection), nullValue());
     }
 
-    /** Other system fields stay refused: they are not an identity and could never match. */
     @Test
     void anotherSystemFieldAsTheRecordFieldIsRejected() {
         TestResponse response = create(rules(MEMBERSHIPS, "user", "crew", "createdAt"));
@@ -186,7 +169,6 @@ class MetaMembershipRulesValidationIntegrationTest {
         assertThat(stored.groupRecordField(), equalTo("crew"));
     }
 
-    /** A rejected save stores nothing at all. */
     @Test
     void aRejectedDefinitionIsNotStored() {
         String collection = "val_rejected_" + DbUtils.id();

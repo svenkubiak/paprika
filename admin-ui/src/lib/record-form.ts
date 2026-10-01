@@ -1,11 +1,3 @@
-/**
- * Turning a record into the state of a schema-driven form and back.
- *
- * This lives outside the components because two editors need exactly the same behaviour: the
- * generic record editor of a collection and the user editor, which has to offer the custom fields
- * a tenant added to its users schema. Keeping the conversion in one place is what keeps "what the
- * form shows" and "what is sent" from drifting apart between the two.
- */
 import type { FieldDefinition } from '@/types'
 import {
   booleanToFormValue,
@@ -24,24 +16,22 @@ import {
 export type FormMode = 'new' | 'edit'
 
 /**
- * Per DATETIME field the value as stored and the picker value derived from it. Opening and saving
- * a record without touching the field must not rewrite its timestamp - a different offset or a
- * dropped fraction of a second would be a silent data change caused by merely looking at it.
+ * Opening and saving a record without touching a DATETIME field must not rewrite it (offset,
+ * fractions of a second), so the stored value is kept next to the derived picker value.
  */
 export type DateTimeInitial = Record<string, { stored: unknown; input: string }>
 
 export type RecordFormState = {
   /** Dynamic field widgets narrow values at runtime based on the collection schema. */
   values: Record<string, any>
-  /** JSON fields are edited as text, so the raw text is kept next to the values. */
+  /** JSON fields are edited as text. */
   jsonText: Record<string, string>
   dateTimeInitial: DateTimeInitial
 }
 
 /**
- * A new record starts with an empty string for every field, so "no value" and "explicitly empty"
- * cannot be told apart here - which is fine, because the pre-fill only ever runs while the form is
- * being populated from the record, never while the user types.
+ * Treats '' as empty: safe because the pre-fill only runs while the form is being populated,
+ * never while the user types.
  */
 export function isEmptyValue(value: unknown): boolean {
   return value === null || value === undefined || (typeof value === 'string' && !value.trim())
@@ -52,7 +42,6 @@ export function serializeJsonFieldText(value: unknown): string {
   return JSON.stringify(value, null, 2)
 }
 
-/** Builds the form state for the given fields. Keys outside the schema are ignored. */
 export function buildRecordFormState(
   record: Record<string, unknown>,
   fields: FieldDefinition[],
@@ -82,9 +71,8 @@ export function buildRecordFormState(
       case 'DATETIME': {
         const input = toDateTimeInputValue(stored)
         state.dateTimeInitial[field.name] = { stored, input }
-        // New records start at "now" as a convenience; the clear button next to the picker puts
-        // the field back to empty. The initial pair above stays at the stored (empty) value, so
-        // the pre-filled timestamp counts as a change and is serialized on save.
+        // New records start at "now". The initial pair stays at the stored (empty) value, so the
+        // pre-filled timestamp counts as a change and is serialized on save.
         state.values[field.name] =
           !input && mode === 'new' && isEmptyValue(stored) ? currentDateTimeInputValue() : input
         break
@@ -110,11 +98,8 @@ export function buildRecordFormState(
 }
 
 /**
- * Form state -> the values to send. Throws an `Error` with a message meant for the user when a
- * value cannot be converted at all (a number that is not one, invalid JSON).
- *
- * FILE fields are never part of the result: their content travels as multipart, and sending the
- * stored descriptor back would overwrite it with a copy of itself.
+ * Throws an `Error` with a user-facing message when a value cannot be converted. FILE fields are
+ * never included: sending the stored descriptor back would overwrite it with a copy of itself.
  */
 export function serializeRecordForm(
   fields: FieldDefinition[],
@@ -186,8 +171,7 @@ export function serializeRecordForm(
       case 'DATETIME': {
         const input = typeof raw === 'string' ? raw : ''
         const initial = state.dateTimeInitial[field.name]
-        // Unchanged picker value: keep the stored string byte for byte, including fractions of a
-        // second and an offset this browser would not have produced.
+        // Unchanged picker value: keep the stored string byte for byte (fractions, foreign offset).
         let serialized: unknown
         if (initial && input === initial.input) {
           serialized =

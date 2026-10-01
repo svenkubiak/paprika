@@ -18,12 +18,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Manages the superadmin accounts that operate the Paprika instance. New superadmins are added by
- * invite: an existing superadmin creates a one-time setup link that the invitee completes through
- * the regular {@code /setup} flow. Guarded by {@link AdminAuthFilter}, so only an authenticated
- * superadmin session can reach it.
- */
 @FilterWith(AdminAuthFilter.class)
 public class SuperadminController {
     private final SystemUserService systemUserService;
@@ -52,11 +46,6 @@ public class SuperadminController {
         }
     }
 
-    /**
-     * Emails an already-created invite's setup link to the given address. Explicit action from the
-     * admin UI, only offered when SMTP is configured. The absolute link is built from this request's
-     * own host, matching the copy link shown alongside it.
-     */
     public Response emailInvite(@NotNull(message = "Request body is required") @Valid SuperadminInviteEmailDto dto, Request request) {
         String link = setupLink(
                 request.getHeader(Headers.HOST),
@@ -70,11 +59,7 @@ public class SuperadminController {
         return Response.ok().bodyJson(Map.of("success", true));
     }
 
-    /**
-     * Builds the absolute setup link Paprika emails for a superadmin invite, from the request's own
-     * host (the origin the inviting admin is on). Returns null when the host is unknown, in which
-     * case the invite still works through the copy link shown in the admin UI.
-     */
+    // null when the host is unknown; the invite still works through the copy link in the admin UI.
     static String setupLink(String host, String forwardedProto, String token) {
         return InstanceLinks.absolute(host, forwardedProto, "/setup#token=" + token);
     }

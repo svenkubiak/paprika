@@ -9,10 +9,7 @@ import services.AuthService;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Restricts Meta API access to authenticated admin Web UI sessions (Mangoo cookie).
- * Bearer tokens and unauthenticated requests are rejected.
- */
+// Admin UI session cookie only; bearer tokens are rejected.
 public class AdminAuthFilter implements PerRequestFilter {
     private static final Map<String, String> UNAUTHORIZED_BODY = Map.of("error", "Unauthorized");
     private static final Map<String, String> FORBIDDEN_BODY = Map.of("error", "Forbidden");

@@ -9,10 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/**
- * Backward-compatible facade for tests and legacy callers.
- * Delegates tenant user operations to the default tenant.
- */
+/** Facade for tests and legacy callers; operates on the default tenant. */
 @Singleton
 public class UserService {
     private final TenantUserService tenantUserService;

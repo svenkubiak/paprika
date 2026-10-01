@@ -9,80 +9,38 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 
-/**
- * Generation and verification of API keys: long-lived credentials a machine presents on every
- * single request as {@code Authorization: Bearer pk_…}.
- * <p>
- * The {@code pk_} prefix is what lets {@code AuthService} tell a key from a JWT access token
- * without attempting a parse, and it is what secret scanners key on.
- * <p>
- * Keys are stored as a plain SHA-256 hash, deliberately <em>not</em> as Argon2 like passwords:
- * Argon2 is built to be slow so that a low-entropy secret survives an offline attack on the
- * stored hash. An API key carries {@value #SECRET_LENGTH} characters of URL-safe
- * {@code SecureRandom} output (~240 bits), so there is nothing to brute force even with the hash
- * in hand - while an Argon2 verify on every request would put a deliberately expensive
- * computation on the hottest path of the API and hand an attacker a cheap way to exhaust CPU by
- * presenting bogus keys. The comparison is constant time either way.
- */
+// Plain SHA-256, deliberately not Argon2: ~240 bits of random secret leave nothing to brute force,
+// while Argon2 on every request would hand attackers a cheap CPU-exhaustion vector.
 public final class ApiKeys {
-    /** Marks a bearer value as an API key rather than a JWT. */
+    // Distinguishes a key from a JWT without parsing; also what secret scanners match on
     public static final String PREFIX = "pk_";
 
-    /** Request attributes carrying the key that authenticated a request (never the key itself). */
     public static final String ATTRIBUTE_ID = "paprika.apikey.id";
     public static final String ATTRIBUTE_NAME = "paprika.apikey.name";
 
-    /**
-     * Set when the key that authenticated this request is allowed to skip the collection rules.
-     * Written once in the auth layer and only read by the data-plane auth filter and the request
-     * log; the authorization itself is still expressed as an {@code AuthorizationDecision}.
-     */
     public static final String ATTRIBUTE_BYPASS_RULES = "paprika.apikey.bypassRules";
 
-    /**
-     * Set when the key that authenticated this request is allowed to skip the hooks. Written once
-     * in the auth layer for the same reason {@link #ATTRIBUTE_BYPASS_RULES} is: the auth layer is
-     * the only place that sees the key, and resolving it again in each of the three hook filters
-     * would mean three chances for them to disagree about the same request.
-     */
+    // Written once in the auth layer so the hook filters cannot disagree about the same request
     public static final String ATTRIBUTE_BYPASS_HOOKS = "paprika.apikey.bypassHooks";
 
-    /**
-     * Set when a key was valid in every respect but presented from an address outside its
-     * {@code allowedCidrs}. Read by the request log only, and never by anything that shapes the
-     * response: the caller must not be able to tell this case from an unknown key, or they would
-     * learn that the secret they hold is real and only the place is wrong.
-     */
+    // Request log only, never the response: the caller must not learn the key itself is valid
     public static final String ATTRIBUTE_SOURCE_REJECTED = "paprika.apikey.sourceRejected";
 
-    /**
-     * The name of the key rejected that way. Kept apart from {@link #ATTRIBUTE_NAME}, which means
-     * "this key authenticated the request" - a rejected key authenticated nothing, and the admin
-     * UI renders that attribute as exactly that claim.
-     */
+    // Separate from ATTRIBUTE_NAME, which the admin UI renders as "this key authenticated the request"
     public static final String ATTRIBUTE_REJECTED_NAME = "paprika.apikey.rejectedName";
 
     private static final int SECRET_LENGTH = 40;
 
-    /**
-     * Characters of the key stored in the clear as an indexed lookup value, so a presented key
-     * finds its candidate record without a collection scan. Short enough to be useless on its own.
-     */
+    // Stored in the clear for an indexed lookup; too short to be useful on its own
     private static final int LOOKUP_LENGTH = PREFIX.length() + 8;
 
     private ApiKeys() {
     }
 
-    /**
-     * Whether the key that authenticated this request runs no hooks. Read by every filter that
-     * would execute one, so that the answer is the same on the auth routes, the collection routes
-     * and the file routes.
-     */
     public static boolean bypassesHooks(Request request) {
         return Boolean.TRUE.equals(request.getAttribute(ATTRIBUTE_BYPASS_HOOKS));
     }
 
-    /** A fresh key to hand to the caller exactly once (never persisted in the clear). */
     public static String generate() {
         return PREFIX + CommonUtils.randomString(SECRET_LENGTH);
     }
@@ -91,7 +49,6 @@ public final class ApiKeys {
         return StringUtils.isNotBlank(value) && value.startsWith(PREFIX) && value.length() > LOOKUP_LENGTH;
     }
 
-    /** The indexed, non-secret part of a key used to find its record. */
     public static String lookup(String key) {
         return key.substring(0, LOOKUP_LENGTH);
     }
@@ -106,7 +63,6 @@ public final class ApiKeys {
         }
     }
 
-    /** Constant-time comparison of a freshly computed hash against the stored one. */
     public static boolean matches(String presentedKey, String storedHash) {
         if (StringUtils.isBlank(storedHash)) {
             return false;

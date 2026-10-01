@@ -11,11 +11,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Base64;
 
-/**
- * Short-lived, single-use tokens for the tenant-user auth flows (password reset, email
- * verification). Tokens are random, delivered to the tenant's own backend through a hook, and only
- * ever stored hashed. The raw token never touches the database.
- */
+// Password reset / email verification tokens: only ever stored hashed, never in the clear.
 public final class AuthTokens {
     public static final Duration TTL = Duration.ofMinutes(30);
 
@@ -25,14 +21,12 @@ public final class AuthTokens {
     private AuthTokens() {
     }
 
-    /** A fresh URL-safe token to hand to the caller (never persisted in the clear). */
     public static String generate() {
         byte[] bytes = new byte[TOKEN_BYTES];
         SECURE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    /** The SHA-256 hash stored alongside the record so a presented token can be checked. */
     public static String hash(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -43,12 +37,10 @@ public final class AuthTokens {
         }
     }
 
-    /** The ISO-8601 instant a token issued now expires at. */
     public static String expiresAt() {
         return Instant.now().plus(TTL).toString();
     }
 
-    /** Whether the given ISO-8601 expiry is still in the future. */
     public static boolean isActive(String expiresAtIso) {
         if (StringUtils.isBlank(expiresAtIso)) {
             return false;

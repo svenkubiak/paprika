@@ -14,10 +14,7 @@ export interface UserEditorForm {
   username: string
   password: string
   email: string
-  /**
-   * The custom part of the tenant's users schema, in the same form representation the record
-   * editor uses. Empty when the tenant only uses the core fields.
-   */
+  /** Custom part of the users schema, in the record editor's form representation. */
   custom: RecordFormState
 }
 
@@ -25,7 +22,6 @@ const props = defineProps<{
   open: boolean
   mode: UserEditorMode
   form: UserEditorForm
-  /** The fields this tenant added to its users schema; the core fields are rendered above. */
   customFields?: FieldDefinition[]
   user?: TenantUser | null
   saving?: boolean
@@ -121,11 +117,8 @@ function counterFor(field: FieldDefinition) {
             :counter="counterFor(field)?.text"
             :counter-exceeded="counterFor(field)?.exceeded"
           >
-            <!--
-              A FILE field of the users schema is not editable here: an upload goes through the
-              collection API as multipart, which this editor does not speak. It stays visible so
-              the field does not silently disappear from the schema's point of view.
-            -->
+            <!-- Uploads go through the collection API as multipart, which this editor does not
+                 speak. The field stays visible so it does not silently disappear. -->
             <p v-if="field.type === 'FILE'" class="text-sm text-muted">
               File fields are managed through <code class="text-xs">/api/collections/users</code>.
             </p>

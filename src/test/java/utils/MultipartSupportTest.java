@@ -86,11 +86,7 @@ class MultipartSupportTest {
         assertThat(body.get("relations").isArray(), is(true));
     }
 
-    /**
-     * Everything that decides on the body of a multipart request depends on this flag: a request
-     * whose parts have not been parsed yet must be distinguishable from one with an empty body,
-     * because mangoo reports both as an empty body.
-     */
+    /** mangoo reports an unparsed multipart body and an empty one both as empty, so this flag tells them apart. */
     @Test
     void aRequestWithoutTheParsedBodyAttributeIsNotPrepared() {
         assertThat(MultipartSupport.isPrepared(new Request()), is(false));

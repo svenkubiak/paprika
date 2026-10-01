@@ -34,18 +34,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Access control answers "who may reach this data". This suite answers the second question:
- * "what leaves the instance". A credential does not have to be reachable through a route to be
- * leaked - it can ride along in a webhook payload, a request log, an export or a bootstrap payload.
- * <p>
- * Every channel that emits data is fed a set of known secrets and then checked for them. The
- * secrets are read back from the database rather than assumed, so the test keeps working when the
- * hashing or token format changes.
- * <p>
- * Two channels are deliberately exempt and documented as such: the backup export is a full restore
- * dump and the schema export contains hook secrets. Both are superadmin-only operations whose whole
- * purpose is to reproduce the instance elsewhere; that they are unreachable for tenant callers is
- * asserted in {@link TenantIsolationIntegrationTest}.
+ * Feeds known secrets (read back from the database, so the test survives format changes) through every
+ * outbound channel and checks they never appear. Backup and schema export are exempt by design:
+ * superadmin-only, and asserted unreachable for tenants in {@link TenantIsolationIntegrationTest}.
  */
 @ExtendWith({TestRunner.class})
 class OutboundSecretLeakIntegrationTest {
@@ -56,7 +47,6 @@ class OutboundSecretLeakIntegrationTest {
 
     private static TenantDefinition tenant;
     private static String userId;
-    /** name -> value of everything that must never appear in an outbound channel. */
     private static Map<String, String> secrets;
 
     @BeforeAll
@@ -70,10 +60,8 @@ class OutboundSecretLeakIntegrationTest {
         users.issuePasswordResetToken(tenant, EMAIL);
         users.issueEmailVerificationToken(tenant, EMAIL);
 
-        // 2FA secrets are attached to a pending superadmin invite rather than to the account this
-        // test signs in with: enrolling 2FA there would turn every login into a challenge, and a
-        // second completed superadmin would change the "last superadmin cannot be deleted" rule
-        // other tests rely on. A pending invite carries no password and does not count as completed.
+        // 2FA secrets go on a pending invite: enrolling the signed-in account would challenge every login,
+        // and a second completed superadmin would break the "last superadmin" rule other tests rely on.
         SystemUserService systemUsers = Application.getInstance(SystemUserService.class);
         systemUsers.inviteSuperadmin("leak-probe-admin", null);
         String inviteId = String.valueOf(systemUsers.findPublicUserByUsername("leak-probe-admin")
@@ -85,7 +73,6 @@ class OutboundSecretLeakIntegrationTest {
         secrets = collectSecrets(inviteId);
     }
 
-    /** Reads the actual stored credential values, so the assertions cannot go stale. */
     private static Map<String, String> collectSecrets(String inviteId) {
         Map<String, String> collected = new LinkedHashMap<>();
 
@@ -116,11 +103,7 @@ class OutboundSecretLeakIntegrationTest {
         return collected;
     }
 
-    /**
-     * A webhook target is an arbitrary external URL. Neither the credentials of the request nor the
-     * credentials of the record may be handed to it - including the plaintext password a client
-     * sends when creating a user through the data plane.
-     */
+    /** Includes the plaintext password a client sends when creating a user through the data plane. */
     @Test
     void webhookPayloadCarriesNoCredentials() throws Exception {
         AtomicReference<String> payload = new AtomicReference<>("");
@@ -154,7 +137,6 @@ class OutboundSecretLeakIntegrationTest {
         }
     }
 
-    /** The data plane view of the users collection, for a tenant caller and for the admin UI. */
     @Test
     void dataPlaneNeverExposesCredentials() {
         AdminTestUtils.AdminCookies admin = AdminTestUtils.loginAsAdminWithDefaultTenant();
@@ -169,10 +151,8 @@ class OutboundSecretLeakIntegrationTest {
                 TestRequest.get("/api/auth/me").withHeader("Authorization", "Bearer " + token).execute().getContent());
     }
 
-    /** Request logs are read by every superadmin and must not turn into a credential archive. */
     @Test
     void requestLogsNeverContainCredentials() {
-        // Produce traffic that carries credentials in the body
         TestRequest.post("/api/auth/login")
                 .withStringBody(TenantTestUtils.loginBody(USERNAME, PASSWORD))
                 .withContentType("application/json")
@@ -189,10 +169,6 @@ class OutboundSecretLeakIntegrationTest {
                 AdminTestUtils.getWithAdminCookies("/api/admin/request-logs?offset=0&limit=100", admin).getContent());
     }
 
-    /**
-     * The bootstrap payload initializes the admin UI and is the widest data set the frontend
-     * receives in one go.
-     */
     @Test
     void adminBootstrapPayloadCarriesNoCredentials() {
         AdminTestUtils.AdminCookies admin = AdminTestUtils.loginAsAdminWithDefaultTenant();
@@ -203,16 +179,12 @@ class OutboundSecretLeakIntegrationTest {
                 AdminTestUtils.getWithAdminCookies("/api/admin/settings", admin).getContent());
         assertNoSecret("superadmin list",
                 AdminTestUtils.getWithAdminCookies("/api/admin/superadmins", admin).getContent());
-        // The profile is read straight off the account document, which is also where the password
-        // hash, the TOTP secret and the confirmation token hash live.
+        // The profile is read off the account document, which also holds the password hash, TOTP secret and token hash.
         assertNoSecret("superadmin profile",
                 AdminTestUtils.getWithAdminCookies("/api/admin/profile", admin).getContent());
     }
 
-    /**
-     * The schema export is meant to move a tenant's structure to another instance. It may carry
-     * hook secrets by design, but never user credentials.
-     */
+    /** The schema export may carry hook secrets by design, but never user credentials. */
     @Test
     void schemaExportCarriesNoUserCredentials() {
         AdminTestUtils.AdminCookies admin = AdminTestUtils.loginAsAdminWithDefaultTenant();
@@ -224,7 +196,6 @@ class OutboundSecretLeakIntegrationTest {
         }
     }
 
-    /** Error responses must not echo credentials back, e.g. through a validation message. */
     @Test
     void errorResponsesDoNotEchoCredentials() {
         List<TestResponse> responses = new ArrayList<>();
@@ -250,10 +221,6 @@ class OutboundSecretLeakIntegrationTest {
             assertNoSecret("error response", response.getContent());
         }
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
 
     private static void assertNoSecret(String channel, String content) {
         if (content == null || content.isBlank()) {

@@ -38,9 +38,7 @@ public class ApiHookFilter implements PerRequestFilter {
 
     @Override
     public Response execute(Request request, Response response) {
-        // A hook-free key turns this filter into a no-op, record snapshot included: the snapshot
-        // is a cache for the hook envelope, and CollectionRecordService reads the record itself
-        // when it is missing. What the caller gets is the chain it would see without any hook.
+        // No-op for a hook-free key, snapshot included: CollectionRecordService reads the record itself.
         if (ApiKeys.bypassesHooks(request)) {
             return response;
         }
@@ -227,8 +225,8 @@ public class ApiHookFilter implements PerRequestFilter {
     }
 
     private RuleOperation resolveOperation(Request request) {
-        // Only route parameters may decide the operation: a client can always add a query
-        // parameter of the same name, which must not turn a LIST into a VIEW (or similar).
+        // Only path parameters decide the operation: a same-named query parameter must not turn a
+        // LIST into a VIEW.
         if (request.hasPathParameter("field")) {
             if (Methods.GET.equals(request.getMethod())) {
                 return RuleOperation.VIEW;

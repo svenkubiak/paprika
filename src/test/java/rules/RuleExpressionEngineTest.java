@@ -17,17 +17,8 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * The expression engine below the rule shorthands.
- * <p>
- * {@link RuleService#validateRule} currently only accepts {@code *}, {@code auth} and {@code owner},
- * but the parser, the evaluator and the Mongo converter implement a far larger expression language
- * underneath. That part is what a future "custom rules" feature would expose directly, and it is
- * unreachable - hence untested - through the service. These tests address it directly, so the
- * behaviour is pinned down before it is ever switched on, and so mutation testing has something to
- * measure against.
- * <p>
- * The recurring theme is the same as for the shorthands: an operand that cannot be resolved for the
- * caller must never satisfy a comparison, in neither of the two evaluation paths.
+ * The expression language below the shorthands is unreachable through RuleService#validateRule, so it
+ * is pinned here directly. An unresolvable operand must never satisfy a comparison in either path.
  */
 class RuleExpressionEngineTest {
     private static final AuthContext USER = AuthContext.of("user-1", Role.USER, "tenant-1");
@@ -49,10 +40,6 @@ class RuleExpressionEngineTest {
     private static String json(Bson filter) {
         return filter.toBsonDocument(Document.class, MongoClientSettings.getDefaultCodecRegistry()).toJson();
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Comparison operators
-    // ---------------------------------------------------------------------------------------
 
     @Test
     void comparesRecordFieldsAgainstLiterals() {
@@ -90,10 +77,6 @@ class RuleExpressionEngineTest {
         assertThrows(RuleParseException.class, () -> evaluate("record.views > 10", USER, record));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Boolean composition
-    // ---------------------------------------------------------------------------------------
-
     @Test
     void combinesConditionsWithAndOrAndNot() {
         Document record = new Document("status", "published").append("owner", "user-1");
@@ -121,10 +104,6 @@ class RuleExpressionEngineTest {
         assertThat(json(filter("record.status in ('draft', 'published')", USER)), containsString("$in"));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // auth and body operands
-    // ---------------------------------------------------------------------------------------
-
     @Test
     void authFieldsResolveFromTheCaller() {
         Document record = new Document("owner", "user-1").append("tenant", "tenant-1");
@@ -139,8 +118,7 @@ class RuleExpressionEngineTest {
     void unresolvableAuthOperandsNeverSatisfyAComparison() {
         Document ownerless = new Document("id", "record-1");
 
-        // The guest has no id, and an ownerless record has no owner: two unknowns must not
-        // compare equal, in neither evaluation path
+        // The guest has no id and an ownerless record no owner: two unknowns must not compare equal
         assertThat(evaluate("record.owner = auth.id", GUEST, ownerless), is(false));
         assertThat(evaluate("record.owner != auth.id", GUEST, ownerless), is(false));
         assertThat(evaluate("auth.id != null", GUEST, ownerless), is(false));
@@ -179,14 +157,7 @@ class RuleExpressionEngineTest {
         assertThat(json(filter("false", USER)), containsString("__paprika_denied__"));
     }
 
-    // ---------------------------------------------------------------------------------------
-    // Parser
-    // ---------------------------------------------------------------------------------------
-
-    /**
-     * The same condition can be written in several shapes. All of them have to produce the same
-     * decision, otherwise the phrasing of a rule - not its meaning - would decide who gets access.
-     */
+    /** Otherwise the phrasing of a rule, not its meaning, would decide who gets access. */
     @Test
     void equivalentPhrasingsOfAConditionBehaveIdentically() {
         Document mine = new Document("owner", "user-1");

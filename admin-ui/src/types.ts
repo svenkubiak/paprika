@@ -32,7 +32,7 @@ export interface FieldOptions {
   minLength?: number
   maxLength?: number
   pattern?: string
-  /** STRING only: render a textarea in the record editor. Purely a display hint. */
+  /** STRING only: display hint for a textarea in the record editor. */
   multiline?: boolean
   numberMin?: number
   numberMax?: number
@@ -68,9 +68,8 @@ export interface CollectionRules {
   updateRule: string | null
   deleteRule: string | null
   ownerField?: string | null
-  // Configuration of the group/peers rules: where the memberships live, which field of that
-  // collection points at the user and which at the group, and which field of this collection
-  // carries the group (group only - peers matches on the record id).
+  // group/peers rules: the membership collection, its user and group fields, and (group only) the
+  // field of this collection carrying the group - peers matches on the record id.
   groupCollection?: string | null
   groupMemberField?: string | null
   groupField?: string | null
@@ -158,11 +157,10 @@ export interface TenantUser {
   role: string
   createdAt?: string | null
   updatedAt?: string | null
-  /** Fields the tenant added to its own users schema; the admin API returns them as they are. */
+  /** Custom fields of the tenant's users schema, returned as they are. */
   [key: string]: unknown
 }
 
-/** An API key as the admin UI sees it: never the key itself, only its metadata. */
 export interface ApiKey {
   id: string
   name: string
@@ -172,14 +170,11 @@ export interface ApiKey {
   lastUsedAt?: string | null
   expiresAt?: string | null
   revokedAt?: string | null
-  /** Requests with this key skip the collection rules. Set at creation, never changeable. */
+  /** Skips the collection rules. Creation-only. */
   bypassRules?: boolean
-  /** Requests with this key run no hooks. Set at creation, never changeable. */
+  /** Runs no hooks. Creation-only. */
   bypassHooks?: boolean
-  /**
-   * Source address ranges (CIDR) the key may be presented from; empty means anywhere. This one
-   * *is* changeable - it narrows reach instead of granting it.
-   */
+  /** Allowed source CIDRs, empty means anywhere. Changeable, as it only narrows reach. */
   allowedCidrs?: string[]
 }
 
@@ -192,18 +187,11 @@ export interface Stats {
   collections: number
   records: number
   tenants: number
-  /**
-   * Responses of 500 and above in the active tenant's request log over the last 24 hours. The
-   * one stat that is supposed to be zero, so the dashboard shows it as a problem when it is not.
-   */
+  /** 5xx responses in the active tenant's request log over 24h; non-zero is shown as a problem. */
   serverErrors24h: number
   uptimeSeconds: number
 }
 
-/**
- * Instance-wide problems that do not stop Paprika from running. Each list holds the names of the
- * affected tenants and is empty when there is nothing to report.
- */
 export interface InstanceWarnings {
   /** Tenants relying on password reset or email verification while no SMTP host is configured. */
   mailDependentTenants: string[]
@@ -231,7 +219,7 @@ export interface BootstrapData {
   isSuperAdmin: boolean
   adminId?: string | null
   adminUsername?: string | null
-  /** Carries the version of the stored picture, so the browser can cache it and still see a new one. */
+  /** Carries the picture version, so the browser can cache it and still see a new one. */
   adminAvatarUrl?: string | null
   smtpConfigured?: boolean
   hasActiveTenant: boolean
@@ -265,8 +253,8 @@ export interface ApiErrorBody {
   error?: string
   message?: string
   field?: string
-  // Bean Validation failures from mangoo, keyed by the field that failed. Sent instead of
-  // `error` when a request never reaches the controller.
+  // Bean Validation failures from mangoo, keyed by field; sent instead of `error` when the request
+  // never reaches the controller.
   errors?: Record<string, string>
 }
 
@@ -284,7 +272,6 @@ export interface AppSettings {
   [key: string]: string | boolean | number | null | undefined
 }
 
-/** The signed-in superadmin's own account, as the profile page sees it. */
 export interface SuperadminProfile {
   username: string
   email?: string | null
@@ -295,7 +282,6 @@ export interface SuperadminProfile {
   twoFactorEnabled: boolean
   smtpConfigured: boolean
   avatarUrl?: string | null
-  /** Only present on the responses that trigger a confirmation mail. */
   verificationEmailSent?: boolean
 }
 
@@ -345,9 +331,8 @@ export interface PaginatedRequestLogs {
 }
 
 /**
- * The answer to a live-mode poll. It carries no total - counting the whole log every few seconds
- * is what would make polling expensive - and `limit` is what the server applied, so the client can
- * tell a complete delta from a truncated one.
+ * No total - counting the whole log on every poll is what would make polling expensive. `limit` is
+ * what the server applied, so a truncated delta can be told from a complete one.
  */
 export interface RequestLogDelta {
   items: RequestLogEntry[]

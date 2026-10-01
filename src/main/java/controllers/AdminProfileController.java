@@ -20,18 +20,9 @@ import services.SystemUserService;
 import java.util.Objects;
 import java.util.Optional;
 
-/**
- * The profile of the superadmin who is signed in: password, two-factor authentication, email
- * address, profile picture and the login alert. Everything here acts on the session's own account,
- * so there is no user id in any of these routes.
- */
 @FilterWith(AdminAuthFilter.class)
 public class AdminProfileController {
-    /**
-     * private, because the picture belongs to one account and is served behind its session - a
-     * shared cache in front of Paprika must never hand it to somebody else. The version in the URL
-     * changes with the bytes, so a long-lived entry can never go stale.
-     */
+    // private: a shared cache must never serve one account's picture to someone else.
     private static final String CACHE_CONTROL = "private, max-age=300";
 
     private final SuperadminProfileService profileService;

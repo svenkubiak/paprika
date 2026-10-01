@@ -23,10 +23,7 @@ const selectedEntry = ref<RequestLogEntry | null>(null)
 const live = ref(false)
 const newEntries = ref(0)
 
-/**
- * Slow enough that a tab left open costs nothing worth mentioning, fast enough that "live" is not
- * a lie. Each tick is one indexed range read for what is newer than the top row, not a new page.
- */
+/** Each tick is one indexed range read for entries newer than the top row, not a new page. */
 const LIVE_INTERVAL_MS = 3000
 
 let liveTimer: ReturnType<typeof setInterval> | undefined
@@ -39,11 +36,6 @@ const pageSizeOptions = [
   { label: '100', value: 100 }
 ]
 
-/**
- * The header is two rows deep because half of the columns describe the incoming call and the
- * other half the outgoing hook calls it triggered - without that grouping "Hooks" and "Error"
- * read as properties of the request, which is exactly what they are not.
- */
 const columnGroups = [
   { key: 'request', label: 'Request', span: 5, title: 'The incoming API call' },
   { key: 'timing', label: 'Timing', span: 3, title: 'Where the time of this request was spent' },
@@ -62,7 +54,6 @@ const columns = [
   { key: 'hooks', header: 'Executions', title: 'Hook calls of this request - expand to see every single one' }
 ]
 
-/** Rows whose hook executions are unfolded inline, by log entry id. */
 const expandedIds = ref<string[]>([])
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
@@ -85,10 +76,7 @@ watch([page, pageSize, statusFilter, hookFilter, typeFilter, hasActiveTenant], (
   }
 })
 
-/**
- * Live mode only ever appends to the newest page - a delta on top of page five would be a lie
- * about what the user is looking at - so switching it on returns to page one.
- */
+/** Live mode only appends to the newest page, so switching it on returns to page one. */
 watch(live, (enabled) => {
   newEntries.value = 0
 
@@ -139,10 +127,7 @@ onBeforeUnmount(() => {
   clearTimeout(searchTimer)
 })
 
-/**
- * A hidden tab has nobody watching it, so it stops asking. Coming back asks immediately instead
- * of waiting out the interval, otherwise the first thing the user sees is stale.
- */
+/** Hidden tabs stop polling; becoming visible polls at once so the first view is not stale. */
 function onVisibilityChange() {
   if (!live.value) {
     return
@@ -167,9 +152,8 @@ function stopLiveTimer() {
 }
 
 /**
- * One tick. It is skipped rather than queued whenever the answer could not be shown honestly:
- * during another read, while a detail sheet is open (the table under it must not move), and on
- * any page but the first.
+ * Skipped rather than queued during another read, while a detail sheet is open (the table under it
+ * must not move), and on any page but the first.
  */
 async function pollNewEntries() {
   if (!live.value || !hasActiveTenant.value || loading.value || detailOpen.value || page.value !== 1) {
@@ -199,8 +183,8 @@ async function pollNewEntries() {
       return
     }
 
-    // A full delta means more arrived than one page holds: what is between the last entry of the
-    // delta and the first entry on screen is unknown, and prepending would invent continuity.
+    // A full delta leaves a gap of unknown size to the entries on screen; prepending would invent
+    // continuity.
     if (delta.items.length >= delta.limit) {
       await refreshLogs()
       newEntries.value += fresh.length
@@ -211,8 +195,8 @@ async function pollNewEntries() {
     total.value += fresh.length
     newEntries.value += fresh.length
   } catch (error) {
-    // A dead session or a server that is gone would otherwise be asked again every few seconds,
-    // and the session guard would fire on every one of them.
+    // Otherwise a dead session or server would be polled every few seconds, firing the session
+    // guard each time.
     live.value = false
 
     if (!(error instanceof ApiError && error.sessionExpired)) {
@@ -320,11 +304,7 @@ function hookCount(entry: RequestLogEntry) {
   return entry.hookCount ?? hookInvocations(entry).length
 }
 
-/**
- * What the request cost without its hooks. Hooks are remote calls Paprika only waits for, so the
- * split is the difference between "Paprika is slow" and "your hook is". An async hook entry has
- * no Paprika share at all - it is nothing but the hook call.
- */
+/** An async hook entry has no Paprika share - it is nothing but the hook call. */
 function appTimeMs(entry: RequestLogEntry) {
   if (entry.execTimeMs == null || isHookEntry(entry)) {
     return null
@@ -356,7 +336,6 @@ function outcomeColor(outcome: string) {
   }
 }
 
-/** One dot per hook call, so a row with five hooks looks different from a row with one. */
 function outcomeDotClass(outcome: string) {
   switch (outcome) {
     case 'blocked': return 'bg-warning'
@@ -367,7 +346,6 @@ function outcomeDotClass(outcome: string) {
   }
 }
 
-/** Pulls every entry of one request together: the call itself and the async hooks it spawned. */
 function showRelated(requestId: string) {
   search.value = requestId
   typeFilter.value = 'all'
@@ -693,7 +671,6 @@ function showRelated(requestId: string) {
                 </td>
               </tr>
 
-              <!-- One line per hook call, so "3 hooks" can be taken apart without opening the sheet. -->
               <tr v-if="isExpanded(entry.id)" class="border-t-0! bg-muted/10">
                 <td :colspan="columns.length + 1" class="px-3 py-2">
                   <ol class="space-y-1.5">

@@ -32,16 +32,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Everything the signed-in superadmin can change about their own account: password, two-factor
- * authentication, email address, profile picture and the login alert.
- * <p>
- * These all act on the account behind the current session and never take a user id from the
- * request, so one superadmin can never edit another's profile. Adding and removing other accounts
- * is a separate concern and stays on the superadmins page.
+ * Acts only on the account behind the current session and never takes a user id from the
+ * request, so one superadmin can never edit another's profile.
  */
 @Singleton
 public class SuperadminProfileService {
-    /** Big enough for the 256x256 picture the admin UI produces, small enough to keep in a document. */
     private static final int MAX_AVATAR_BYTES = 512 * 1024;
     private static final Set<String> AVATAR_MIME_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
     private static final Pattern DATA_URL = Pattern.compile("^data:([a-z0-9.+/-]+);base64,([A-Za-z0-9+/=\\s]+)$");
@@ -77,11 +72,6 @@ public class SuperadminProfileService {
         return withProfile(request, (userId, profile) -> AdminSettingsResult.ok(toPayload(profile)));
     }
 
-    /**
-     * Stores an address and mails the confirmation link to it. The response says whether a mail
-     * could be sent at all, because an instance without SMTP can store the address but never
-     * confirm it - and an address that is never confirmed is not used for anything.
-     */
     public AdminSettingsResult updateEmail(Request request, ProfileEmailDto dto) {
         return withProfile(request, (userId, profile) -> {
             String email = dto == null ? null : StringUtils.trimToNull(dto.email());
@@ -121,11 +111,7 @@ public class SuperadminProfileService {
         });
     }
 
-    /**
-     * Confirms an address from the token that was mailed to it. Reachable without a session on
-     * purpose: the token is the credential, and the person confirming an address may well be
-     * reading their mail in a browser that is not signed in.
-     */
+    // Deliberately reachable without a session: the token is the credential.
     public AdminSettingsResult confirmEmail(VerifyEmailDto dto) {
         String token = dto == null ? null : StringUtils.trimToNull(dto.token());
 
@@ -136,11 +122,6 @@ public class SuperadminProfileService {
                 .orElseGet(() -> AdminSettingsResult.badRequest("This confirmation link is invalid or has expired"));
     }
 
-    /**
-     * Switches the login alert on or off. Switching it on needs a confirmed address and a
-     * configured SMTP host - without either the switch would claim a protection that cannot
-     * be delivered.
-     */
     public AdminSettingsResult updateLoginAlert(Request request, LoginAlertDto dto) {
         return withProfile(request, (userId, profile) -> {
             if (dto == null || dto.enabled() == null) {
@@ -155,9 +136,7 @@ public class SuperadminProfileService {
                     return AdminSettingsResult.badRequest("SMTP is not configured on this instance");
                 }
 
-                // The device this request comes from is the one that just signed in, so it is
-                // recorded as known right away - otherwise switching the alert on would mail the
-                // superadmin about their own current session at the next sign-in.
+                // Trust the current device, or the next sign-in would alert about this very session.
                 loginAlertService.trustCurrentOrigin(userId, request);
             }
 
@@ -193,9 +172,7 @@ public class SuperadminProfileService {
                 return AdminSettingsResult.badRequest("The image must be smaller than " + (MAX_AVATAR_BYTES / 1024) + " KB");
             }
 
-            // What the caller declares only decides how the bytes would be served, so the bytes
-            // themselves have to agree: an SVG or an HTML document announced as a PNG would
-            // otherwise be handed back with a content type that makes a browser render it.
+            // The bytes must match: an SVG or HTML announced as PNG could otherwise be rendered by a browser.
             String detected = MimeTypes.detect(data, null);
             if (!AVATAR_MIME_TYPES.contains(StringUtils.lowerCase(detected))) {
                 return AdminSettingsResult.badRequest("The uploaded file is not a PNG, JPEG or WebP image");
@@ -219,10 +196,6 @@ public class SuperadminProfileService {
                 .map(AuthContext::id)
                 .flatMap(systemUserService::findAvatar);
     }
-
-    // ------------------------------------------------------------------------------------------
-    // Password and two-factor authentication
-    // ------------------------------------------------------------------------------------------
 
     public AdminSettingsResult changePassword(Request request, ChangePasswordDto dto) {
         return withProfile(request, (userId, profile) -> {
@@ -248,13 +221,11 @@ public class SuperadminProfileService {
             } catch (IllegalArgumentException e) {
                 return AdminSettingsResult.badRequest(e.getMessage());
             } catch (MangooHashingException e) {
-                // Hashing the new password competes for the same Argon2 slot the verification
-                // above just used. Nothing was written, so the old password still stands.
+                // Nothing was written, so the old password still stands.
                 return AdminSettingsResult.atCapacity();
             }
 
-            // A password change is how a compromised account is taken back, so no token issued
-            // under the old password may outlive it
+            // No token issued under the old password may outlive a change.
             tokenVersionService.revokeAllOfSuperadmin(userId);
             return AdminSettingsResult.ok(Map.of("success", true));
         });
@@ -333,16 +304,11 @@ public class SuperadminProfileService {
         });
     }
 
-    // ------------------------------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------------------------------
-
     @FunctionalInterface
     private interface ProfileAction {
         AdminSettingsResult apply(String userId, SuperadminProfile profile);
     }
 
-    /** Resolves the account behind the session, so no endpoint has to take a user id from the request. */
     private AdminSettingsResult withProfile(Request request, ProfileAction action) {
         Optional<AuthContext> auth = authService.resolveAdmin(request);
         if (auth.isEmpty()) {
@@ -356,10 +322,6 @@ public class SuperadminProfileService {
                 .orElseGet(() -> AdminSettingsResult.notFound("User not found"));
     }
 
-    /**
-     * Sends the confirmation mail for a freshly issued token and answers with the profile as it is
-     * afterwards, plus whether a mail actually went out.
-     */
     private Map<String, Object> afterVerificationRequest(Request request, String userId, Optional<String> token) {
         SuperadminProfile profile = systemUserService.findProfile(userId).orElseThrow();
         Map<String, Object> payload = toPayload(profile);
@@ -400,10 +362,6 @@ public class SuperadminProfileService {
         return payload;
     }
 
-    /**
-     * The version in the query string is what lets the browser cache the picture and still pick up
-     * a new one the moment it is replaced.
-     */
     static String avatarUrl(SuperadminProfile profile) {
         return profile == null || profile.avatarVersion() == null
                 ? null

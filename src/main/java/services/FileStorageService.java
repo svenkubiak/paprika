@@ -21,18 +21,12 @@ import java.util.stream.Stream;
 @Singleton
 public class FileStorageService {
     private static final Logger LOG = LogManager.getLogger(FileStorageService.class);
-    /**
-     * A single key, not {@code paprika.storage.root}: the prod environment overrides it with
-     * {@code env{}}, and mangoo's config merge replaces a whole subtree when the override is a
-     * scalar. A nested key would therefore not exist in production at all, and this service
-     * would silently use the default below - a relative path, resolved against whatever the
-     * working directory of the process happens to be. The derived variable is PAPRIKA_STORAGE.
-     */
+    // Not nested (paprika.storage.root): mangoo's merge replaces the whole subtree with the prod
+    // env{} scalar, so a nested key would silently fall back to the relative default
     public static final String STORAGE_KEY = "paprika.storage";
     static final String DEFAULT_ROOT = "storage";
 
-    // A variant key is derived from the file id, so no second index is needed to find, read or
-    // delete the scaled copies that belong to a file.
+    // Variant keys derive from the file id, so no second index is needed to find their copies
     private static final String VARIANT_MARKER = "__w";
 
     private final Path root;
@@ -46,15 +40,7 @@ public class FileStorageService {
         this(root, false);
     }
 
-    /**
-     * @param requireAbsolute whether a relative path is an error rather than a convenience. It
-     *                        is in production: the only persistent directory of the application
-     *                        must not depend on the working directory the process was started
-     *                        in. A deployment that changes it - a different unit file, a
-     *                        container with another WORKDIR, a manual {@code java -jar} - would
-     *                        otherwise serve an empty storage while the files are still on disk
-     *                        somewhere else, and new uploads would land where no backup looks.
-     */
+    // Absolute in production: a changed working directory would otherwise serve an empty storage
     FileStorageService(Path root, boolean requireAbsolute) {
         Objects.requireNonNull(root, "root must not be null");
 
@@ -72,11 +58,7 @@ public class FileStorageService {
         ensureUsable();
     }
 
-    /**
-     * Fails at startup rather than on the first upload. A storage directory that cannot be
-     * created or written to is a deployment problem, and it is cheaper to learn about it while
-     * the service is coming up than from a 500 on a customer's file upload.
-     */
+    // Fails at startup rather than on the first upload
     private void ensureUsable() {
         try {
             Files.createDirectories(root);
@@ -113,16 +95,11 @@ public class FileStorageService {
         return Files.exists(resolvePath(ctx, fileId));
     }
 
-    /** The storage key of the scaled copy of {@code fileId} at {@code width}. */
     public static String variantKey(String fileId, int width) {
         return fileId + VARIANT_MARKER + width;
     }
 
-    /**
-     * The widths of the variants stored for {@code fileId}, ascending. Derived from the file names
-     * rather than from the schema, so a width that was configured away, or one that never got a
-     * variant because the original was too small, simply is not in the list.
-     */
+    // From the stored files, not the schema, so only variants that actually exist are listed
     public List<Integer> variantWidths(TenantContext ctx, String fileId) {
         Path original = resolvePath(ctx, fileId);
         Path directory = original.getParent();
@@ -144,10 +121,6 @@ public class FileStorageService {
         }
     }
 
-    /**
-     * Deletes a file together with every variant derived from it. Variants are part of the file's
-     * lifecycle: a variant nobody can reach any more is storage nobody counts.
-     */
     public void delete(TenantContext ctx, String fileId) {
         if (StringUtils.isBlank(fileId)) {
             return;

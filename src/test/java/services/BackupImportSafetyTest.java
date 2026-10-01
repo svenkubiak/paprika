@@ -35,12 +35,8 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * A restore is what you run in the incident, under stress, often with the instance already
- * broken - so it must never be the operation that destroys the last copy. The import used to
- * drop the system database and every tenant database first and read the archive afterwards: a
- * backup with a valid manifest but a missing entry left the instance without superadmins (no
- * way into the admin UI short of restarting the process to get a new setup token) or with
- * emptied tenants.
+ * A restore runs in an incident and must never destroy the last copy: the archive is fully validated
+ * before anything is dropped.
  */
 @ExtendWith({TestRunner.class})
 class BackupImportSafetyTest {
@@ -51,15 +47,13 @@ class BackupImportSafetyTest {
 
     @BeforeAll
     static void seed() {
-        // Gives the superadmin a password: a pending invite carries no passwordHash, and a backup
-        // that can only restore pending invites is exactly what the import must refuse.
+        // A pending invite has no passwordHash, and a backup restoring only pending invites must be refused.
         utils.AdminTestUtils.prepareAdminPassword();
 
         TenantTestUtils.seedCollection(COLLECTION, new CollectionRules("*", "*", "*", "*", "*", "owner"));
         probeRecordId = TenantTestUtils.seedRecord(COLLECTION, PROBE_TITLE);
     }
 
-    /** The lockout case: without the superadmins there is no way back into the admin UI. */
     @Test
     void aBackupWithoutTheSystemUsersIsRejectedAndTheSuperadminsSurvive() throws Exception {
         long before = superadmins();
@@ -77,10 +71,6 @@ class BackupImportSafetyTest {
         assertThat(probeRecord(), notNullValue());
     }
 
-    /**
-     * A backup whose users file parses but contains no usable superadmin locks the instance out
-     * just as thoroughly as a missing one.
-     */
     @Test
     void aBackupWithoutAnyUsableSuperadminIsRejected() throws Exception {
         long before = superadmins();
@@ -94,7 +84,6 @@ class BackupImportSafetyTest {
         assertThat(superadmins(), equalTo(before));
     }
 
-    /** Unparseable content has to be found in the archive, not halfway through the restore. */
     @Test
     void aBackupWithAnUnreadableEntryIsRejectedBeforeAnythingIsWritten() throws Exception {
         long before = superadmins();
@@ -108,7 +97,6 @@ class BackupImportSafetyTest {
         assertThat("the tenant databases must be untouched as well", probeRecord(), notNullValue());
     }
 
-    /** A tenant the manifest promises has to bring its schema with it. */
     @Test
     void aBackupMissingATenantEntryIsRejectedAndTheTenantKeepsItsData() throws Exception {
         String tenantId = TenantTestUtils.defaultTenant().id();
@@ -123,7 +111,6 @@ class BackupImportSafetyTest {
         assertThat(probeRecord().getString("title"), equalTo(PROBE_TITLE));
     }
 
-    /** A tenant listed in the manifest but absent from the tenant definitions is incomplete too. */
     @Test
     void aManifestListingAnUnknownTenantIsRejected() throws Exception {
         byte[] broken = withEntry(export(), "manifest.json",
@@ -135,10 +122,7 @@ class BackupImportSafetyTest {
         assertThat(e.getMessage(), containsString("tenant-that-is-not-in-the-backup"));
     }
 
-    /**
-     * The other half of the contract: a complete backup still restores, and it restores what was
-     * lost. Without this, refusing everything would pass the tests above.
-     */
+    /** Without this, refusing everything would pass the tests above. */
     @Test
     void aCompleteBackupStillRestoresWhatWasDeleted() throws Exception {
         byte[] backup = export();
@@ -154,11 +138,7 @@ class BackupImportSafetyTest {
         assertThat(superadmins(), greaterThan(0L));
     }
 
-    /**
-     * Whatever else goes wrong once the writes have started, the state from before the import is
-     * on disk. The path is part of the contract, not a log line - it is what an operator needs
-     * when the restore turns out to have been the wrong one.
-     */
+    /** The snapshot path is part of the contract: an operator needs it when the restore was the wrong one. */
     @Test
     void aSnapshotOfTheCurrentStateIsTakenBeforeTheFirstWrite() throws Exception {
         byte[] backup = export();
@@ -171,13 +151,8 @@ class BackupImportSafetyTest {
     }
 
     /**
-     * Dropping a collection drops its indexes, and a restore replaces every collection there is.
-     * The indexes have to come back with them, and the one that hurts most when it does not is
-     * the unique index on collection names: without it the check in the meta API is a plain read
-     * before an insert, so two admins creating the same collection at the same moment both
-     * succeed and the tenant ends up with two definitions under one name. Nothing tells anybody -
-     * until the next restart, which then cannot build the index either, because by then the
-     * duplicates are in the way.
+     * Dropping collections drops their indexes. Without the unique index on collection names, concurrent
+     * creates both succeed and the next restart cannot build the index over the duplicates.
      */
     @Test
     void aRestoreLeavesTheDatabasesWithTheIndexesAFreshInstallHas() throws Exception {
@@ -201,7 +176,6 @@ class BackupImportSafetyTest {
                 CollectionName.meta(constants.SystemCollections.REQUEST_LOGS))), hasItem("timestamp_desc"));
     }
 
-    /** What the unique index above is for, seen from the API rather than from the index list. */
     @Test
     void aCollectionNameStaysUniqueAfterARestore() throws Exception {
         importService().importAll(export());
@@ -259,7 +233,6 @@ class BackupImportSafetyTest {
         return rebuild(zip, Set.of(name), Map.of(name, content));
     }
 
-    /** Rebuilds the archive without {@code removed} and with {@code replaced} put back in. */
     private static byte[] rebuild(byte[] zip, Set<String> removed, Map<String, byte[]> replaced) throws Exception {
         Map<String, byte[]> entries = new LinkedHashMap<>();
         try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(zip))) {

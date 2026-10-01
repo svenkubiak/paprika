@@ -103,18 +103,13 @@ public class TenantContextFilter implements PerRequestFilter {
     }
 
     private Optional<TenantContext> resolveSuperadminContext(AuthContext auth) {
-        // A superadmin token grants the widest access there is, so the account behind it has to
-        // still exist. Without this check a deleted superadmin would keep working until the token
-        // expires, which is exactly what the tenant user path already guards against.
+        // A deleted superadmin's token must stop working immediately, not when it expires.
         if (systemUserService.findPublicUser(auth.id()).isEmpty()) {
             return Optional.empty();
         }
 
-        // A token is issued without a tenant and only gets one through /api/admin/switch-tenant.
-        // Such a token therefore has to resolve to a context without a tenant - the same one the
-        // admin UI session gets before a tenant is selected - instead of being rejected outright,
-        // which would leave no way of ever selecting a tenant. Routes that work on tenant data
-        // require a tenant context and still refuse it.
+        // Tokens are issued without a tenant and only get one via /api/admin/switch-tenant, so they
+        // must resolve to a tenantless context; routes on tenant data still refuse it.
         if (auth.tenantId() == null || auth.tenantId().isBlank()) {
             return Optional.of(new TenantContext(auth.id(), auth.role(), null, null, null));
         }

@@ -41,11 +41,7 @@ public class CollectionFileService {
         return download(ctx, collection, recordId, field, fileId, null);
     }
 
-    /**
-     * @param requestedWidth the image width the caller wants, or {@code null} for the original.
-     *                       A width that no variant matches is not an error: the next larger
-     *                       variant, or the original, is delivered instead.
-     */
+    // An unmatched requestedWidth falls back to the next larger variant or the original.
     public FileDownloadResult download(
             TenantContext ctx,
             String collection,
@@ -149,12 +145,7 @@ public class CollectionFileService {
             Document record) {
     }
 
-    /**
-     * @param fileId       the id of the delivered file, which identifies its content: storing a
-     *                     file always mints a new id, so the id is a valid strong validator
-     * @param deliveredWidth the width of the delivered image variant, or {@code null} when the
-     *                     original was delivered
-     */
+    // fileId is a valid strong validator: storing a file always mints a new id.
     public record FileDownloadResult(
             Status status,
             byte[] bytes,

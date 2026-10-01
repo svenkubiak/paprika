@@ -9,11 +9,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/**
- * The arithmetic behind the source binding of an API key. Everything here decides whether a
- * credential is accepted, so the edge cases - the wrong address family, a prefix of 0, an
- * IPv4-mapped IPv6 caller - are the point of the test rather than an afterthought.
- */
 class CidrsTest {
 
     @Test
@@ -43,10 +38,7 @@ class CidrsTest {
         assertThrows(IllegalArgumentException.class, () -> Cidrs.normalize(null));
     }
 
-    /**
-     * A hostname would have to be resolved to be useful, which is exactly what must not happen in
-     * the authentication path - and {@code InetAddress.getByName} would have done it silently.
-     */
+    /** Resolving a hostname must not happen in the authentication path; InetAddress.getByName would do it silently. */
     @Test
     void neverResolvesAHostname() {
         assertThrows(IllegalArgumentException.class, () -> Cidrs.normalize("localhost"));
@@ -84,14 +76,12 @@ class CidrsTest {
                 is(false));
     }
 
-    /** A /24 of IPv4 says nothing about an IPv6 caller, and guessing otherwise would widen it. */
     @Test
     void doesNotMatchAcrossAddressFamilies() {
         assertThat(Cidrs.contains(List.of("0.0.0.0/0"), address("2a01:4f8::1")), is(false));
         assertThat(Cidrs.contains(List.of("::/0"), address("10.200.0.1")), is(false));
     }
 
-    /** A dual-stack listener must not change whether an IPv4 caller matches an IPv4 range. */
     @Test
     void treatsAnIpv4MappedCallerAsIpv4() throws Exception {
         InetAddress mapped = InetAddress.getByAddress(new byte[]{

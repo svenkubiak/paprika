@@ -38,8 +38,7 @@ public class Bootstrap implements MangooBootstrap {
         Bind.controller(AdminController.class).withRoutes(
                 On.get().to("/login").respondeWith("admin"),
                 On.get().to("/setup").respondeWith("admin"),
-                // Confirming an email address has to work without a session: the link is opened
-                // from a mailbox, which is rarely the browser the superadmin is signed in with.
+                // No session required: the link is opened from a mailbox, often in another browser.
                 On.get().to("/verify-email").respondeWith("admin"),
                 On.post().to("/api/admin/verify-email").respondeWith("verifyEmail"),
                 On.post().to("/authenticate").respondeWith("authenticate"),
@@ -50,11 +49,8 @@ public class Bootstrap implements MangooBootstrap {
                 On.post().to("/api/admin/token/2fa").respondeWith("tokenTwoFactor"),
                 On.post().to("/api/admin/switch-tenant").respondeWith("switchTenantJwt"),
                 On.post().to("/logout").respondeWith("logout"),
-                // Deliberately not behind withAuthentication(): the admin UI asks this endpoint
-                // whether it still has a session. Guarding it would answer that question with a
-                // 302 to the login page, so the SPA would have to parse an HTML body out of a
-                // 200 response to notice. Unauthenticated callers get a payload that says
-                // exactly that and nothing else (see AdminBootstrapService).
+                // Deliberately unauthenticated: the SPA asks here whether it still has a session, and
+                // a guard would answer with a 302 to the login page instead (see AdminBootstrapService).
                 On.get().to("/admin/bootstrap").respondeWith("bootstrap")
         );
 
@@ -67,9 +63,7 @@ public class Bootstrap implements MangooBootstrap {
                 On.get().to("/admin/tenant-settings").respondeWith("admin"),
                 On.get().to("/admin/logs").respondeWith("admin"),
                 On.get().to("/admin/users").respondeWith("admin"),
-                // Every client side route of the admin UI needs a server side counterpart that
-                // serves the shell, otherwise reloading the page (or any full page load the SPA
-                // itself triggers) ends on the framework's 404 page instead of the admin UI.
+                // Every SPA route needs a server route serving the shell, or a reload ends on a 404.
                 On.get().to("/admin/user-settings").respondeWith("admin"),
                 On.get().to("/admin/profile").respondeWith("admin"),
                 On.get().to("/admin/backup").respondeWith("admin"),
@@ -221,9 +215,7 @@ public class Bootstrap implements MangooBootstrap {
 
     @Override
     public void applicationStarted() {
-        // Injected and logged here so that a storage path which is missing, unwritable or - in
-        // production - relative stops the boot, instead of surfacing as a 500 on the first
-        // upload of whoever tries one first.
+        // Touched here so an invalid storage path stops the boot instead of failing the first upload.
         LOG.info("File storage root: {}", fileStorageService.root());
 
         systemCollectionService.ensureSystemCollections();

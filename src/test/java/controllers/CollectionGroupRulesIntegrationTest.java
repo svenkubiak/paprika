@@ -29,14 +29,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
-/**
- * The {@code group} preset: a record belongs to a group, and the caller reaches it only through a
- * membership record in a second collection.
- * <p>
- * The fixture is one team per user plus a third user with no membership at all - the caller that
- * distinguishes a scoping filter from a missing one, because an unscoped list would hand them the
- * whole collection.
- */
+/** A third user without any membership tells a scoping filter apart from a missing one. */
 @ExtendWith({TestRunner.class})
 class CollectionGroupRulesIntegrationTest {
     private static final String MEMBERSHIPS = "grp_memberships";
@@ -88,10 +81,7 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(listB.getContent(), not(containsString("Post of crew A")));
     }
 
-    /**
-     * The mistake this preset invites: treating "no membership" as "no filter". The caller has to
-     * end up with an empty list, never with the collection.
-     */
+    /** "No membership" must never be treated as "no filter". */
     @Test
     void aCallerWithoutAnyMembershipSeesNothing() {
         TestResponse list = list(tokenC);
@@ -102,7 +92,6 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(list.getContent(), not(containsString("Post of crew B")));
     }
 
-    /** A client filter narrows the result further; it cannot reach outside the caller's group. */
     @Test
     void aClientFilterNarrowsButNeverWidensTheScope() {
         TestResponse own = TestRequest
@@ -112,7 +101,7 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(own.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(own.getContent(), containsString("Post of crew A"));
 
-        // The filter asks for the other group, the rule still decides: anded, never substituted.
+        // The client filter is anded onto the rule, never substituted for it
         TestResponse filteredToForeignGroup = TestRequest
                 .get("/api/collections/" + POSTS + "?offset=0&limit=50&filter=crew:eq:" + CREW_B)
                 .withHeader("Authorization", "Bearer " + tokenA)
@@ -150,7 +139,7 @@ class CollectionGroupRulesIntegrationTest {
         TestResponse foreign = create(tokenA, "{\"title\":\"New B\",\"crew\":\"" + CREW_B + "\"}");
         assertThat(foreign.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
 
-        // Nothing is filled in on the client's behalf: without the group there is nothing to check
+        // The group is not filled in on the client's behalf
         TestResponse withoutGroup = create(tokenA, "{\"title\":\"No crew\"}");
         assertThat(withoutGroup.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
 
@@ -158,7 +147,6 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(withoutMembership.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
     }
 
-    /** An update must not move a record into a group the caller does not belong to. */
     @Test
     void aRecordCannotBeMovedIntoAForeignGroup() {
         String record = insertPost("Movable", CREW_A);
@@ -180,11 +168,7 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(renamed.getStatusCode(), equalTo(StatusCodes.OK));
     }
 
-    /**
-     * The same move through a multipart body. The content type of a request must never decide
-     * whether a body-dependent rule runs - if the rules only see the JSON body, every write can
-     * be laundered through {@code multipart/form-data}.
-     */
+    /** The content type must never decide whether a body-dependent rule runs. */
     @Test
     void aRecordCannotBeMovedIntoAForeignGroupWithAMultipartBody() {
         String record = insertPost("Movable multipart", CREW_A);
@@ -193,14 +177,12 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(moved.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
         assertThat(stored(record).getString("crew"), equalTo(CREW_A));
 
-        // The caller may still write inside their own group through the same content type
         TestResponse renamed = patchMultipart(record, tokenA, "title", "Renamed multipart");
         assertThat(renamed.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(stored(record).getString("crew"), equalTo(CREW_A));
         assertThat(stored(record).getString("title"), equalTo("Renamed multipart"));
     }
 
-    /** Create is decided by the body as well, so it has to see the multipart parts too. */
     @Test
     void createWithAMultipartBodyIsAllowedIntoTheOwnGroupOnly() {
         TestResponse own = createMultipart(tokenA, "Multipart A", CREW_A);
@@ -261,10 +243,7 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(create.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
     }
 
-    /**
-     * There is no cache beyond the request: a membership that is revoked has to stop granting
-     * access on the very next call, not when some window runs out.
-     */
+    /** Memberships are not cached beyond the request. */
     @Test
     void revokingAMembershipTakesEffectOnTheNextRequest() {
         UserService userService = Application.getInstance(UserService.class);
@@ -290,7 +269,6 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(view.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
     }
 
-    /** The bypass is untouched by all of this: it skips the rules, membership ones included. */
     @Test
     void theAdminSessionAndABypassingKeySeeEverything() {
         AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();

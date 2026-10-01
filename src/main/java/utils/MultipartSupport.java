@@ -44,14 +44,8 @@ public final class MultipartSupport {
         request.addAttribute(JSON_BODY_ATTRIBUTE, buildJsonBody(definition, parsed).toString());
     }
 
-    /**
-     * Whether the parts of a multipart request have already been turned into a JSON body.
-     * <p>
-     * Callers that decide something on the body - the rule evaluation above all - must not treat
-     * an unprepared multipart request as "no body": mangoo answers {@code request.getBody()} with
-     * an empty string for every multipart request, so an unprepared one looks exactly like a
-     * write that changes nothing.
-     */
+    // mangoo returns an empty body for every multipart request, so an unprepared one must not be
+    // treated as "no body" by rule evaluation.
     public static boolean isPrepared(Request request) {
         return request.getAttribute(JSON_BODY_ATTRIBUTE) instanceof String body && !body.isBlank();
     }
@@ -153,15 +147,7 @@ public final class MultipartSupport {
         return new ParsedMultipart(Map.copyOf(textFields), Map.copyOf(uploads));
     }
 
-    /**
-     * Fails when fewer files were read than the request actually contained.
-     * <p>
-     * Depending on which parser handled the request, a field may yield only one file even though the
-     * client sent several - mangoo's form keeps a single value per field name. Silently continuing
-     * would store some files and drop the rest while still answering 201, so the caller would never
-     * learn that data was lost. The request is rejected instead, and the field limits are enforced
-     * afterwards on the complete picture.
-     */
+    // mangoo's form keeps one file per field name; reject rather than silently drop files and answer 201
     private static void rejectDroppedFileParts(FormData formData, Map<String, List<UploadedFile>> uploads) {
         if (formData == null) {
             return;
@@ -177,7 +163,6 @@ public final class MultipartSupport {
         }
     }
 
-    /** How many file parts the request carries per field name, regardless of what was read. */
     private static Map<String, Integer> fileParts(FormData formData) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (String name : formData) {

@@ -29,10 +29,7 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/**
- * Covers API keys: a second way to prove an existing tenant-user identity. A key must behave
- * exactly like an access token of the bound user, and never more than that.
- */
+/** A key must behave exactly like an access token of the bound user, and never more than that. */
 @ExtendWith({TestRunner.class})
 class ApiKeyIntegrationTest {
 
@@ -122,14 +119,12 @@ class ApiKeyIntegrationTest {
         TestResponse deleted = AdminTestUtils.deleteWithAdminCookies(path, adminCookies());
         assertThat(deleted.getStatusCode(), equalTo(StatusCodes.NO_CONTENT));
 
-        // Unlike revoking, the record is gone as well
         TestResponse list = AdminTestUtils.getWithAdminCookies(
                 "/api/meta/tenants/" + tenant.id() + "/api-keys", adminCookies());
         assertThat(list.getContent(), not(containsString("apikey-delete-key")));
 
         assertThat(listStatus(collection, key.key()), equalTo(StatusCodes.UNAUTHORIZED));
 
-        // Deleting the same key twice is a 404, not a silent success
         TestResponse again = AdminTestUtils.deleteWithAdminCookies(path, adminCookies());
         assertThat(again.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
     }
@@ -215,8 +210,7 @@ class ApiKeyIntegrationTest {
             collections.dataCollection(foreignCtx, foreignCollection)
                     .insertOne(new Document().append("id", DbUtils.id()).append("title", "foreign record"));
 
-            // The key resolves to its own tenant only, so the other tenant's collection simply
-            // does not exist for it.
+            // The key resolves to its own tenant only, where this collection does not exist
             TestResponse response = TestRequest.get("/api/collections/" + foreignCollection + "?offset=0&limit=25")
                     .withHeader("Authorization", "Bearer " + key)
                     .execute();
@@ -239,15 +233,14 @@ class ApiKeyIntegrationTest {
         TenantTestUtils.seedCollection(collection, CollectionRules.locked());
         TenantTestUtils.seedRecord(collection, "locked record");
 
-        // Counterpart to adminCookieSentAsBearerDoesNotBypassLockedListRule: an authenticated
-        // identity hits the locked rule, it does not bypass it.
+        // Counterpart to adminCookieSentAsBearerDoesNotBypassLockedListRule
         TestResponse locked = TestRequest.get("/api/collections/" + collection + "?offset=0&limit=25")
                 .withHeader("Authorization", "Bearer " + key)
                 .execute();
         assertThat(locked.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
         assertThat(locked.getContent(), not(containsString("locked record")));
 
-        // A user whose role is not `user` must not get a key at all ...
+        // A user whose role is not `user` must not get a key at all
         String elevatedId = DbUtils.id();
         Application.getInstance(services.TenantDatabaseResolver.class)
                 .tenantDatabase(tenant.databaseName())
@@ -264,7 +257,7 @@ class ApiKeyIntegrationTest {
                 "application/json");
         assertThat(rejected.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
 
-        // ... and an existing key stops working if the bound user is elevated afterwards.
+        // An existing key stops working if the bound user is elevated afterwards
         Application.getInstance(services.TenantDatabaseResolver.class)
                 .tenantDatabase(tenant.databaseName())
                 .getCollection(constants.CollectionName.tenantData("users"))

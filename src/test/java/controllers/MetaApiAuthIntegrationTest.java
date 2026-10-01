@@ -66,11 +66,7 @@ class MetaApiAuthIntegrationTest {
         assertThat(response.getContent(), containsString("\"error\":\"Forbidden\""));
     }
 
-    /**
-     * The writing admin routes are asserted separately from the reading ones: a filter is declared
-     * per controller, but a route added later could arrive on a controller of its own, and a
-     * schema or backup import is the most damaging thing a bearer could reach.
-     */
+    /** Filters are declared per controller, so a later route on a new controller could miss one. */
     @Test
     void bearerTokenOnImportRoutesReturnsForbidden() {
         UserService userService = Application.getInstance(UserService.class);
@@ -96,11 +92,7 @@ class MetaApiAuthIntegrationTest {
         }
     }
 
-    /**
-     * RFC 7235 makes the authentication scheme case-insensitive. A lower case {@code bearer} must
-     * therefore be rejected the same way, and must not be mistaken for a request that carries no
-     * bearer at all - which would let it fall through to the cookie branch of the filter.
-     */
+    /** The scheme is case-insensitive (RFC 7235); a miss would fall through to the cookie branch. */
     @Test
     void lowercaseBearerSchemeOnMetaApiReturnsForbidden() {
         UserService userService = Application.getInstance(UserService.class);
@@ -123,11 +115,7 @@ class MetaApiAuthIntegrationTest {
         assertThat(response.getContent(), containsString("\"error\":\"Forbidden\""));
     }
 
-    /**
-     * The session cookie only carries a subject, so the authority behind it has to be read off the
-     * stored account on every request. An account that is no longer a superadmin must lose its
-     * admin session immediately, instead of keeping it until the cookie expires.
-     */
+    /** The cookie only carries a subject, so the authority is read off the stored account per request. */
     @Test
     void sessionOfAnAccountThatIsNoLongerASuperadminIsRejected() {
         SystemUserService systemUserService = Application.getInstance(SystemUserService.class);
@@ -135,13 +123,14 @@ class MetaApiAuthIntegrationTest {
                 "meta-demoted-admin", null, "demoted-password-123");
         String userId = String.valueOf(created.get("id"));
 
-        HttpCookie cookie = login("meta-demoted-admin", "demoted-password-123");
-        AdminTestUtils.AdminCookies cookies = new AdminTestUtils.AdminCookies(cookie, null);
-
-        TestResponse asSuperadmin = AdminTestUtils.getWithAdminCookies("/api/admin/settings", cookies);
-        assertThat(asSuperadmin.getStatusCode(), equalTo(StatusCodes.OK));
-
+        // Everything after the account exists, so a failure cannot leave a completed superadmin behind
         try {
+            HttpCookie cookie = login("meta-demoted-admin", "demoted-password-123");
+            AdminTestUtils.AdminCookies cookies = new AdminTestUtils.AdminCookies(cookie, null);
+
+            TestResponse asSuperadmin = AdminTestUtils.getWithAdminCookies("/api/admin/settings", cookies);
+            assertThat(asSuperadmin.getStatusCode(), equalTo(StatusCodes.OK));
+
             Application.getInstance(TenantDatabaseResolver.class)
                     .systemCollection(CollectionName.USERS)
                     .updateOne(eq("id", userId), set("role", Role.USER));
@@ -150,9 +139,7 @@ class MetaApiAuthIntegrationTest {
             assertThat(afterDemotion.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
             assertThat(afterDemotion.getContent(), containsString("\"error\":\"Unauthorized\""));
         } finally {
-            Application.getInstance(TenantDatabaseResolver.class)
-                    .systemCollection(CollectionName.USERS)
-                    .deleteOne(eq("id", userId));
+            AdminTestUtils.removeSuperadmin(userId);
         }
     }
 

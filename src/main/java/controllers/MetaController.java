@@ -75,9 +75,7 @@ public class MetaController {
                 false
         );
 
-        // IllegalArgumentException carries everything validateDefinition() rejects that is not a
-        // rule - an unknown or duplicated index field, a reserved field name, a duplicate index
-        // name. All of those describe the request, so they must not leave as a 500.
+        // Everything validateDefinition() rejects describes the request, so it must not become a 500.
         try {
             tenantCollections.validateDefinition(ctx, definition);
         } catch (RuleParseException | IllegalArgumentException e) {
@@ -87,10 +85,8 @@ public class MetaController {
         try {
             tenantCollections.insertDefinition(ctx, definition);
         } catch (RuntimeException e) {
-            // The existence check above can be lost to a request creating the same collection at the
-            // same time - a double click in the admin UI is enough. The unique index on the name
-            // settles it, and the second request has to read the same conflict it would have read
-            // had it checked a moment later.
+            // A concurrent create (e.g. a double click) can pass the existence check; the unique
+            // index settles it with the same conflict.
             if (utils.DbWrites.isDuplicateKey(e)) {
                 return Response.status(StatusCodes.CONFLICT);
             }
@@ -189,20 +185,12 @@ public class MetaController {
         String currentPhysical = CollectionName.physicalTenantData(current.name());
         String newPhysical = CollectionName.physicalTenantData(newName);
 
-        // Drops what is gone, rebuilds what changed, creates what is new. An index whose options
-        // changed - flipping unique on an existing one is the common case - has to be dropped
-        // first; reusing the name is what MongoDB answers with IndexOptionsConflict.
-        //
-        // Runs before the rename, not after it. A rename cannot be taken back by answering 400,
-        // and a definition still naming the old collection while the data sits under the new one
-        // makes every record of it unreachable through the API. Indexes travel with a collection
-        // through a rename, so syncing them under the current name produces the same result - it
-        // just leaves nothing behind when it fails.
+        // Must run before the rename: a failed sync after it would leave the data under a name no
+        // definition points to. Indexes travel with the collection through a rename.
         try {
             tenantCollections.syncIndexes(ctx, current.name(), updated.indexes());
         } catch (IllegalArgumentException e) {
-            // The definition is not stored, so the collection keeps working with the schema it
-            // had. Telling the admin which index and why beats a 500.
+            // The definition is not stored, so the collection keeps its previous schema.
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         }
 
@@ -216,9 +204,7 @@ public class MetaController {
         try {
             tenantCollections.replaceDefinition(ctx, updated);
         } catch (RuntimeException e) {
-            // The data has already moved. Without a definition naming the collection it moved to,
-            // every record in it would be unreachable, so the move is undone before the failure
-            // is reported rather than left for someone to discover later.
+            // The data has already moved; undo it, or no definition would point at its records.
             if (physicalRenamed) {
                 database.getCollection(newPhysical)
                         .renameCollection(new MongoNamespace(database.getName(), currentPhysical));

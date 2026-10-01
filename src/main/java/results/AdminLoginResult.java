@@ -9,17 +9,9 @@ public record AdminLoginResult(AdminLoginResult.Status status, TokenPair tokens)
         INVALID_CREDENTIALS,
         NO_PENDING_LOGIN,
         INVALID_CODE,
-
-        /**
-         * Too many wrong second-factor codes; the TOTP step is locked for a while. The one-time
-         * fallback code still works, so this cannot shut the rightful superadmin out for good.
-         */
+        // The one-time fallback code still works, so the rightful superadmin is never locked out.
         TWO_FACTOR_LOCKED,
-
-        /**
-         * The instance had no capacity left to run the Argon2 verification. Says nothing about
-         * the credentials - they were never looked at.
-         */
+        // Credentials were never checked.
         AT_CAPACITY
     }
 

@@ -141,8 +141,7 @@ public class ValidationService {
                 return;
             }
 
-            // Virtual and write-only like password: proves the current password when a user
-            // changes their own credentials, and is never stored
+            // Virtual and write-only: proves the current password on a credential change, never stored.
             if (UserRecordUtils.isUsers(collection.name()) && UserRecordUtils.OLD_PASSWORD.equals(fieldName)) {
                 if (value != null && !value.isNull() && !value.isTextual()) {
                     result.add(fieldName, "Expected string");

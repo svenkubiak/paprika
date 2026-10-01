@@ -1,11 +1,4 @@
-# Application configuration
-#
-# The configuration consists of default values that are common in all environments and
-# environment specific values for dev, test, and prod.
-#
-# Values in an active environment overwrite default values
-#
-# Default configuration:
+# Defaults for all environments; the active environment (dev, test, prod) overrides them.
 
 default:
   undertow:
@@ -23,13 +16,8 @@ default:
     parameter:
       strict: true
     validation:
-      # Paprika is a JSON API, so a constraint violation has to answer with a machine-readable
-      # body. Without this, mangoo replies 400 with the framework's default HTML error page,
-      # which tells a client nothing and ends up in the admin UI verbatim.
-      #
-      # This passes the constraint messages through to the caller. All of them are hand-written
-      # constants on the DTOs - never put user input or an EL expression (${...}) into a
-      # message, because Hibernate Validator interpolates it and it would be reflected here.
+      # Answers constraint violations as JSON, not mangoo's HTML page. Messages pass through
+      # verbatim: never put user input or EL (${...}) into a DTO constraint message.
       passthrough: true
   connector:
     http:
@@ -43,25 +31,17 @@ default:
       secure: true
   authentication:
     hashing:
-      # How long a caller waits for a free Argon2 slot before mangoo rejects the hashing with a
-      # MangooHashingException, which the auth services answer as 429. The framework default of
-      # 5000 would hold a login connection open for five seconds before saying no; a single
-      # verification takes about 40 ms with the parameters below, so 200 absorbs the overlap of a
-      # burst several hashes deep and still fails fast when the instance is genuinely loaded.
+      # Milliseconds to wait for a free Argon2 slot before answering 429 (mangoo default 5000). One
+      # verification takes ~40 ms, so 200 absorbs bursts and still fails fast under real load.
       timeout: 200
-      # memory, iterations and parallelism are left at mangoo's defaults (32768 KB, 3, 1), which
-      # sit above the OWASP baseline for Argon2id. concurrency is left derived from the heap.
-      # Note that the derivation knows nothing about the core count: a verification holds one core
-      # for its whole duration, because Argon2BytesGenerator walks the lanes sequentially. On a
-      # container with fewer cores than slots, pin concurrency to the core count instead.
+      # Argon2 memory/iterations/parallelism keep mangoo's defaults (32768 KB, 3, 1), above OWASP.
+      # concurrency derives from the heap: with fewer cores than slots, pin it to the core count.
     redirect:
-      # The key mangoo reads is authentication.redirect.login. Without it an unauthenticated
-      # request to a route bound withAuthentication() does not redirect at all, it ends with
-      # the framework's default 401 page - which is what the whole admin UI looked like in
-      # production, because / is such a route. Belongs in the defaults, not in an environment.
+      # Required: without it, unauthenticated requests to withAuthentication() routes (including /)
+      # get mangoo's default 401 page instead of a redirect. Keep it in the defaults.
       login: /login
-    # Makes mangoo append the requested path as an origin parameter to that redirect, so a
-    # session that runs out on a deep link does not dump the admin back on the dashboard.
+    # Appends the requested path as origin to the login redirect, so an expired session on a deep
+    # link returns there after sign-in.
     origin: true
     cookie:
       name: paprika-authentication
@@ -69,10 +49,8 @@ default:
       key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
       secure: true
       token:
-        # One hour, which is also mangoo's default - set explicitly because the admin UI tells
-        # the user this is why they were signed out, and that should not silently change with a
-        # framework upgrade. The cookie is only reissued when a request arrives without one, so
-        # this is an absolute lifetime from sign-in, not a sliding window.
+        # Seconds; an absolute lifetime from sign-in, not a sliding window. Set explicitly because
+        # the admin UI tells users this is why they were signed out.
         expires: 3600
   token:
     secret: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
@@ -82,11 +60,8 @@ default:
       superadmin-username: admin
       default-tenant-name: Default
       default-tenant-slug: default
-    # A single scalar, not a nested block: an environment overrides this with env{}, and mangoo's
-    # config merge only recurses when both sides are maps. A scalar override of a nested block
-    # replaces the whole subtree, so paprika.storage.root would stop existing in that environment
-    # and every reader would silently fall back to its hardcoded default (see ConfigYamlTest).
-    # The derived environment variable is PAPRIKA_STORAGE.
+    # Must stay a scalar: an env{} override replaces a nested block's whole subtree (mangoo only
+    # merges map with map). Environment variable: PAPRIKA_STORAGE.
     storage: storage
   flash:
     cookie:
@@ -100,13 +75,10 @@ default:
     username: ""
     password: ""
     from: no-reply@localhost
-    # Underscore, not a hyphen: the environment variable is the key upper-cased with dots turned
-    # into underscores, and SMTP_FROM-NAME cannot be set in a POSIX shell. SMTP_FROM_NAME can.
+    # Underscore, not a hyphen, so the env variable SMTP_FROM_NAME can be set in a POSIX shell.
     from_name: Paprika
     protocol: smtp
     authentication: false
-
-# Environments configuration:
 
 environments:
   test:
@@ -127,9 +99,8 @@ environments:
         key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
         secure: false
     authentication:
-      # One slot, so that PasswordHashCapacityIntegrationTest can fill it and observe the
-      # refusal. The rest of the suite hashes sequentially and waits at most one verification
-      # (~40 ms) for the slot, well inside the 200 ms timeout.
+      # One slot; the suite hashes sequentially, well within the 200 ms timeout. Overload is tested
+      # through the hashing seams (PasswordHashOverloadTest, PasswordHashRefusalTest).
       hashing:
         concurrency: 1
       cookie:
@@ -145,9 +116,8 @@ environments:
     paprika:
       storage: target/test-storage
     smtp:
-      # Points at the GreenMail server the recovery mail tests start on this port. Set here
-      # because mangoo builds its mail session once from the configuration; tests that do not
-      # start GreenMail simply see the asynchronous send fail and log, which does not affect them.
+      # The GreenMail server of the recovery mail tests. mangoo builds its mail session once from
+      # this config; tests without GreenMail just see the async send fail.
       host: localhost
       port: 3025
       from: no-reply@paprika.test

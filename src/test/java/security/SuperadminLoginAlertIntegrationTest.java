@@ -24,13 +24,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * The superadmin login alert end to end, against a real SMTP server: confirming the address, then
- * a sign-in from a device the account has not been used from before.
- * <p>
- * Two properties matter and are asserted here. The alert only fires for an <b>unknown</b> device,
- * so working from the same browser stays quiet - an alert on every login would be ignored within a
- * day and protect nothing. And the mail must carry no credential: it reports a sign-in, it does not
- * enable one.
+ * The alert fires only for an unknown device (an alert on every login would be ignored) and the mail
+ * must carry no credential.
  */
 @ExtendWith({TestRunner.class})
 class SuperadminLoginAlertIntegrationTest {
@@ -82,8 +77,7 @@ class SuperadminLoginAlertIntegrationTest {
                 .execute();
         assertThat(confirmed.getStatusCode(), equalTo(StatusCodes.OK));
 
-        // 2. Switching the alert on trusts the device doing the switching, so the session that
-        //    turned it on does not immediately mail itself about its own login
+        // 2. Switching the alert on trusts the current device, so it does not mail itself about its own login
         greenMail.purgeEmailFromAllMailboxes();
         TestResponse enabled = TestRequest.post("/api/admin/profile/login-alert")
                 .withCookie(auth)
@@ -99,8 +93,7 @@ class SuperadminLoginAlertIntegrationTest {
                 login(password, KNOWN_AGENT, KNOWN_IP).getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(greenMail.waitForIncomingEmail(1000, 1), is(false));
 
-        // 3. A different browser on a different network is a device this account has not been
-        //    used from, and that is exactly what the alert exists for
+        // 3. A different browser on a different network is an unknown device
         assertThat(login(password, OTHER_AGENT, OTHER_IP).getStatusCode(), equalTo(StatusCodes.OK));
 
         MimeMessage alert = awaitLatestMail();
@@ -113,7 +106,7 @@ class SuperadminLoginAlertIntegrationTest {
                 body, not(containsString(password)));
         assertThat(body, not(containsString("token=")));
 
-        // 4. That device is now known as well, so it only ever produces one mail
+        // 4. That device is now known, so it only ever produces one mail
         greenMail.purgeEmailFromAllMailboxes();
         assertThat(login(password, OTHER_AGENT, OTHER_IP).getStatusCode(), equalTo(StatusCodes.OK));
         assertThat("a device is reported once, not on every login",
@@ -148,7 +141,6 @@ class SuperadminLoginAlertIntegrationTest {
         return GreenMailUtil.getWholeMessage(message);
     }
 
-    /** The confirmation link carries its token in the fragment, exactly like the setup link does. */
     private static String extractToken(String body) {
         Matcher matcher = Pattern.compile("verify-email#token=([A-Za-z0-9_-]{20,})")
                 .matcher(body.replace("=\r\n", "").replace("=3D", "="));

@@ -58,7 +58,6 @@ export function ruleValueFromLevel(level: RuleLevel): string | null {
   return level
 }
 
-/** The two presets that decide access through a membership in a second collection. */
 export function isMembershipLevel(level: string | null | undefined): boolean {
   return level === 'group' || level === 'peers'
 }
@@ -123,13 +122,6 @@ export function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text)
 }
 
-/**
- * A byte count in the unit a person would use for it.
- *
- * Sizes are configured and stored in bytes, which is right for the API and unreadable in a form:
- * nobody sees at a glance that 4000000 is roughly 4 MB. The field keeps the exact number, this
- * goes next to it.
- */
 export function formatByteSize(bytes: number | undefined | null): string {
   if (bytes === undefined || bytes === null || !Number.isFinite(bytes)) return ''
   if (bytes < 1000) return `${bytes} B`
@@ -185,9 +177,7 @@ export function fieldTypeIcon(type: FieldType): string {
 }
 
 /**
- * The schema editor offers "String" and "Text" as two entries, but both write the same
- * `STRING` field type - they only differ in `options.multiline`, which decides whether the record
- * editor renders a single-line input or a textarea. It is a presentation question, not a type
+ * "Text" in the schema editor: still STRING, only options.multiline differs - a presentation
  * question, so it stays out of FieldType.
  */
 export const STRING_MULTILINE_CHOICE = 'STRING_MULTILINE'
@@ -291,8 +281,8 @@ export const RULE_PRESETS = {
     updateRule: 'group',
     deleteRule: 'group'
   },
-  // Create is never granted by "peers" - there is no record yet whose identity could be checked,
-  // and sign-up goes through POST /api/auth/register.
+  // "peers" never grants create: there is no record yet to check, and sign-up goes through
+  // POST /api/auth/register.
   peers: {
     listRule: 'peers',
     viewRule: 'peers',

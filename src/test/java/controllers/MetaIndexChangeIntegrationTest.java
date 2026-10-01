@@ -24,10 +24,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 
 /**
- * Changing an index that already exists is not the same as creating one: MongoDB rejects a
- * createIndex that reuses a name with different options (IndexOptionsConflict), so the old index
- * has to be dropped first. Flipping "unique" on an existing index - the one change the admin UI
- * offers most - used to run into exactly that and came back as a 500.
+ * MongoDB rejects a createIndex that reuses a name with different options (IndexOptionsConflict),
+ * so changing an existing index has to drop it first.
  */
 @ExtendWith({TestRunner.class})
 class MetaIndexChangeIntegrationTest {
@@ -53,16 +51,10 @@ class MetaIndexChangeIntegrationTest {
         assertThat(isUnique(collections, ctx, collection), is(true));
         assertThat(collections.findDefinition(ctx, collection).indexes().getFirst().unique(), is(true));
 
-        // And back again - dropping the unique constraint is the same operation in reverse.
         assertThat(patchIndex(collection, id, cookies, false).getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(isUnique(collections, ctx, collection), is(false));
     }
 
-    /**
-     * Data that is already ambiguous cannot carry a unique index. That is a problem with the
-     * request, not with the server, and the answer has to name the index and the reason - plus
-     * the collection has to keep the index it had.
-     */
     @Test
     void makingAnIndexUniqueOverDuplicateDataIsRejected() {
         String collection = "index_dupes_" + DbUtils.id();
@@ -83,16 +75,11 @@ class MetaIndexChangeIntegrationTest {
         assertThat(rejected.getContent(), containsString("title_idx"));
         assertThat(rejected.getContent(), containsString("title"));
 
-        // Nothing was stored and the non-unique index is still there.
         assertThat(collections.findDefinition(ctx, collection).indexes().getFirst().unique(), is(false));
         assertThat(indexSpec(collections, ctx, collection), is(org.hamcrest.Matchers.notNullValue()));
         assertThat(isUnique(collections, ctx, collection), is(false));
     }
 
-    /**
-     * A compound index is ordered and can mix directions - the admin UI builds them, so the meta
-     * API has to store exactly what it was given.
-     */
     @Test
     void compoundIndexesArePersistedWithOrderAndDirection() {
         String collection = "index_compound_" + DbUtils.id();
@@ -117,7 +104,7 @@ class MetaIndexChangeIntegrationTest {
         assertThat(keys.get("title"), equalTo(1));
         assertThat(keys.get("createdAt"), equalTo(-1));
 
-        // Reordering the fields is a different index - it has to be rebuilt, not left alone.
+        // Reordering the fields is a different index and has to be rebuilt.
         TestResponse reordered = patchDefinition(collection, id, cookies, """
                 {"name": "combo", "unique": false, "fields": [
                   {"field": "createdAt", "direction": "DESC"},
@@ -132,11 +119,7 @@ class MetaIndexChangeIntegrationTest {
                 equalTo(List.of("createdAt", "title")));
     }
 
-    /**
-     * An index on a field that does not exist describes a broken request, not a broken server.
-     * validateDefinition() reports it as an IllegalArgumentException, which used to leave the
-     * controller as a 500.
-     */
+    /** validateDefinition() throws IllegalArgumentException, which must map to 400, not 500. */
     @Test
     void anIndexOnAnUnknownFieldIsRejectedWithBadRequest() {
         String collection = "index_unknown_field_" + DbUtils.id();

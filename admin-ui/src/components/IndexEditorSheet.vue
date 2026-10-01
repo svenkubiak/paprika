@@ -10,9 +10,7 @@ const props = defineProps<{
   open: boolean
   mode: 'add' | 'edit'
   index: IndexDefinition | null
-  /** Schema fields plus the system fields an index may be built on. */
   availableFields: string[]
-  /** Names of all other indexes, so a collision is caught before the request. */
   takenNames: string[]
   saving: boolean
 }>()
@@ -45,8 +43,7 @@ const description = computed(() =>
     : 'Update this index. Renaming it drops the index and builds it again.'
 )
 
-// A compound index is ordered: MongoDB can only serve a query from a prefix of it, so which field
-// comes first is part of what the index is, not a detail of how it is rendered.
+// Order matters: MongoDB can only serve a query from a prefix of a compound index.
 const canMoveUp = (position: number) => position > 0
 const canMoveDown = (position: number) => position < fields.value.length - 1
 

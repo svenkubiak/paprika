@@ -134,9 +134,8 @@ class RealtimeServiceTest {
     }
 
     /**
-     * The client id is handed to whoever opens the stream and the stream itself carries no
-     * authentication, so a claimed client must stay bound to the user that claimed it. Otherwise a
-     * second caller could attach its own identity and subscriptions to a stream someone else reads.
+     * The stream carries no authentication, so a claimed client id stays bound to its user; otherwise
+     * another caller could attach subscriptions to a stream someone else reads.
      */
     @Test
     void aClaimedClientCannotBeTakenOverByAnotherUser() throws Exception {
@@ -155,7 +154,6 @@ class RealtimeServiceTest {
                 AuthContext.of("attacker", Role.USER, "tenant-1"),
                 List.of("secrets")), is(false));
 
-        // the original owner may still refine its own subscriptions
         assertThat(service.subscribe(
                 clientId,
                 AuthContext.of("user-1", Role.USER, "tenant-1"),
@@ -221,13 +219,11 @@ class RealtimeServiceTest {
         assertThat(subscribed, is(true));
         connection.awaitEventCount(2);
 
-        // The users channel is stripped from the subscription confirmation.
         assertThat(connection.events().getLast().data(), containsString("\"subscriptions\":[\"trips\"]"));
 
         TenantContext ctx = TenantContext.guest("tenant-1", "test-db");
         CollectionRules openRules = new CollectionRules("*", "*", "*", "*", "*", "owner");
 
-        // A broadcast on the users collection is suppressed entirely...
         CollectionDefinition usersDef = new CollectionDefinition(
                 "users-def", "users", List.of(), List.of(), openRules, true);
         service.broadcast(ctx, usersDef, HookEvent.afterCreate,

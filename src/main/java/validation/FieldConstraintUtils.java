@@ -20,36 +20,21 @@ import java.util.regex.PatternSyntaxException;
 public final class FieldConstraintUtils {
     private static final Logger LOG = LogManager.getLogger(FieldConstraintUtils.class);
 
-    /**
-     * The longest value that is matched against a pattern at all. A field without a maxLength
-     * would otherwise hand the engine whatever fits into the request body.
-     */
+    // Without this, a field lacking maxLength would hand the regex engine the whole request body.
     static final int MAX_PATTERN_INPUT_LENGTH = 4096;
 
-    /**
-     * How many character reads one match may cost. Java's regex engine backtracks and offers no
-     * timeout, so the only place to stop it is the input it reads from - a budget of a million
-     * reads is far more than any sane pattern needs over 4096 characters, and far less than what
-     * a catastrophic one would want.
-     */
+    // Character reads one match may cost; java.util.regex has no timeout, so the input is the only
+    // place to stop catastrophic backtracking.
     static final int MATCH_BUDGET = 1_000_000;
 
-    /**
-     * Patterns come from collection schemas, so the set is small and stable - but it is not the
-     * application that decides how many there are, hence the cap. Beyond it patterns still work,
-     * they are just compiled per use again.
-     */
+    // Patterns come from tenant schemas, so the cache is capped; beyond it they are compiled per use.
     private static final int MAX_CACHED_PATTERNS = 256;
     private static final Map<String, Pattern> PATTERNS = new ConcurrentHashMap<>();
 
     private FieldConstraintUtils() {
     }
 
-    /**
-     * @return whether the value is within the configured length limits. Callers use this to stop:
-     *         a value that is already too long must not be handed to the pattern engine, which is
-     *         the expensive check, and the record is rejected either way.
-     */
+    // Callers stop on false: a value that is already too long must not reach the pattern engine.
     public static boolean validateTextLength(String fieldName, String value, FieldOptions options, ValidationResult result) {
         boolean withinLimits = true;
 
@@ -83,8 +68,7 @@ public final class FieldConstraintUtils {
         } catch (PatternSyntaxException e) {
             result.add(fieldName, "Invalid pattern configured for field");
         } catch (MatchBudgetExceededException e) {
-            // Rejecting is the only safe answer: the match never finished, so whether the value
-            // satisfies the pattern is unknown, and "unknown" must not pass a validation.
+            // The match never finished, so the result is unknown - and unknown must not pass.
             LOG.warn("Pattern of field '{}' exceeded the match budget and was abandoned - it very "
                     + "likely backtracks catastrophically: {}", fieldName, options.pattern());
             result.add(fieldName, "Value could not be validated against the configured pattern");
@@ -105,14 +89,8 @@ public final class FieldConstraintUtils {
         return compiled;
     }
 
-    /**
-     * The input a match reads from, with a ceiling on how often it may be read.
-     * <p>
-     * There is no other way to bound {@code java.util.regex}: it has no timeout, and it never
-     * checks for interruption, so a match that backtracks exponentially holds its thread until
-     * the process ends. Every backtracking step reads at least one character, which makes
-     * {@code charAt} the one place the engine can be stopped from the outside.
-     */
+    // java.util.regex has no timeout and ignores interruption; every backtracking step reads a
+    // character, so charAt is the one place a runaway match can be stopped.
     private static final class BudgetedCharSequence implements CharSequence {
         private final CharSequence delegate;
         private final int budget;
@@ -147,7 +125,6 @@ public final class FieldConstraintUtils {
         }
     }
 
-    /** Not an error anyone can act on at the call site, so it carries no stack trace. */
     private static final class MatchBudgetExceededException extends RuntimeException {
         private MatchBudgetExceededException() {
             super(null, null, false, false);

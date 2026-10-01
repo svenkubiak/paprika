@@ -45,13 +45,8 @@ public final class RelationFieldUtils {
         return List.of();
     }
 
-    /**
-     * The cascading delete itself lives in {@code services.RelationCascadeService}, not here: its
-     * target is a client-chosen record in another collection and must be authorized against that
-     * collection's delete rule before it is removed. A static helper with a MongoDB handle and no
-     * idea who is calling cannot do that, which is exactly how this used to delete other people's
-     * records.
-     */
+    // Cascading deletes belong in RelationCascadeService, not here: each target must be authorized
+    // against its collection's delete rule, which a static helper cannot do.
     public static Set<String> uniqueRelationIds(Object value, FieldDefinition field) {
         return new LinkedHashSet<>(relationIds(value, field));
     }

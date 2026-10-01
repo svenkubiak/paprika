@@ -6,14 +6,8 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import services.RealtimeService;
 
-/**
- * Connection callback for the {@code /api/realtime} route, bound to that route via
- * {@code withHandler}. It replaces mangoo's default handler, so the connection is not
- * registered in the ServerSentEventManager under its request URI - the RealtimeService
- * keeps its own registry keyed by client id, which is what allows an event to be sent to
- * a single client. Registering the connection and attaching the close task that removes
- * it again both happen in {@link RealtimeService#onConnect(ServerSentEventConnection)}.
- */
+// Replaces mangoo's default handler so connections are not registered by request URI;
+// RealtimeService keeps its own registry keyed by client id to address single clients.
 @Singleton
 public class PaprikaServerSentEventHandler implements ServerSentEventConnectionCallback {
     private final RealtimeService realtimeService;

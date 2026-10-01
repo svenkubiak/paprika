@@ -25,20 +25,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Tenant isolation on the realtime channel.
- * <p>
- * {@code TenantIsolationIntegrationTest} walks every registered request route, but the realtime
- * endpoint is bound as a server sent event stream and is therefore not a request route - it was the
- * one delivery path not covered there. Records are pushed to subscribers by
- * {@link RealtimeService#broadcast}, which decides on its own which client may see an event, so a
- * mistake here leaks tenant data without any route being involved.
- * <p>
- * Everything in this test is the real thing except the connection itself: subscribing goes through
- * {@code POST /api/realtime/subscribe} with a real bearer token, and events are triggered by real
- * writes through {@code /api/collections/...}. Only the SSE socket is replaced by a recording
- * double, as an Undertow SSE stream cannot be consumed through the test HTTP client. The test lives
- * in the {@code services} package for the same reason - {@code onConnect(RealtimeConnection)} is
- * package private.
+ * The SSE endpoint is not a request route, so TenantIsolationIntegrationTest does not cover it. Only the
+ * socket is replaced by a recording double (Undertow SSE cannot be consumed by the test client); in
+ * {@code services} because onConnect is package private.
  */
 @ExtendWith({TestRunner.class})
 class RealtimeTenantIsolationIntegrationTest {
@@ -90,7 +79,6 @@ class RealtimeTenantIsolationIntegrationTest {
         connectionA.awaitEvents(2);
         connectionB.awaitEvents(2);
 
-        // A write in tenant B must reach the subscriber of tenant B only
         create(COLLECTION, tokenB, SECRET_OF_B);
         connectionB.awaitEvents(3);
 
@@ -99,7 +87,6 @@ class RealtimeTenantIsolationIntegrationTest {
         assertThat("a tenant A subscriber must never receive a tenant B record",
                 connectionA.data(), not(hasItem(containsString(SECRET_OF_B))));
 
-        // ... and the other way round
         String secretOfA = "TENANT-A-REALTIME-SECRET";
         create(COLLECTION, tokenA, secretOfA);
         connectionA.awaitEvents(3);
@@ -108,10 +95,6 @@ class RealtimeTenantIsolationIntegrationTest {
         assertThat(connectionB.data(), not(hasItem(containsString(secretOfA))));
     }
 
-    /**
-     * Within one tenant the view rule still applies: realtime must not become a way around the
-     * rules the data plane enforces.
-     */
     @Test
     void anEventIsNeverDeliveredToAUserTheViewRuleExcludes() throws Exception {
         RealtimeService realtime = Application.getInstance(RealtimeService.class);
@@ -142,7 +125,6 @@ class RealtimeTenantIsolationIntegrationTest {
                 stranger.data(), not(hasItem(containsString(secret))));
     }
 
-    /** An unauthenticated stream never receives anything, even for a public collection. */
     @Test
     void anUnsubscribedStreamReceivesNothing() throws Exception {
         RealtimeService realtime = Application.getInstance(RealtimeService.class);
@@ -158,10 +140,6 @@ class RealtimeTenantIsolationIntegrationTest {
                 silent.data(), not(hasItem(containsString("NOT-FOR-THE-SILENT-STREAM"))));
         assertThat(silent.eventNames(), everyItem(equalTo(RealtimeService.CONNECT_EVENT)));
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Helpers
-    // ---------------------------------------------------------------------------------------
 
     private static void subscribe(String clientId, String token, String collection) {
         TestResponse response = TestRequest.post("/api/realtime/subscribe")
@@ -223,7 +201,6 @@ class RealtimeTenantIsolationIntegrationTest {
         return response.getContent().substring(start, response.getContent().indexOf('"', start));
     }
 
-    /** Stands in for the SSE socket and records what the server would have pushed to a client. */
     private static final class RecordingConnection implements RealtimeConnection {
         private final List<String> data = new CopyOnWriteArrayList<>();
         private final List<String> eventNames = new CopyOnWriteArrayList<>();

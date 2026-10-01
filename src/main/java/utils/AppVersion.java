@@ -8,11 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
-/**
- * The Maven version of this build, filled into paprika-version.properties by resource filtering.
- * Read once at class load: the value can not change while the process runs, and it is served on
- * every admin bootstrap request.
- */
+// Filled in by Maven resource filtering; read once at class load.
 public final class AppVersion {
     private static final Logger LOG = LogManager.getLogger(AppVersion.class);
     private static final String RESOURCE = "/paprika-version.properties";
@@ -36,8 +32,7 @@ public final class AppVersion {
             var properties = new Properties();
             properties.load(inputStream);
 
-            // An unfiltered copy would still hold the literal ${project.version}, which is worse
-            // than admitting the version is unknown.
+            // An unfiltered copy still holds the literal ${project.version}
             String version = properties.getProperty("version");
             return StringUtils.isBlank(version) || version.startsWith("${") ? UNKNOWN : version;
         } catch (IOException e) {

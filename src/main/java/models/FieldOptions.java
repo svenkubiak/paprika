@@ -31,25 +31,13 @@ public record FieldOptions(
         List<Integer> imageWidths,
         Boolean multiline
 ) {
-    /**
-     * The largest file a FILE field accepts unless the schema says otherwise.
-     * <p>
-     * Four million bytes, not four mebibytes, and deliberately not the five megabytes this used
-     * to be: Undertow refuses a request body over 4 MiB ({@code undertow.maxentitysize}), and
-     * the body of an upload is not only the file - it carries the multipart boundaries, the part
-     * headers and every other field of the same request. A default above that ceiling is a
-     * promise the stack cannot keep; the ~190 KiB of headroom is what makes this one keepable.
-     */
+    // Below Undertow's 4 MiB body limit (undertow.maxentitysize), leaving headroom for the
+    // multipart boundaries, part headers and other fields of the same request.
     public static final long DEFAULT_MAX_SIZE = 4_000_000L;
 
-    /**
-     * How many image widths one file field may keep. Four cover list, preview, detail and retina;
-     * every additional width multiplies the storage every upload to this field costs, so the cap
-     * exists to keep a misconfiguration from doing that unnoticed.
-     */
+    // Every width multiplies the storage of every upload to the field.
     public static final int MAX_IMAGE_WIDTHS = 4;
 
-    /** The largest width a variant may have; beyond this a variant is no longer a smaller copy. */
     public static final int MAX_IMAGE_WIDTH = 4096;
 
     public FieldOptions(String collection, Long maxSize, List<String> mimeTypes, Integer maxSelect, List<String> values) {
@@ -72,11 +60,7 @@ public record FieldOptions(
         return values != null ? values : List.of();
     }
 
-    /**
-     * The configured image widths, normalized: positive values only, deduplicated, ascending.
-     * Normalizing here rather than at every reader keeps the "next larger variant" lookup of the
-     * download path a plain scan over an ordered list.
-     */
+    // Sorted ascending so the download path's "next larger variant" lookup is a plain scan.
     public List<Integer> imageWidthsOrEmpty() {
         if (imageWidths == null) {
             return List.of();
@@ -93,10 +77,7 @@ public record FieldOptions(
         return Boolean.TRUE.equals(cascadeDelete);
     }
 
-    /**
-     * Whether a STRING field asks the admin UI for a multi-line input. Purely declarative: no
-     * validator behaves differently for it, a multi-line value is the same string as any other.
-     */
+    // Admin UI hint only; no validator behaves differently for it.
     public boolean multilineOrDefault() {
         return Boolean.TRUE.equals(multiline);
     }

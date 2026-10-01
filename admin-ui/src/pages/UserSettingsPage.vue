@@ -14,10 +14,7 @@ const activeTenant = computed(() => bootstrap.value?.activeTenant ?? null)
 
 const saving = ref(false)
 
-/**
- * Kept in the script because the sentence contains a brace placeholder, which the template would
- * read as an interpolation.
- */
+/** Kept in the script: the brace placeholder would be read as an interpolation. */
 const linkUrlHelp =
   "Your app's page for this. Paprika appends ?token=… or substitutes a {token} placeholder."
 

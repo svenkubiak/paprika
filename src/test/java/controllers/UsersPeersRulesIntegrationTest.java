@@ -19,11 +19,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
-/**
- * The {@code peers} preset on the users collection: an application can show the names of the
- * people a user shares a group with - and nothing beyond that. Without it, {@code users} offers
- * only {@code owner} ("my own account") or {@code auth} ("every account of the tenant").
- */
+/** The {@code peers} preset on users: only the accounts a user shares a group with are visible. */
 @ExtendWith({TestRunner.class})
 class UsersPeersRulesIntegrationTest {
     private static final String MEMBERSHIPS = "grp_memberships";
@@ -77,7 +73,7 @@ class UsersPeersRulesIntegrationTest {
             assertThat(strangerView.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
             assertThat(strangerView.getContent(), not(containsString("peers-stranger")));
 
-            // Without any membership a user still reaches exactly one record: their own.
+            // Without any membership a user still reaches their own record
             String lonerToken = CollectionGroupRulesIntegrationTest.login("peers-loner");
             TestResponse lonerList = TestRequest.get("/api/collections/users?offset=0&limit=100")
                     .withHeader("Authorization", "Bearer " + lonerToken)
@@ -91,7 +87,7 @@ class UsersPeersRulesIntegrationTest {
                     .execute();
             assertThat(lonerOwn.getStatusCode(), equalTo(StatusCodes.OK));
 
-            // Create can never be satisfied: there is no record yet whose identity could match.
+            // Create can never be satisfied: no record exists yet whose identity could match
             TestResponse create = TestRequest.post("/api/collections/users")
                     .withHeader("Authorization", "Bearer " + token)
                     .withStringBody("{\"username\":\"peers-created\",\"password\":\"another-secret-123\"}")

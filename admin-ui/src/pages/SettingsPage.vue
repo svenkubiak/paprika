@@ -17,7 +17,7 @@ const requestLogRetentionDays = ref(7)
 const requestLogClientInfo = ref(false)
 const requestLogClientIp = ref<'off' | 'truncated' | 'full'>('off')
 const savingClientInfo = ref(false)
-/** Off by default: operating the admin UI is Paprika's own traffic, not the tenant's API traffic. */
+/** Off by default: admin UI traffic is Paprika's own, not the tenant's API traffic. */
 const requestLogAdminUi = ref(false)
 const savingAdminUi = ref(false)
 

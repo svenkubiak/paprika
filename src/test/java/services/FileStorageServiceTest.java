@@ -17,11 +17,7 @@ class FileStorageServiceTest {
     @TempDir
     Path tempDir;
 
-    /**
-     * The only persistent directory of the application must not depend on the working directory
-     * the process happens to have been started in. In production a relative path is a
-     * configuration error, not a convenience.
-     */
+    /** The only persistent directory must not depend on the process's working directory in production. */
     @Test
     void aRelativeRootIsRefusedWhenAnAbsoluteOneIsRequired() {
         IllegalStateException e = assertThrows(IllegalStateException.class,
@@ -32,7 +28,6 @@ class FileStorageServiceTest {
                 e.getMessage(), containsString("PAPRIKA_STORAGE"));
     }
 
-    /** Outside production a relative path stays allowed - dev and test both use one. */
     @Test
     void aRelativeRootIsAcceptedWhenItIsNotRequiredToBeAbsolute() {
         FileStorageService storage = new FileStorageService(tempDir.resolve("relative-ok"), false);
@@ -40,7 +35,6 @@ class FileStorageServiceTest {
         assertThat(storage.root().isAbsolute(), is(true));
     }
 
-    /** A directory that cannot be created is a deployment problem, and it surfaces at startup. */
     @Test
     void anUnusableRootFailsImmediately() throws Exception {
         Path file = tempDir.resolve("not-a-directory");
@@ -49,7 +43,6 @@ class FileStorageServiceTest {
         assertThrows(IllegalStateException.class, () -> new FileStorageService(file, true));
     }
 
-    /** The root is created up front, so the first upload does not have to find it missing. */
     @Test
     void theRootIsCreatedOnConstruction() {
         Path root = tempDir.resolve("created/on/construction");
