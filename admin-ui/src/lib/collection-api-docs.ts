@@ -468,11 +468,11 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
     method: 'POST',
     path: '/api/auth/login',
     summary:
-      'Authenticate a tenant user. Paprika resolves the tenant from the username across active tenants. Include tenant only when the same username exists in multiple tenants.',
+      'Authenticate a tenant user of the tenant named by its slug. Without a slug the login is for the default tenant only.',
     examples: [
       {
         title: 'Request',
-        description: 'Tenant user login (tenant resolved automatically)',
+        description: 'Login for a user of the default tenant',
         code: `POST /api/auth/login
 
 {
@@ -483,9 +483,8 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
       {
         title: 'Request',
         description:
-          'Explicit tenant slug. Optional, but required whenever the username exists in more than one tenant - '
-          + 'a login without it is rejected as invalid credentials rather than revealing that. Recommended for '
-          + 'every client: without it the server has to search the tenants, which it stops doing on large instances.',
+          'Login for a user of any other tenant: the slug is required. The tenant it names also decides whose '
+          + 'beforeRequest and beforeLogin hooks guard the login.',
         code: `POST /api/auth/login
 
 {
@@ -547,8 +546,28 @@ export const authEndpointDocs: ApiEndpointDoc[] = [
       ),
       errorBlock(
         '401 Unauthorized',
-        'Invalid or expired refresh token',
+        'Invalid, expired or revoked refresh token, or the session is older than 30 days (sign in again)',
         '{\n  "error": "Invalid refresh token"\n}'
+      )
+    ]
+  },
+  {
+    id: 'logout',
+    method: 'POST',
+    path: '/api/auth/logout',
+    summary:
+      'End every session of the calling user: all access and refresh tokens issued so far stop working, on every device, and open realtime streams are closed. Needs an access token; an API key cannot log out.',
+    examples: [
+      {
+        title: 'Request',
+        code: `POST /api/auth/logout
+Authorization: Bearer <accessToken>`
+      },
+      successBlock('Response', '200 OK', '{\n  "success": true\n}'),
+      errorBlock(
+        '401 Unauthorized',
+        'No valid access token',
+        '{\n  "error": "Unauthorized"\n}'
       )
     ]
   },
@@ -699,7 +718,7 @@ export const realtimeEndpointDocs: ApiEndpointDoc[] = [
     method: 'POST',
     path: '/api/realtime/subscribe',
     summary:
-      'Authenticate the SSE client and register collection or record subscriptions. Until this succeeds, record events are not delivered. Events are also skipped when viewRule denies the subscriber. The token is checked here and not again: the stream keeps the identity it was subscribed with until it disconnects, so reconnect and subscribe again after refreshing the token.',
+      'Authenticate the SSE client and register collection or record subscriptions. Until this succeeds, record events are not delivered. Events are also skipped when viewRule denies the subscriber. The token is checked here and not again: the stream keeps the identity it was subscribed with until it disconnects, so reconnect and subscribe again after refreshing the token. A password reset, a credential change or a logout closes the user\'s open streams.',
     examples: [
       {
         title: 'Request',

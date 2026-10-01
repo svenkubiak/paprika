@@ -20,10 +20,10 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 
 /**
- * {@code POST /api/auth/login} may be called without a tenant slug, in which case the server has
- * to work out which tenant the username belongs to. Everything that answer reveals is
- * cross-tenant information the isolation elsewhere is careful never to leak, so the endpoint has
- * to behave like the recovery endpoints already do: one answer for every kind of failure.
+ * {@code POST /api/auth/login} without a tenant slug is a login for the default tenant, and for
+ * nothing else. It used to search every tenant for the username, which ran the hooks of one tenant
+ * for a login into another and made every answer a statement about other tenants' user bases. A
+ * user of any other tenant has to name it, and the endpoint answers every failure the same way.
  */
 @ExtendWith({TestRunner.class})
 class LoginTenantScanIntegrationTest {
@@ -31,6 +31,8 @@ class LoginTenantScanIntegrationTest {
     private static final String PASSWORD_B = "scan-password-bbb-2";
     private static final String SHARED_USERNAME = "scan-shared-user";
     private static final String UNIQUE_USERNAME = "scan-unique-user";
+    private static final String DEFAULT_USERNAME = "scan-default-user-" + utils.DbUtils.id();
+    private static final String PASSWORD_DEFAULT = "scan-password-ddd-4";
 
     private static TenantDefinition tenantA;
     private static TenantDefinition tenantB;
@@ -48,6 +50,7 @@ class LoginTenantScanIntegrationTest {
         users.createUser(tenantA, SHARED_USERNAME, null, PASSWORD_A);
         users.createUser(tenantB, SHARED_USERNAME, null, PASSWORD_B);
         users.createUser(tenantA, UNIQUE_USERNAME, null, PASSWORD_A);
+        users.createUser(TenantTestUtils.defaultTenant(), DEFAULT_USERNAME, null, PASSWORD_DEFAULT);
     }
 
     /**
@@ -89,10 +92,21 @@ class LoginTenantScanIntegrationTest {
         assertThat(crossed.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
     }
 
-    /** The convenience path keeps working where the username really is unique. */
+    /** A username that exists in exactly one other tenant is not looked up there any more. */
     @Test
-    void aUniqueUsernameStillLogsInWithoutASlug() {
-        TestResponse response = login(UNIQUE_USERNAME, PASSWORD_A);
+    void aUserOfAnotherTenantHasToNameIt() {
+        TestResponse withoutSlug = login(UNIQUE_USERNAME, PASSWORD_A);
+        TestResponse unknown = login("scan-user-that-does-not-exist", PASSWORD_A);
+
+        assertThat(withoutSlug.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
+        assertThat("a user of another tenant must not be distinguishable from an unknown one",
+                withoutSlug.getContent(), equalTo(unknown.getContent()));
+    }
+
+    /** The default tenant keeps the convenience of the slug-less login. */
+    @Test
+    void aUserOfTheDefaultTenantStillLogsInWithoutASlug() {
+        TestResponse response = login(DEFAULT_USERNAME, PASSWORD_DEFAULT);
 
         assertThat(response.getContent(), response.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(response.getContent(), org.hamcrest.Matchers.containsString("accessToken"));
@@ -107,9 +121,9 @@ class LoginTenantScanIntegrationTest {
     @Test
     void anUnknownUsernameCostsRoughlyAsMuchAsAKnownOne() {
         // Warm up the hashing code, so the first call does not skew the comparison
-        login(UNIQUE_USERNAME, "warm-up-password");
+        login(DEFAULT_USERNAME, "warm-up-password");
 
-        long known = median(() -> login(UNIQUE_USERNAME, "wrong-password-for-a-known-user"));
+        long known = median(() -> login(DEFAULT_USERNAME, "wrong-password-for-a-known-user"));
         long unknown = median(() -> login("scan-user-that-does-not-exist-either", "wrong-password"));
 
         assertThat("the fixture is too fast to measure anything", known, greaterThan(0L));

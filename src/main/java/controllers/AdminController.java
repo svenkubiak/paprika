@@ -133,7 +133,10 @@ public class AdminController {
             return Response.unauthorized().bodyJson(Map.of("error", "Unauthorized"));
         }
 
-        AuthContext auth = authService.resolveBearer(request);
+        // The session, not just the identity: a switch continues it rather than starting a new one,
+        // so chaining switches cannot keep a token alive past the maximum session length
+        Optional<AuthService.TokenSession> session = authService.resolveBearerSession(request);
+        AuthContext auth = session.map(AuthService.TokenSession::auth).orElseGet(AuthContext::guest);
         if (!auth.isAuthenticated() || !auth.isSuperAdmin()) {
             return Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
         }
@@ -144,11 +147,18 @@ public class AdminController {
             return Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
         }
 
-        return tenantService.findById(dto.tenantId())
-                .filter(TenantDefinition::isActive)
-                .map(tenant -> authResponseService.toTokenResponse(
-                        authService.createTokenPair(AuthContext.of(auth.id(), Role.SUPERADMIN, tenant.id()))))
-                .orElseGet(() -> Response.badRequest().bodyJson(Map.of("error", "Tenant not found")));
+        Optional<TenantDefinition> tenant = tenantService.findById(dto.tenantId()).filter(TenantDefinition::isActive);
+        if (tenant.isEmpty()) {
+            return Response.badRequest().bodyJson(Map.of("error", "Tenant not found"));
+        }
+
+        return authService.renewTokenPair(
+                        session.orElseThrow(),
+                        AuthContext.of(auth.id(), Role.SUPERADMIN, tenant.orElseThrow().id()))
+                .map(authResponseService::toTokenResponse)
+                .orElseGet(() -> Response.unauthorized()
+                        .header("WWW-Authenticate", "Bearer")
+                        .bodyJson(Map.of("error", "Session expired, sign in again")));
     }
 
     public Response switchTenant(Form form, Request request) {

@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -31,17 +32,29 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 
 /**
- * Image variants are produced once, when the file is stored, and live and die with the original.
+ * Image variants are produced once, after the upload is committed, and live and die with the original.
  */
 class ImageVariantServiceTest {
 
     @TempDir
     Path storageRoot;
 
+    private ImageVariantQueue queue;
+
+    private FileFieldService service(FileStorageService storage) {
+        queue = new ImageVariantQueue(storage);
+        return new FileFieldService(storage, queue);
+    }
+
+    /** The variants are produced in the background once the upload is committed. */
+    private void awaitVariants() throws InterruptedException {
+        assertThat("the variant queue did not drain", queue.awaitIdle(Duration.ofSeconds(10)), is(true));
+    }
+
     @Test
     void variantsAreCreatedForEveryConfiguredWidthThatIsSmallerThanTheOriginal() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         FileFieldService.UploadChanges changes = upload(
@@ -59,7 +72,7 @@ class ImageVariantServiceTest {
     @Test
     void aTypeImageIoCannotWriteKeepsOnlyItsOriginal() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         // image/webp can be read by the JDK but not written, so no variant can exist for it.
@@ -75,7 +88,7 @@ class ImageVariantServiceTest {
     @Test
     void anUnreadableImageDoesNotFailTheUpload() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         FileFieldService.UploadChanges changes = upload(
@@ -90,7 +103,7 @@ class ImageVariantServiceTest {
     @Test
     void anExifRotatedJpegIsUprightInTheVariant() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         // Orientation 6 means "rotate 90° clockwise for display", so a 400x200 stored image is a
@@ -110,7 +123,7 @@ class ImageVariantServiceTest {
     @Test
     void deletingTheFileDeletesItsVariants() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         FileFieldService.UploadChanges changes =
@@ -128,28 +141,29 @@ class ImageVariantServiceTest {
     @Test
     void rollingBackAnUploadDeletesItsVariants() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
+        // Staged, not committed: the record write that would have pointed at it failed
         FileFieldService.UploadChanges changes =
-                upload(service, ctx, List.of(100), image(400, 200, "png"), "image/png", "picture.png");
+                stage(service, ctx, List.of(100), image(400, 200, "png"), "image/png", "picture.png");
         String fileId = changes.storedFileIds().getFirst();
 
         service.rollbackUploads(ctx, changes);
+        awaitVariants();
 
         assertThat(storage.read(ctx, fileId), is(nullValue()));
-        assertThat(storage.variantWidths(ctx, fileId), is(empty()));
+        assertThat("a rolled back upload queues no decode", storage.variantWidths(ctx, fileId), is(empty()));
     }
 
     @Test
     void replacingAFileDeletesTheVariantsOfTheReplacedOne() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         FileFieldService.UploadChanges first =
                 upload(service, ctx, List.of(100), image(400, 200, "png"), "image/png", "first.png");
-        service.commitUploads(ctx, first);
         String oldId = first.storedFileIds().getFirst();
 
         Document record = new Document(
@@ -163,6 +177,7 @@ class ImageVariantServiceTest {
                         "second.png", image(400, 200, "png"), "image/png"))),
                 false);
         service.commitUploads(ctx, second);
+        awaitVariants();
 
         assertThat(storage.read(ctx, oldId), is(nullValue()));
         assertThat(storage.variantWidths(ctx, oldId), is(empty()));
@@ -172,7 +187,7 @@ class ImageVariantServiceTest {
     @Test
     void deletingTheRecordDeletesTheVariants() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         Document record = new Document();
@@ -185,6 +200,7 @@ class ImageVariantServiceTest {
                         "picture.png", image(400, 200, "png"), "image/png"))),
                 false);
         service.commitUploads(ctx, changes);
+        awaitVariants();
         String fileId = changes.storedFileIds().getFirst();
 
         service.deleteRecordFiles(ctx, definition, record);
@@ -197,7 +213,7 @@ class ImageVariantServiceTest {
     @Test
     void readingFallsBackToTheNextLargerVariantAndThenToTheOriginal() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         FileFieldService.UploadChanges changes = upload(
@@ -221,7 +237,22 @@ class ImageVariantServiceTest {
         assertThat(widthOf(untouched.bytes()), is(800));
     }
 
-    private static FileFieldService.UploadChanges upload(
+    /** An upload as a successful write sees it: staged, committed, and its variants produced. */
+    private FileFieldService.UploadChanges upload(
+            FileFieldService service,
+            TenantContext ctx,
+            List<Integer> widths,
+            byte[] bytes,
+            String mimeType,
+            String fileName) throws Exception {
+
+        FileFieldService.UploadChanges changes = stage(service, ctx, widths, bytes, mimeType, fileName);
+        service.commitUploads(ctx, changes);
+        awaitVariants();
+        return changes;
+    }
+
+    private static FileFieldService.UploadChanges stage(
             FileFieldService service,
             TenantContext ctx,
             List<Integer> widths,

@@ -4,6 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import java.awt.Graphics2D;
@@ -13,8 +14,12 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -24,8 +29,9 @@ import java.util.Set;
  * WebP in particular can be read by newer JDKs but not written, so a WebP upload keeps its
  * original and is always served unscaled - adding an encoder would mean adding a dependency.
  * <p>
- * Variants are produced once, when the file is stored. Scaling on download would let any caller
- * spend server time by asking for arbitrary widths, and would have to be redone on every request.
+ * Variants are produced once, after the file is stored (see {@code ImageVariantQueue}). Scaling on
+ * download would let any caller spend server time by asking for arbitrary widths, and would have
+ * to be redone on every request.
  */
 public final class ImageVariants {
 
@@ -113,8 +119,30 @@ public final class ImageVariants {
      * @throws IOException when reading or writing the image fails
      */
     public static byte[] scaleToWidth(byte[] source, String mimeType, int targetWidth) throws IOException {
-        if (source == null || targetWidth <= 0 || !isSupported(mimeType)) {
-            return null;
+        return scaleToWidths(source, mimeType, List.of(targetWidth)).get(targetWidth);
+    }
+
+    /**
+     * Scales {@code source} down to every width in {@code targetWidths} from a single decode.
+     * <p>
+     * The decode is what costs memory, and it is made small before it happens: the reader skips
+     * rows and columns ({@link ImageReadParam#setSourceSubsampling}) so that the raster it builds
+     * is only as wide as the widest variant needs - a uniform 30 megapixel JPEG then decodes to a
+     * few megabytes instead of 120. The last step from there to each width is a regular bilinear
+     * downscale, which is all the old full-resolution path did as well: bilinear samples four
+     * pixels per target pixel, so at these ratios it skipped most of the source just the same.
+     * The EXIF orientation is applied to each small variant after scaling, rather than to the full
+     * image before it, which used to allocate a second full-size raster just to turn it.
+     *
+     * @return the encoded variants by width; a width the image is not wider than gets none (a
+     *         variant is only ever a smaller copy), and an image that cannot be decoded gets none
+     * @throws IOException when reading or writing the image fails
+     */
+    public static Map<Integer, byte[]> scaleToWidths(byte[] source, String mimeType, List<Integer> targetWidths)
+            throws IOException {
+
+        if (source == null || targetWidths == null || !isSupported(mimeType)) {
+            return Map.of();
         }
 
         String format = WRITABLE_FORMATS.get(mimeType.toLowerCase());
@@ -127,24 +155,75 @@ public final class ImageVariants {
                     + " pixels, the budget is " + MAX_PIXELS);
         }
 
-        BufferedImage image = ImageIO.read(new ByteArrayInputStream(source));
-        if (image == null) {
-            return null;
-        }
-
         // ImageIO drops the EXIF metadata when re-encoding, so the orientation has to be baked into
-        // the pixels first. Without this a phone photo would be correct as the original and tilted
-        // in every variant - a defect that only shows up when someone looks at it.
-        image = applyExifOrientation(image, ExifOrientation.of(source, mimeType));
+        // the pixels. Without this a phone photo would be correct as the original and tilted in
+        // every variant - a defect that only shows up when someone looks at it.
+        int orientation = ExifOrientation.of(source, mimeType);
+        boolean swapsAxes = orientation >= 5 && orientation <= 8;
 
-        if (image.getWidth() <= targetWidth) {
-            return null;
+        try (ImageInputStream stream = ImageIO.createImageInputStream(new ByteArrayInputStream(source))) {
+            if (stream == null) {
+                return Map.of();
+            }
+
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(stream);
+            if (!readers.hasNext()) {
+                return Map.of();
+            }
+
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(stream, true, true);
+                int displayWidth = swapsAxes ? reader.getHeight(0) : reader.getWidth(0);
+
+                List<Integer> widths = targetWidths.stream()
+                        .filter(Objects::nonNull)
+                        .filter(width -> width > 0 && width < displayWidth)
+                        .distinct()
+                        .sorted(Comparator.reverseOrder())
+                        .toList();
+                if (widths.isEmpty()) {
+                    return Map.of();
+                }
+
+                int subsampling = Math.max(1, displayWidth / widths.getFirst());
+                ImageReadParam param = reader.getDefaultReadParam();
+                param.setSourceSubsampling(subsampling, subsampling, 0, 0);
+                BufferedImage decoded = reader.read(0, param);
+
+                Map<Integer, byte[]> variants = new LinkedHashMap<>();
+                for (int width : widths) {
+                    BufferedImage variant = applyExifOrientation(
+                            scaleForDisplayWidth(decoded, width, swapsAxes, format), orientation);
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    if (ImageIO.write(variant, format, out)) {
+                        variants.put(width, out.toByteArray());
+                    }
+                }
+                return variants;
+            } finally {
+                reader.dispose();
+            }
         }
+    }
 
-        int targetHeight = Math.max(1, Math.round(image.getHeight() * (float) targetWidth / image.getWidth()));
+    /**
+     * Scales the image, still in its stored orientation, to the size that is {@code displayWidth}
+     * wide once the EXIF orientation has been applied - for a quarter turn that is its height.
+     */
+    private static BufferedImage scaleForDisplayWidth(
+            BufferedImage image,
+            int displayWidth,
+            boolean swapsAxes,
+            String format) {
+
+        int sourceDisplayWidth = swapsAxes ? image.getHeight() : image.getWidth();
+        int sourceDisplayHeight = swapsAxes ? image.getWidth() : image.getHeight();
+        int displayHeight = Math.max(1, Math.round(sourceDisplayHeight * (float) displayWidth / sourceDisplayWidth));
+
         BufferedImage scaled = new BufferedImage(
-                targetWidth,
-                targetHeight,
+                swapsAxes ? displayHeight : displayWidth,
+                swapsAxes ? displayWidth : displayHeight,
                 OPAQUE_FORMATS.contains(format) ? BufferedImage.TYPE_INT_RGB : BufferedImage.TYPE_INT_ARGB);
 
         Graphics2D graphics = scaled.createGraphics();
@@ -152,16 +231,11 @@ public final class ImageVariants {
             graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics.drawImage(image, 0, 0, targetWidth, targetHeight, null);
+            graphics.drawImage(image, 0, 0, scaled.getWidth(), scaled.getHeight(), null);
         } finally {
             graphics.dispose();
         }
-
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        if (!ImageIO.write(scaled, format, out)) {
-            return null;
-        }
-        return out.toByteArray();
+        return scaled;
     }
 
     private static BufferedImage applyExifOrientation(BufferedImage image, int orientation) {

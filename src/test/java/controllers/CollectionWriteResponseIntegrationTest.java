@@ -143,13 +143,14 @@ class CollectionWriteResponseIntegrationTest {
 
             String id = json(create).path("id").asText();
 
+            // Not the email: that is a credential an anonymous caller may never change, whatever the rule
             TestResponse update = TestRequest.patch("/api/collections/users/" + id)
-                    .withStringBody("{\"email\":\"updated-" + username + "@example.com\"}")
+                    .withStringBody("{\"username\":\"updated-" + username + "\"}")
                     .withContentType("application/json")
                     .execute();
 
             assertThat(update.getStatusCode(), equalTo(StatusCodes.OK));
-            assertThat(update.getContent(), containsString("updated-" + username + "@example.com"));
+            assertThat(update.getContent(), containsString("updated-" + username));
             assertThat(update.getContent(), not(containsString("passwordHash")));
             assertThat(update.getContent(), not(containsString("passwordSalt")));
         } finally {

@@ -19,6 +19,8 @@ import utils.Exchanges;
 
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -32,21 +34,42 @@ public class AuthService {
     private static final String CLAIM_TYPE = "type";
     private static final String CLAIM_ROLE = "role";
     private static final String CLAIM_TID = "tid";
+    private static final String CLAIM_VERSION = "ver";
+    private static final String CLAIM_AUTH_TIME = "auth_time";
     private static final String TYPE_ACCESS = "access";
     private static final String TYPE_REFRESH = "refresh";
     private static final long ACCESS_TTL_SECONDS = 3600;
     private static final long REFRESH_TTL_SECONDS = 604800;
+    // How long a session may be renewed - by refresh or by switching the tenant - before the
+    // user has to sign in again. Without a bound, one leaked refresh token renews itself forever.
+    private static final Duration MAX_SESSION = Duration.ofDays(30);
+    private static final String BEARER_ATTRIBUTE = "paprika.bearer";
     private final Config config;
     private final SystemUserService systemUserService;
     private final ApiKeyService apiKeyService;
+    private final TokenVersionService tokenVersionService;
     private final byte[] tokenSecret;
     private final byte[] tokenKey;
 
+    /**
+     * The identity a token stands for, plus when the session it belongs to was started by a
+     * sign-in. Renewing a session carries that point in time over instead of resetting it.
+     */
+    public record TokenSession(AuthContext auth, Instant authTime) { }
+
+    /** A resolved bearer value; {@code session} is {@code null} for an API key or an invalid token. */
+    private record BearerResolution(AuthContext auth, TokenSession session) { }
+
     @Inject
-    public AuthService(Config config, SystemUserService systemUserService, ApiKeyService apiKeyService) {
+    public AuthService(
+            Config config,
+            SystemUserService systemUserService,
+            ApiKeyService apiKeyService,
+            TokenVersionService tokenVersionService) {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
         this.apiKeyService = Objects.requireNonNull(apiKeyService, "apiKeyService must not be null");
+        this.tokenVersionService = Objects.requireNonNull(tokenVersionService, "tokenVersionService must not be null");
         this.tokenSecret = resolveTokenSecret(config);
         this.tokenKey = resolveTokenKey(config);
     }
@@ -72,21 +95,47 @@ public class AuthService {
     }
 
     public AuthContext resolveBearer(Request request) {
+        return bearer(request).auth();
+    }
+
+    /**
+     * The session of the bearer access token, or empty for an API key, an invalid token or no
+     * bearer at all.
+     */
+    public Optional<TokenSession> resolveBearerSession(Request request) {
+        return Optional.ofNullable(bearer(request).session());
+    }
+
+    /**
+     * Resolved once per request: checking a token reads its account, and several filters of one
+     * request ask for the bearer.
+     */
+    private BearerResolution bearer(Request request) {
+        if (request.getAttribute(BEARER_ATTRIBUTE) instanceof BearerResolution resolved) {
+            return resolved;
+        }
+
+        BearerResolution resolved = resolveBearerUncached(request);
+        request.addAttribute(BEARER_ATTRIBUTE, resolved);
+        return resolved;
+    }
+
+    private BearerResolution resolveBearerUncached(Request request) {
         String token = bearerToken(request);
         if (token != null) {
             // An API key is a bearer value as well, so it travels the existing filter paths
             // untouched; the prefix decides which of the two it is without a parse attempt.
             if (ApiKeys.isApiKey(token)) {
-                return resolveApiKey(token, request);
+                return new BearerResolution(resolveApiKey(token, request), null);
             }
 
-            AuthContext user = parseAccessToken(token);
-            if (user != null) {
-                return user;
+            TokenSession session = parseAccessToken(token);
+            if (session != null) {
+                return new BearerResolution(session.auth(), session);
             }
         }
 
-        return AuthContext.guest();
+        return new BearerResolution(AuthContext.guest(), null);
     }
 
     /**
@@ -208,20 +257,41 @@ public class AuthService {
                 .map(user -> AuthContext.of(subject, Role.SUPERADMIN, null));
     }
 
+    /** Starts a new session: the caller has just authenticated. */
     public TokenPair createTokenPair(AuthContext auth) {
+        return createTokenPair(auth, Instant.now());
+    }
+
+    /**
+     * Continues a session with a fresh token pair, for the identity given - which may differ from
+     * the session's own in its tenant, as on a tenant switch.
+     *
+     * @return empty when the session is older than the maximum session length; the user has to
+     *         sign in again
+     */
+    public Optional<TokenPair> renewTokenPair(TokenSession session, AuthContext auth) {
+        if (session.authTime().plus(MAX_SESSION).isBefore(Instant.now())) {
+            return Optional.empty();
+        }
+        return Optional.of(createTokenPair(auth, session.authTime()));
+    }
+
+    private TokenPair createTokenPair(AuthContext auth, Instant authTime) {
+        // Read once, so both tokens of a pair carry the same version. Every caller has just
+        // verified the account; one deleted in between is refused where its token is used.
+        int version = tokenVersionService.current(auth).orElse(0);
         return new TokenPair(
-                createAccessToken(auth),
-                createRefreshToken(auth)
+                createToken(auth, TYPE_ACCESS, ACCESS_TTL_SECONDS, version, authTime),
+                createToken(auth, TYPE_REFRESH, REFRESH_TTL_SECONDS, version, authTime)
         );
     }
 
     public Optional<AuthContext> userFromRefreshToken(String refreshToken) {
-        AuthContext user = parseRefreshToken(refreshToken);
-        return Optional.ofNullable(user);
+        return sessionFromRefreshToken(refreshToken).map(TokenSession::auth);
     }
 
-    public String createAccessToken(AuthContext auth) {
-        return createToken(auth, TYPE_ACCESS, ACCESS_TTL_SECONDS);
+    public Optional<TokenSession> sessionFromRefreshToken(String refreshToken) {
+        return Optional.ofNullable(parseRefreshToken(refreshToken));
     }
 
     /**
@@ -244,14 +314,12 @@ public class AuthService {
         }
     }
 
-    private String createRefreshToken(AuthContext auth) {
-        return createToken(auth, TYPE_REFRESH, REFRESH_TTL_SECONDS);
-    }
-
-    private String createToken(AuthContext auth, String type, long ttlSeconds) {
+    private String createToken(AuthContext auth, String type, long ttlSeconds, int version, Instant authTime) {
         Map<String, String> claims = new HashMap<>();
         claims.put(CLAIM_TYPE, type);
         claims.put(CLAIM_ROLE, auth.role());
+        claims.put(CLAIM_VERSION, String.valueOf(version));
+        claims.put(CLAIM_AUTH_TIME, String.valueOf(authTime.getEpochSecond()));
         if (auth.tenantId() != null) {
             claims.put(CLAIM_TID, auth.tenantId());
         }
@@ -272,15 +340,21 @@ public class AuthService {
         }
     }
 
-    private AuthContext parseAccessToken(String token) {
+    private TokenSession parseAccessToken(String token) {
         return parseToken(token, TYPE_ACCESS);
     }
 
-    private AuthContext parseRefreshToken(String token) {
+    private TokenSession parseRefreshToken(String token) {
         return parseToken(token, TYPE_REFRESH);
     }
 
-    private AuthContext parseToken(String token, String expectedType) {
+    /**
+     * A token is valid only while it carries the account's current token version: a password
+     * reset, a credential change, 2FA and a logout raise it and so revoke every token issued
+     * before. A token without a version or a session start was not issued by this code and is
+     * refused like a forged one.
+     */
+    private TokenSession parseToken(String token, String expectedType) {
         long maxTtlSeconds = TYPE_REFRESH.equals(expectedType)
                 ? REFRESH_TTL_SECONDS
                 : ACCESS_TTL_SECONDS;
@@ -311,7 +385,22 @@ public class AuthService {
                 role = Role.USER;
             }
 
-            return AuthContext.of(subject, role, tenantId);
+            String version = claims.getStringClaim(CLAIM_VERSION);
+            String authTime = claims.getStringClaim(CLAIM_AUTH_TIME);
+            if (StringUtils.isBlank(version) || StringUtils.isBlank(authTime)) {
+                return null;
+            }
+
+            AuthContext auth = AuthContext.of(subject, role, tenantId);
+            int expected = Integer.parseInt(version);
+            // An account that is gone is refused where the token is used, as it always was - with
+            // the answer each of those places gives. Here it is only about a revoked token.
+            Optional<Integer> current = tokenVersionService.current(auth);
+            if (current.isPresent() && current.orElseThrow() != expected) {
+                return null;
+            }
+
+            return new TokenSession(auth, Instant.ofEpochSecond(Long.parseLong(authTime)));
         } catch (MangooJwtException | ParseException | IllegalArgumentException e) {
             return null;
         }

@@ -149,9 +149,23 @@ including the rows of the other members:
 ```
 
 This is not a circular reference: Paprika resolves the memberships **once**, past the rules (see
-above), and the result only scopes the query that follows. Writes are a separate decision — who
-may add or remove a membership is usually narrower than who may read the list, so `createRule`,
-`updateRule` and `deleteRule` are typically locked or `owner` here.
+above), and the result only scopes the query that follows.
+
+Writes are a separate decision, and a stricter one. Every record in the membership collection
+grants its member the group it names, whoever wrote it, so writing there means handing out
+access. That is why `createRule` and `updateRule` of a collection used as `groupCollection` may
+only be:
+
+- **locked**: memberships come from the admin, a rule-bypassing API key or your backend.
+- **`group`**: only a member of a team can add someone to that team, or move a membership within
+  their teams. An update checks both the old and the new team.
+
+`owner`, `auth` and `*` are refused with `400`. `owner` in particular looks safe and is not: it
+pins `user` to the caller but leaves `team` free, so anyone could join any team as long as they add
+themselves. The check runs both ways: when you save a collection whose `group`/`peers` rule points
+at the membership collection, and when you save the membership collection while another collection
+relies on it. A schema import is checked the same way. `deleteRule` is not restricted: `owner`
+there means "leave a team", which grants nothing.
 
 ### What each operation does
 

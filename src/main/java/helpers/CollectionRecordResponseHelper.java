@@ -22,6 +22,9 @@ public final class CollectionRecordResponseHelper {
                     ? Response.badRequest().bodyJson(Map.of("error", result.errorMessage()))
                     : Response.badRequest();
             case FORBIDDEN -> Response.forbidden().bodyJson(Map.of("error", "Forbidden"));
+            case TOO_MANY_REQUESTS -> Response.status(StatusCodes.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "1")
+                    .bodyJson(Map.of("error", "Too many authentication requests, try again shortly"));
             case ERROR -> Response.internalServerError().end();
         };
     }

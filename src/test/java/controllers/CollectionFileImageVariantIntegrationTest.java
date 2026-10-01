@@ -141,8 +141,13 @@ class CollectionFileImageVariantIntegrationTest {
         return collection;
     }
 
+    /** Uploads an image and waits for its variants, which are produced after the response. */
     private static String upload(String collection, byte[] png) throws Exception {
-        return uploadBytes(collection, png, "picture.png", "image/png");
+        String recordId = uploadBytes(collection, png, "picture.png", "image/png");
+        assertThat("the variant queue did not drain",
+                Application.getInstance(services.ImageVariantQueue.class).awaitIdle(java.time.Duration.ofSeconds(10)),
+                is(true));
+        return recordId;
     }
 
     private static String uploadText(String collection, String content) throws Exception {

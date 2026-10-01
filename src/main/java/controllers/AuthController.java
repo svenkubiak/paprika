@@ -21,6 +21,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import models.HookEvent;
 import models.TenantDefinition;
+import models.TokenPair;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.apache.logging.log4j.LogManager;
@@ -42,6 +43,7 @@ public class AuthController {
     private final TenantUserService tenantUserService;
     private final HookService hookService;
     private final MailService mailService;
+    private final TokenVersionService tokenVersionService;
 
     @Inject
     public AuthController(
@@ -50,13 +52,15 @@ public class AuthController {
             TenantService tenantService,
             TenantUserService tenantUserService,
             HookService hookService,
-            MailService mailService) {
+            MailService mailService,
+            TokenVersionService tokenVersionService) {
         this.authResponseService = Objects.requireNonNull(authResponseService, "authResponseService must not be null");
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.tenantUserService = Objects.requireNonNull(tenantUserService, "tenantUserService must not be null");
         this.hookService = Objects.requireNonNull(hookService, "hookService must not be null");
         this.mailService = Objects.requireNonNull(mailService, "mailService must not be null");
+        this.tokenVersionService = Objects.requireNonNull(tokenVersionService, "tokenVersionService must not be null");
     }
 
     public Response register(@NotNull(message = "Request body is required") @Valid RegisterDto registerDto, Request request) {
@@ -137,7 +141,12 @@ public class AuthController {
     }
 
     public Response login(@NotNull(message = "Request body is required") @Valid LoginDto loginDto, Request request) {
-        TenantContext ctx = TenantContextHolder.get(request);
+        // The tenant the login is for, not the request's context: that one may stem from a bearer
+        // token of another tenant. Without a tenant there is nobody whose hooks could guard it,
+        // and the login below fails anyway.
+        TenantContext ctx = tenantService.resolveLoginTenant(loginDto.tenant())
+                .map(tenant -> TenantContext.guest(tenant.id(), tenant.databaseName()))
+                .orElse(null);
 
         if (hasTenant(ctx)) {
             ObjectNode body = JsonUtils.getMapper().createObjectNode();
@@ -209,16 +218,41 @@ public class AuthController {
             }
         }
 
-        Optional<AuthContext> auth = authService.userFromRefreshToken(refreshDto.refreshToken())
+        Optional<AuthService.TokenSession> session = authService.sessionFromRefreshToken(refreshDto.refreshToken());
+        Optional<AuthContext> auth = session
+                .map(AuthService.TokenSession::auth)
                 .flatMap(tenantUserService::resolveActiveUser);
+        // The session start travels along, so refreshing does not extend the session past its maximum
+        Optional<TokenPair> pair = auth.flatMap(user -> authService.renewTokenPair(session.orElseThrow(), user));
 
-        Response response = auth.map(authService::createTokenPair)
-                .map(authResponseService::toTokenResponse)
-                .orElseGet(() -> Response.unauthorized().bodyJson(Map.of("error", "Invalid refresh token")));
+        if (pair.isEmpty()) {
+            return Response.unauthorized().bodyJson(Map.of("error", "Invalid refresh token"));
+        }
 
-        auth.ifPresent(a -> fireAfterForUser(a, HookEvent.afterRefresh, request, null));
+        Response response = authResponseService.toTokenResponse(pair.orElseThrow());
+        fireAfterForUser(auth.orElseThrow(), HookEvent.afterRefresh, request, null);
 
         return response;
+    }
+
+    /**
+     * Ends every session of the caller: all access and refresh tokens issued so far stop working,
+     * on every device, and open realtime streams are closed. A single session cannot be ended on
+     * its own - the tokens carry no state that could single one out.
+     * <p>
+     * Only an access token can log out. An API key is a credential of its own, and it is revoked
+     * where it was issued.
+     */
+    public Response logout(Request request) {
+        Optional<AuthService.TokenSession> session = authService.resolveBearerSession(request);
+        if (session.isEmpty()) {
+            return Response.unauthorized()
+                    .header("WWW-Authenticate", "Bearer")
+                    .bodyJson(Map.of("error", "Unauthorized"));
+        }
+
+        tokenVersionService.revokeAll(session.orElseThrow().auth());
+        return Response.ok().bodyJson(Map.of("success", true));
     }
 
     public Response me(Request request) {

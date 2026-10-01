@@ -36,3 +36,5 @@ Off by default. When it's on, Paprika emails you when your superadmin account is
   - **Enable**: confirm your current password, scan the QR code (or enter the manual key) in an authenticator app, then confirm with a 6-digit code. You're shown a one-time **fallback code** afterwards — store it somewhere safe, it's the way back in if you lose the authenticator and it's shown only once.
   - **Disable**: requires both your password and a current 6-digit code, a deliberate extra check since disabling 2FA reduces account security.
   - 2FA is **per superadmin account**. There's no instance-wide switch that forces or removes it for everyone; each superadmin decides for their own login, and you can see who has it enabled on the [Superadmins](/admin-ui/superadmins) page. There's no equivalent setting for tenant users.
+
+Changing the password and switching 2FA on or off both revoke every API token (`/api/admin/token`) of the account, so automation using one has to request a new token. The admin UI session you're signed in with is not affected.

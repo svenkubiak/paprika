@@ -71,10 +71,24 @@ public class RealtimeService {
         if (StringUtils.isBlank(tenantId) || StringUtils.isBlank(userId)) {
             return 0;
         }
+        return revoke(client -> tenantId.equals(client.tenantId()) && userId.equals(client.userId()));
+    }
 
+    /**
+     * Closes the streams of an account in every tenant. A superadmin is not bound to one tenant,
+     * so their streams may have been opened with tokens for several.
+     */
+    public int revokeUserEverywhere(String userId) {
+        if (StringUtils.isBlank(userId)) {
+            return 0;
+        }
+        return revoke(client -> userId.equals(client.userId()));
+    }
+
+    private int revoke(java.util.function.Predicate<RealtimeClient> affected) {
         int removed = 0;
         for (RealtimeClient client : clients.values()) {
-            if (!tenantId.equals(client.tenantId()) || !userId.equals(client.userId())) {
+            if (!affected.test(client)) {
                 continue;
             }
             if (clients.remove(client.clientId(), client)) {

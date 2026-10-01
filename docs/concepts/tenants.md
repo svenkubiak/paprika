@@ -22,45 +22,35 @@ On first start, Paprika creates a tenant named **Default** with slug **`default`
 
 Tenant users are completely separate from the superadmin account. They live inside the tenant's own database, authenticate with a JWT access/refresh token pair via `/api/auth/login` and `/api/auth/refresh`, and only ever talk to `/api/collections/*`. They have no access to the admin UI at all. See [Roles & Permissions](/concepts/roles-and-permissions) for how their access to data is controlled.
 
+### Sessions and token lifetime
+
+A sign-in starts a session and returns an access token (valid for an hour) and a refresh token (valid for seven days). `/api/auth/refresh` exchanges the refresh token for a new pair. A session can be renewed this way for **30 days** after the sign-in that started it. Refreshing doesn't extend that limit, and once it is reached `/api/auth/refresh` answers `401` and the user has to sign in again. The same limit applies to a superadmin bearer token renewed through `/api/admin/switch-tenant`.
+
+Every token is bound to the state of the account's credentials. These events revoke **all** tokens of the account at once, on every device, and close its open [realtime streams](/admin-ui/collection-api):
+
+- a password reset,
+- a password or email change, through the data plane or the admin editor,
+- for a superadmin: a password change and switching 2FA on or off,
+- `POST /api/auth/logout`.
+
+Revocation includes the token that made the change. A client that changes its own password or email has to sign in again afterwards. `POST /api/auth/logout` needs an access token and always ends every session of the caller. The tokens carry no state that could single out one device. An API key can't log out: it is a credential of its own and is revoked where it was issued.
+
 ## How a request resolves to a tenant
 
 There's no subdomain-based routing. Instead, Paprika resolves which tenant's database to use per request based on who's calling:
 
 - **Tenant user with a bearer JWT** — the tenant is embedded in the token's `tid` claim; it's fixed for the token's lifetime.
 - **Superadmin in the admin UI** — the tenant currently "active" in their session, set by [switching tenants](/admin-ui/tenants) from the Tenants page or the sidebar tenant selector.
-- **Login / registration requests** — the client sends an explicit `tenant` slug in the request body. Registration always requires it. Login can resolve the tenant from the username alone, but only within the limits below — send `tenant` and you never depend on them.
+- **Login / registration requests** — the client sends an explicit `tenant` slug in the request body. Registration always requires it. A login without it is a login for the default tenant (see below).
 - **Anonymous / guest requests** — fall back to the configured **default tenant** (see below).
 
 ### Logging in without a tenant slug
 
-`POST /api/auth/login` accepts a request without `tenant`. Paprika then has to find out which
-tenant the username belongs to, and that means **one database query per active tenant** — a
-single unauthenticated request whose cost grows with your customer count. That convenience
-therefore has limits, and they are deliberate:
+`POST /api/auth/login` without `tenant` is a login for the **default tenant**, and only for it. A user of any other tenant has to send that tenant's slug. Without it the answer is `401 Invalid username or password`, exactly as for a username that does not exist anywhere.
 
-| Situation | What the client gets |
-|---|---|
-| The username exists in exactly one active tenant | A normal login |
-| The username exists in several tenants | `401 Invalid username or password` |
-| The username exists nowhere | `401 Invalid username or password` |
-| The instance has **more than 25 active tenants** | `401 Invalid username or password`, for every slug-less login |
+The same rule decides whose hooks guard the login, the global `beforeRequest` hooks as well as `beforeLogin`: those of the tenant the slug names, or those of the default tenant when there is none. A slug that names no active tenant is answered with `400 Tenant not found`, and no hook runs. A bearer token the client happens to send along plays no part in it.
 
-The three failure rows answer identically on purpose. Which tenants know a username is
-information about somebody else's user base, and an unauthenticated caller must not be able to
-read it out of a status code — nor out of the response time, which is why a failed login costs a
-password hash whether or not the account exists. The reason a particular login failed is in the
-server log, not in the response.
-
-::: warning The 25-tenant cap is a cliff, not a slowdown
-Creating the 26th active tenant stops the lookup for the **whole instance**: from then on every
-login without a `tenant` slug is answered with a 401, including logins that worked the day
-before. There is no partial degradation and no warning to the client — only a `WARN` line in the
-server log.
-
-So treat the slug-less login as a convenience for development and single-tenant installs. **Any
-client that is meant to keep working should always send `tenant`**, and if you operate an
-instance that will grow, make that a rule before you approach the limit rather than after.
-:::
+Paprika used to search every tenant for the username instead. That ran the hooks of one tenant for a login into another, so a tenant's blocking `beforeLogin` gate could be walked past by leaving the slug out. Every answer was also a statement about other tenants' user bases. So send `tenant` from every client that is not meant for the default tenant only.
 
 ## The tenant switcher
 

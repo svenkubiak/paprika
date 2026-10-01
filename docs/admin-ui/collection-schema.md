@@ -53,6 +53,8 @@ What gets scaled:
 - The EXIF orientation of a photo is applied to the pixels, so a variant is never tilted against its original.
 - If scaling fails, the upload still succeeds — the original is the payload, a missing variant only costs bandwidth.
 
+When it happens: the variants are produced **in the background, shortly after the upload**. The upload answers as soon as the original is stored, and until the variants exist a `?width=` request falls back to the original. A single worker produces them, one image at a time, from a bounded queue. That keeps the heap they need the same however many uploads arrive at once. It also means an image can end up without variants: when the queue is full under heavy upload load, or when the instance restarts before its turn. Such a file keeps answering through the fallback.
+
 Changing the widths affects **new uploads only**. Files that already exist are not rescaled; they keep answering through the fallback.
 
 ::: warning Field names are permanent

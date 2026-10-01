@@ -42,6 +42,10 @@ Two things are specific to `users`:
 
 - **Self-registration is not a rule.** The self-registration toggle under [Auth settings](/admin-ui/auth-settings) drives `/api/auth/register` and bypasses the collection rules entirely, so registration keeps working even when `createRule` is locked. The default locked create rule is the safe choice and does not get in the way of sign-ups. There's a warning on this tab spelling that out so nobody loosens the create rule expecting it to control registration.
 - **`role` is read-only over the data plane.** Even with an owner update rule, a user can't promote themselves. The API ignores any `role` in the request body and pins it to `user`. The only way to change a role is the superadmin path.
+- **`password` and `email` are credentials, not profile fields.** Whoever controls them owns the account, since a password reset is mailed to that address. So no update rule can hand them to someone else. A change counts as a credential change when the body carries a non-empty `password`, or an `email` that differs from the stored one. Writing back the unchanged address does not count. For such a change, `PATCH /api/collections/users/{id}` applies its own policy on top of the rule:
+  - **The admin session or a rule-bypassing API key** may set both without further proof.
+  - **The user themselves** must also send their current password as `oldPassword`. It is virtual and write-only like `password`: never stored, never handed to a hook. A missing or wrong value is rejected with `400`. This way a stolen access token can't be turned into a permanent takeover. If no Argon2 slot is free to verify it, the answer is `429` with `Retry-After`, as on login.
+  - **Anyone else gets `403`**, whatever the update rule says. With **Group peers** or **Signed in** as update rule, teammates can edit each other's profile fields, but never each other's password or email.
 
 ## Hooks tab
 
@@ -81,7 +85,7 @@ Tokens live for **30 minutes** and work once. Two things have to be in place for
 
 ### What each flow does
 
-- **Password reset** sets a new password (the usual 16-character minimum) and invalidates the token. Old passwords stop working immediately.
+- **Password reset** sets a new password (the usual 16-character minimum) and invalidates the token. Old passwords stop working immediately, and so does every access and refresh token issued before the reset: whoever held one is signed out (see [Sessions and token lifetime](/concepts/tenants#sessions-and-token-lifetime)).
 - **Email verification** sets the user's `emailVerified` flag to `true`. By itself it does not block login — it's a flag your app or your [rules](/admin-ui/collection-rules) can check (for example `record.emailVerified = true`). If you want to enforce verification before users can sign in, enable **Require for login** under [Auth settings](/admin-ui/auth-settings): Paprika will then reject any login where `emailVerified` is still `false`.
 
 ### No account enumeration
@@ -91,6 +95,8 @@ The request endpoints always answer `200`, whether or not the tenant, the featur
 ### The `emailVerified` field
 
 `emailVerified` is system-managed. It's readable through the data plane (so your app and rules can see it) but never client-writable, and it isn't part of the editable schema. The reset and verification tokens themselves are stored hashed and are never returned by any API.
+
+Changing a user's email, through the data plane or the admin editor, sets `emailVerified` back to `false`. It also invalidates any reset or verification token still pending: those went to the previous address, and a pending verification token would otherwise mark the new address as verified.
 
 ## What a tenant user can actually do
 

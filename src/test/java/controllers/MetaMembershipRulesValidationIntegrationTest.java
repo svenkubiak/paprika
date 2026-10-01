@@ -122,8 +122,7 @@ class MetaMembershipRulesValidationIntegrationTest {
      * group. Nothing about that is circular, so nothing refuses it.
      * <p>
      * The rules are saved the way the Rules tab saves them, with a PATCH on the existing
-     * collection - a collection cannot name itself in the request that creates it, because the
-     * membership target is looked up before anything is stored.
+     * collection.
      */
     @Test
     void theCollectionItselfIsAcceptedAsTheMembershipCollection() {

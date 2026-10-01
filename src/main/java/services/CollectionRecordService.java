@@ -8,7 +8,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.mongodb.client.model.*;
 import constants.SystemFields;
+import enums.Role;
 import hooks.HookRequestUtils;
+import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
@@ -57,13 +59,16 @@ public class CollectionRecordService {
     private final HookService hookService;
     private final FileFieldService fileFieldService;
     private final RelationCascadeService relationCascadeService;
+    private final TokenVersionService tokenVersionService;
 
     @Inject
     public CollectionRecordService(
             TenantCollectionService tenantCollections,
             HookService hookService,
             FileFieldService fileFieldService,
-            RelationCascadeService relationCascadeService) {
+            RelationCascadeService relationCascadeService,
+            TokenVersionService tokenVersionService) {
+        this.tokenVersionService = Objects.requireNonNull(tokenVersionService, "tokenVersionService must not be null");
         this.tenantCollections = Objects.requireNonNull(tenantCollections, "tenantCollections must not be null");
         this.hookService = Objects.requireNonNull(hookService, "hookService must not be null");
         this.fileFieldService = Objects.requireNonNull(fileFieldService, "fileFieldService must not be null");
@@ -268,8 +273,21 @@ public class CollectionRecordService {
                 setDocument.put(fieldName, DbUtils.toMongoValue(entry.getValue()));
             });
 
+            CredentialChange change = CredentialChange.NONE;
             if (UserRecordUtils.isUsers(collection)) {
+                change = credentialChange(ctx, collection, id, setDocument, unsetDocument);
+                if (change == null) {
+                    return RecordResult.notFound();
+                }
+                RecordResult refused = authorizeCredentialChange(change, id, request, setDocument);
+                if (refused != null) {
+                    return refused;
+                }
+
                 UserRecordUtils.applyOnUpdate(setDocument, unsetDocument);
+                if (change.email()) {
+                    UserRecordUtils.invalidateEmailBoundState(setDocument, unsetDocument);
+                }
             }
 
             CollectionRules rules = definition.rulesOrDefault();
@@ -330,6 +348,9 @@ public class CollectionRecordService {
             }
 
             updatePersisted = true;
+            if (change.any()) {
+                tokenVersionService.revokeAll(AuthContext.of(id, Role.USER, ctx.effectiveTenantId()));
+            }
             fileFieldService.commitUploads(ctx, uploadChanges);
             FileFieldUtils.enrichRecord(updated, definition, collection, id);
 
@@ -428,6 +449,86 @@ public class CollectionRecordService {
         }
     }
 
+    /** What a users update does to the credentials, judged against the stored record. */
+    private record CredentialChange(Document current, boolean password, boolean email) {
+        private static final CredentialChange NONE = new CredentialChange(null, false, false);
+
+        boolean any() {
+            return password || email;
+        }
+    }
+
+    /**
+     * @return {@code null} when the user to update does not exist
+     */
+    private CredentialChange credentialChange(
+            TenantContext ctx,
+            String collection,
+            String id,
+            Document setDocument,
+            Document unsetDocument) {
+
+        if (!setDocument.containsKey(UserRecordUtils.PASSWORD)
+                && !setDocument.containsKey(UserRecordUtils.EMAIL)
+                && !unsetDocument.containsKey(UserRecordUtils.EMAIL)) {
+            return CredentialChange.NONE;
+        }
+
+        // Unprojected on purpose: verifying oldPassword needs the stored hash and salt
+        Document current = tenantCollections.dataCollection(ctx, collection).find(eq("id", id)).first();
+        if (current == null) {
+            return null;
+        }
+
+        return new CredentialChange(
+                current,
+                UserRecordUtils.changesPassword(setDocument),
+                UserRecordUtils.changesEmail(current, setDocument, unsetDocument));
+    }
+
+    /**
+     * Password and email are the credentials of a users record, not profile fields: whoever holds
+     * them owns the account, since a password reset is mailed to that address. The update rule only
+     * decides who may edit the record, so a {@code peers} or {@code auth} rule would otherwise let
+     * any teammate or tenant user take over another account. The credentials therefore follow a
+     * fixed policy no rule can widen: an admin context may set them, the user themselves only by
+     * proving the current password - so a stolen access token cannot be turned into a permanent
+     * takeover either - and nobody else at all.
+     *
+     * @return {@code null} when the change may proceed, otherwise the response to give
+     */
+    private RecordResult authorizeCredentialChange(
+            CredentialChange change,
+            String id,
+            Request request,
+            Document setDocument) {
+
+        if (!change.any() || AuthorizationDecision.isAdminBypass(request)) {
+            return null;
+        }
+
+        AuthContext auth = TenantContextHolder.auth(request);
+        if (!auth.isAuthenticated() || !id.equals(auth.id())) {
+            return RecordResult.forbidden();
+        }
+
+        if (!(setDocument.get(UserRecordUtils.OLD_PASSWORD) instanceof String oldPassword)
+                || oldPassword.isBlank()) {
+            return RecordResult.badRequest("oldPassword is required to change the password or email");
+        }
+
+        try {
+            if (!UserRecordUtils.matchesPassword(oldPassword, change.current())) {
+                return RecordResult.badRequest("oldPassword is invalid");
+            }
+        } catch (MangooHashingException e) {
+            LOG.warn("Refused an oldPassword verification, no Argon2 slot became free", e);
+            return RecordResult.tooManyRequests();
+        }
+
+        return null;
+    }
+
     private boolean recordExists(TenantContext ctx, String collection, String id) {
         return tenantCollections.dataCollection(ctx, collection).find(eq("id", id)).first() != null;
     }
@@ -477,6 +578,7 @@ public class CollectionRecordService {
             CONFLICT,
             BAD_REQUEST,
             FORBIDDEN,
+            TOO_MANY_REQUESTS,
             ERROR
         }
 
@@ -510,6 +612,10 @@ public class CollectionRecordService {
 
         public static RecordResult forbidden() {
             return new RecordResult(Status.FORBIDDEN, null, null);
+        }
+
+        public static RecordResult tooManyRequests() {
+            return new RecordResult(Status.TOO_MANY_REQUESTS, null, null);
         }
 
         public static RecordResult error() {

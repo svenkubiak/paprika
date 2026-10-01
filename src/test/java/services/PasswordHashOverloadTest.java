@@ -144,7 +144,8 @@ class PasswordHashOverloadTest {
                 Application.getInstance(TenantService.class),
                 Application.getInstance(RealtimeService.class),
                 Application.getInstance(TenantCollectionService.class),
-                Application.getInstance(ValidationService.class)) {
+                Application.getInstance(ValidationService.class),
+                Application.getInstance(TokenVersionService.class)) {
             @Override
             boolean matchesPassword(String password, Document user) {
                 throw refusal();

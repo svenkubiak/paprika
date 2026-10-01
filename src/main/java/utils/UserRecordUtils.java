@@ -8,6 +8,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -21,6 +22,7 @@ public final class UserRecordUtils {
     public static final String EMAIL = "email";
     public static final String ROLE = "role";
     public static final String PASSWORD = "password";
+    public static final String OLD_PASSWORD = "oldPassword";
     public static final String PASSWORD_HASH = "passwordHash";
     public static final String PASSWORD_SALT = "passwordSalt";
     public static final String EMAIL_VERIFIED = "emailVerified";
@@ -38,6 +40,11 @@ public final class UserRecordUtils {
     /** Fields the data-plane must never let a client write (but {@code emailVerified} stays readable). */
     private static final Set<String> WRITE_PROTECTED_FIELDS = Set.of(
             PASSWORD_HASH, PASSWORD_SALT, ROLE, EMAIL_VERIFIED,
+            RESET_TOKEN_HASH, RESET_TOKEN_EXPIRES_AT,
+            VERIFY_TOKEN_HASH, VERIFY_TOKEN_EXPIRES_AT);
+
+    /** Single-use tokens that were issued for the current email address. */
+    private static final Set<String> EMAIL_BOUND_TOKEN_FIELDS = Set.of(
             RESET_TOKEN_HASH, RESET_TOKEN_EXPIRES_AT,
             VERIFY_TOKEN_HASH, VERIFY_TOKEN_EXPIRES_AT);
 
@@ -83,11 +90,57 @@ public final class UserRecordUtils {
             unsetDocument.remove(field);
         }
         unsetDocument.remove(PASSWORD);
+        setDocument.remove(OLD_PASSWORD);
+        unsetDocument.remove(OLD_PASSWORD);
 
         Object password = setDocument.remove(PASSWORD);
         if (password instanceof String raw && StringUtils.isNotBlank(raw)) {
             hashInto(setDocument, raw);
         }
+    }
+
+    /**
+     * Whether a data-plane update sets a new password. Must be asked before
+     * {@link #applyOnUpdate}, which turns the plaintext into a hash.
+     */
+    public static boolean changesPassword(Document setDocument) {
+        return setDocument.get(PASSWORD) instanceof String raw && StringUtils.isNotBlank(raw);
+    }
+
+    /**
+     * Whether an update replaces or clears the stored email. Resending the current address is not
+     * a change, so a client that writes back the whole profile is not treated as one.
+     */
+    public static boolean changesEmail(Document current, Document setDocument, Document unsetDocument) {
+        Object stored = current.get(EMAIL);
+        if (unsetDocument.containsKey(EMAIL)) {
+            return stored != null;
+        }
+        return setDocument.containsKey(EMAIL) && !Objects.equals(setDocument.get(EMAIL), stored);
+    }
+
+    /**
+     * Applies what a new email address implies: it is not verified, and the reset and
+     * verification tokens mailed to the previous address stop working - a pending verification
+     * token would otherwise mark the new address as verified. Call after {@link #applyOnUpdate},
+     * which strips {@code emailVerified} from client input.
+     */
+    public static void invalidateEmailBoundState(Document setDocument, Document unsetDocument) {
+        setDocument.put(EMAIL_VERIFIED, false);
+        for (String field : EMAIL_BOUND_TOKEN_FIELDS) {
+            setDocument.remove(field);
+            unsetDocument.put(field, "");
+        }
+    }
+
+    /** Verifies a plaintext password against the hash stored on a raw user document. */
+    public static boolean matchesPassword(String password, Document user) {
+        String salt = user.getString(PASSWORD_SALT);
+        String hash = user.getString(PASSWORD_HASH);
+        if (StringUtils.isBlank(salt) || StringUtils.isBlank(hash)) {
+            return false;
+        }
+        return CommonUtils.matchArgon2(password, salt, hash);
     }
 
     /** Removes credential fields from a document that may be returned to a client or a hook. */

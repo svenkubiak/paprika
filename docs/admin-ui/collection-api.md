@@ -81,7 +81,8 @@ If a `FILE` field is configured with [image widths](/admin-ui/collection-schema#
 GET /api/collections/{collection}/{id}/files/{field}[/{fileId}]?width=320
 ```
 
-- The exact width is delivered when it exists.
+- The exact width is delivered when it exists. Variants are produced in the background after
+  the upload, so right after it the fallback below may still answer.
 - Otherwise the **next larger** variant is delivered, and the original if there is none. The
   fallback never goes downwards: a too small image is a visible quality defect, a too large one
   only costs bandwidth.
@@ -100,7 +101,7 @@ configuration therefore only affects **new** uploads; existing files keep fallin
 
 ## Authentication
 
-A separate card documents `/api/auth/register`, `/api/auth/login`, and `/api/auth/refresh` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).
+A separate card documents `/api/auth/register`, `/api/auth/login`, `/api/auth/refresh` and `/api/auth/logout` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).
 
 The same card documents `GET /api/auth/me`, which returns the calling tenant user's own record from just the bearer token — no id or call to `/api/collections/users` needed. It bypasses collection rules and never returns `passwordHash`, `passwordSalt`, or `role`.
 
@@ -115,7 +116,7 @@ The same card also lists the optional recovery endpoints: `/api/auth/password/fo
 
 A third card documents the Server-Sent Events flow: connect to `GET /api/realtime` to receive a `clientId` from the `connect` event, then `POST /api/realtime/subscribe` with that `clientId` and the collections/records to watch. Once subscribed, record changes arrive as events named after the collection, carrying an `action` (`create`, `update`, or `delete`) and the record. A subscriber only receives events for records their `viewRule` would let them see — the same [rules](/admin-ui/collection-rules) that gate the regular REST API also gate realtime delivery.
 
-Subscribing fixes the identity of a stream. The `viewRule` is evaluated again for every single event, but always for the user that subscribed: the access token is checked once, at `subscribe`, and not again for the life of the connection. A stream can therefore outlive the token that opened it — an access token is valid for an hour, and the SSE read timeout in the [nginx example](/operations/going-to-production#nginx-example) is an hour as well, so a client that subscribes shortly before its token expires keeps receiving events for a while after that token would be rejected anywhere else. Reconnect and subscribe again whenever you refresh the token. Deleting a tenant user is the one case Paprika acts on by itself: it closes that user's open streams immediately.
+Subscribing fixes the identity of a stream. The `viewRule` is evaluated again for every single event, but always for the user that subscribed: the access token is checked once, at `subscribe`, and not again for the life of the connection. A stream can therefore outlive the token that opened it — an access token is valid for an hour, and the SSE read timeout in the [nginx example](/operations/going-to-production#nginx-example) is an hour as well, so a client that subscribes shortly before its token expires keeps receiving events for a while after that token would be rejected anywhere else. Reconnect and subscribe again whenever you refresh the token. Paprika closes a user's open streams by itself when the user is deleted, and whenever their tokens are revoked: on a password reset, a password or email change, and on logout (see [Sessions and token lifetime](/concepts/tenants#sessions-and-token-lifetime)).
 
 ## The users collection is a special case
 

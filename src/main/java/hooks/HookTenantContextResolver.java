@@ -12,11 +12,20 @@ import services.AuthService;
 import services.TenantService;
 import services.TenantUserService;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
 @Singleton
 public class HookTenantContextResolver {
+    // Unauthenticated recovery routes whose controller works on the tenant named in the body. The
+    // hooks have to run for that same tenant: the default tenant as a fallback would hand a
+    // foreign tenant's reset and verification tokens to its hook targets. Prefixes rather than
+    // exact paths, so a route variant fails closed instead of falling back. No match, no hooks.
+    private static final List<String> RECOVERY_PATH_PREFIXES = List.of(
+            "/api/auth/password/",
+            "/api/auth/verify/");
+
     private final TenantService tenantService;
     private final AuthService authService;
     private final TenantUserService tenantUserService;
@@ -43,8 +52,14 @@ public class HookTenantContextResolver {
             return fallback;
         }
 
-        if (path.startsWith("/api/auth/login") || path.startsWith("/api/auth/register")) {
-            return resolveFromLoginBody(request, fallback);
+        // The tenant comes from the body only, never from the fallback: that may be the context
+        // of a bearer token of another tenant that the client happened to send along
+        if (path.startsWith("/api/auth/login")) {
+            return tenantFromBody(request, true);
+        }
+
+        if (path.startsWith("/api/auth/register") || RECOVERY_PATH_PREFIXES.stream().anyMatch(path::startsWith)) {
+            return tenantFromBody(request, false);
         }
 
         if (path.startsWith("/api/auth/refresh")) {
@@ -54,24 +69,26 @@ public class HookTenantContextResolver {
         return fallback;
     }
 
-    private TenantContext resolveFromLoginBody(Request request, TenantContext fallback) {
+    /**
+     * The tenant named in the body's {@code tenant}. Without one, a login is for the default tenant
+     * - the same rule {@link TenantService#resolveLoginTenant} applies to the login itself - and
+     * every other route has none.
+     *
+     * @return {@code null} when no tenant applies, so no hook runs
+     */
+    private TenantContext tenantFromBody(Request request, boolean defaultWithoutSlug) {
         try {
             JsonNode body = JsonUtils.getMapper().readTree(StringUtils.defaultString(request.getBody()));
-            if (!body.hasNonNull("tenant")) {
-                return fallback;
+            String slug = body.hasNonNull("tenant") ? body.get("tenant").asText() : null;
+            if (StringUtils.isBlank(slug) && !defaultWithoutSlug) {
+                return null;
             }
 
-            String slug = body.get("tenant").asText().trim();
-            if (slug.isBlank()) {
-                return fallback;
-            }
-
-            return tenantService.findBySlug(slug)
-                    .filter(TenantDefinition::isActive)
+            return tenantService.resolveLoginTenant(slug)
                     .map(tenant -> TenantContext.guest(tenant.id(), tenant.databaseName()))
-                    .orElse(fallback);
+                    .orElse(null);
         } catch (Exception e) {
-            return fallback;
+            return null;
         }
     }
 

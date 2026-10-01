@@ -52,6 +52,7 @@ public class SuperadminProfileService {
     private final AuthService authService;
     private final MailService mailService;
     private final LoginAlertService loginAlertService;
+    private final TokenVersionService tokenVersionService;
     private final Config config;
 
     @Inject
@@ -61,12 +62,14 @@ public class SuperadminProfileService {
             AuthService authService,
             MailService mailService,
             LoginAlertService loginAlertService,
+            TokenVersionService tokenVersionService,
             Config config) {
         this.systemUserService = systemUserService;
         this.twoFactorService = twoFactorService;
         this.authService = authService;
         this.mailService = mailService;
         this.loginAlertService = loginAlertService;
+        this.tokenVersionService = tokenVersionService;
         this.config = config;
     }
 
@@ -250,6 +253,9 @@ public class SuperadminProfileService {
                 return AdminSettingsResult.atCapacity();
             }
 
+            // A password change is how a compromised account is taken back, so no token issued
+            // under the old password may outlive it
+            tokenVersionService.revokeAllOfSuperadmin(userId);
             return AdminSettingsResult.ok(Map.of("success", true));
         });
     }
@@ -288,6 +294,8 @@ public class SuperadminProfileService {
             systemUserService.setTotpSecret(userId, pendingSecret.orElseThrow());
             String fallbackCode = systemUserService.generateTotpFallbackCode(userId);
             PendingTwoFactorSession.clear(request);
+            // A token issued before 2FA was on never passed the second factor
+            tokenVersionService.revokeAllOfSuperadmin(userId);
 
             return AdminSettingsResult.ok(Map.of(
                     "twoFactorEnabled", true,
@@ -319,6 +327,7 @@ public class SuperadminProfileService {
 
             systemUserService.clearTotpSecret(userId);
             PendingTwoFactorSession.clear(request);
+            tokenVersionService.revokeAllOfSuperadmin(userId);
 
             return AdminSettingsResult.ok(Map.of("twoFactorEnabled", false));
         });

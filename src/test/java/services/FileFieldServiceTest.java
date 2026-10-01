@@ -27,7 +27,7 @@ class FileFieldServiceTest {
     @Test
     void replacementDeletesOldFileOnlyAfterCommit() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         storage.store(ctx, "old-file", "old".getBytes(StandardCharsets.UTF_8));
         FieldDefinition attachment = new FieldDefinition(
@@ -73,7 +73,7 @@ class FileFieldServiceTest {
     @Test
     void rollbackDeletesNewFileAndKeepsOldFile() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         storage.store(ctx, "old-file", "old".getBytes(StandardCharsets.UTF_8));
         FieldDefinition attachment = new FieldDefinition(
@@ -123,7 +123,7 @@ class FileFieldServiceTest {
     @Test
     void appendingStoresEveryFileThatStillFits() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         Document record = recordHolding(storage, ctx, 3, "kept-1");
 
@@ -143,7 +143,7 @@ class FileFieldServiceTest {
     @Test
     void appendingUpToTheLimitIsAccepted() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         Document record = recordHolding(storage, ctx, 3, "kept-1", "kept-2");
 
@@ -157,7 +157,7 @@ class FileFieldServiceTest {
     @Test
     void appendingOntoAFullFieldIsRejectedInsteadOfDroppedSilently() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         Document record = recordHolding(storage, ctx, 3, "kept-1", "kept-2", "kept-3");
         Object before = record.get("attachment");
@@ -177,7 +177,7 @@ class FileFieldServiceTest {
     @Test
     void anAppendThatOvershootsTheLimitIsRejectedAsAWhole() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         Document record = recordHolding(storage, ctx, 3, "kept-1", "kept-2");
 
@@ -194,7 +194,7 @@ class FileFieldServiceTest {
     @Test
     void aRejectedFieldRollsBackWhatAnEarlierFieldAlreadyStored() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         Document record = recordHolding(storage, ctx, 1, "kept-1");
@@ -226,7 +226,7 @@ class FileFieldServiceTest {
     @Test
     void aSingleFileFieldCanAlwaysBeReplaced() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
         Document record = recordHolding(storage, ctx, 1, "kept-1");
 
@@ -241,7 +241,7 @@ class FileFieldServiceTest {
     @Test
     void moreFilesThanTheFieldAllowsAreRejectedOnCreate() {
         FileStorageService storage = new FileStorageService(storageRoot);
-        FileFieldService service = new FileFieldService(storage);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
         IllegalArgumentException rejected = assertThrows(

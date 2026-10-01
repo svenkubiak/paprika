@@ -243,7 +243,7 @@ public class HookService {
                 ctx,
                 request,
                 null,
-                parseBody(request.getBody()),
+                HookRequestUtils.redactAuthCredentials(parseBody(request.getBody())),
                 null,
                 null,
                 null,

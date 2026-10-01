@@ -42,8 +42,17 @@ public final class HookRequestUtils {
     // of every user created or updated through /api/collections/users.
     private static final Set<String> REDACTED_BODY_FIELDS = Set.of(
             "password",
+            "oldpassword",
             "passwordhash",
             "passwordsalt");
+
+    // Bearer credentials of the auth routes: a reset or verification token is valid until it is
+    // consumed, which happens only after the blocking beforeRequest hooks have answered, and a
+    // refresh token mints sessions. Not part of REDACTED_BODY_FIELDS, because on the data-plane a
+    // field named "token" is an ordinary collection field the hook is meant to see.
+    private static final Set<String> REDACTED_AUTH_BODY_FIELDS = Set.of(
+            "token",
+            "refreshtoken");
 
     private HookRequestUtils() {
     }
@@ -53,13 +62,25 @@ public final class HookRequestUtils {
      * nothing to redact.
      */
     public static JsonNode redactCredentials(JsonNode body) {
+        return redact(body, REDACTED_BODY_FIELDS);
+    }
+
+    /**
+     * Like {@link #redactCredentials(JsonNode)}, but for the body of an {@code /api/auth/*} route,
+     * which additionally carries single-use and refresh tokens.
+     */
+    public static JsonNode redactAuthCredentials(JsonNode body) {
+        return redact(redactCredentials(body), REDACTED_AUTH_BODY_FIELDS);
+    }
+
+    private static JsonNode redact(JsonNode body, Set<String> fields) {
         if (body == null || !body.isObject()) {
             return body;
         }
 
         List<String> present = new ArrayList<>();
         body.properties().forEach(entry -> {
-            if (REDACTED_BODY_FIELDS.contains(entry.getKey().toLowerCase(Locale.ROOT))) {
+            if (fields.contains(entry.getKey().toLowerCase(Locale.ROOT))) {
                 present.add(entry.getKey());
             }
         });

@@ -24,10 +24,12 @@ import java.util.*;
 public class FileFieldService {
     private static final Logger LOG = LogManager.getLogger(FileFieldService.class);
     private final FileStorageService storage;
+    private final ImageVariantQueue variants;
 
     @Inject
-    public FileFieldService(FileStorageService storage) {
+    public FileFieldService(FileStorageService storage, ImageVariantQueue variants) {
         this.storage = Objects.requireNonNull(storage, "storage must not be null");
+        this.variants = Objects.requireNonNull(variants, "variants must not be null");
     }
 
     public UploadChanges applyUploads(
@@ -43,6 +45,7 @@ public class FileFieldService {
 
         List<String> storedIds = new ArrayList<>();
         List<String> replacedIds = new ArrayList<>();
+        List<ImageVariantQueue.Job> variantJobs = new ArrayList<>();
         try {
             for (FieldDefinition field : FileFieldUtils.fileFields(definition)) {
                 List<MultipartSupport.UploadedFile> files = uploads.get(field.name());
@@ -73,26 +76,31 @@ public class FileFieldService {
                     // and the cleanup below can only delete what it was told about.
                     String fileId = DbUtils.id();
                     storedIds.add(fileId);
-                    references.add(storeUpload(ctx, field, fileId, upload));
+                    references.add(storeUpload(ctx, fileId, upload));
+                    variantJob(field, fileId, upload).ifPresent(variantJobs::add);
                 }
 
                 record.put(field.name(), FileFieldUtils.toStoredValue(references, field));
             }
-            return new UploadChanges(List.copyOf(storedIds), List.copyOf(replacedIds));
+            return new UploadChanges(List.copyOf(storedIds), List.copyOf(replacedIds), List.copyOf(variantJobs));
         } catch (RuntimeException | IOException | Error e) {
-            // Error is in the list deliberately. A decode large enough to exhaust the heap fails
-            // between storing the original and its variants, and the bytes already written have no
-            // record pointing at them - the pixel budget makes that unlikely, it does not make it
-            // impossible. The throwable is rethrown untouched: this cleans up after a hard failure,
-            // it does not pretend to recover from one.
+            // Error is in the list deliberately: whatever ends this loop early, the bytes already
+            // written have no record pointing at them. The throwable is rethrown untouched: this
+            // cleans up after a hard failure, it does not pretend to recover from one.
             storage.deleteAll(ctx, storedIds);
             throw e;
         }
     }
 
+    /**
+     * Completes an upload once the record pointing at it is written: the files it replaced go, and
+     * the variants of the new ones are queued. Not earlier - a rolled back upload would otherwise
+     * have queued a decode for a file that is about to be deleted.
+     */
     public void commitUploads(TenantContext ctx, UploadChanges changes) {
         if (changes != null) {
             storage.deleteAll(ctx, changes.replacedFileIds());
+            changes.variantJobs().forEach(job -> variants.submit(ctx, job));
         }
     }
 
@@ -230,45 +238,28 @@ public class FileFieldService {
 
     private FileReference storeUpload(
             TenantContext ctx,
-            FieldDefinition field,
             String fileId,
             MultipartSupport.UploadedFile upload) throws IOException {
         storage.store(ctx, fileId, upload.bytes());
-        storeImageVariants(ctx, field, fileId, upload);
         return new FileReference(fileId, upload.fileName(), upload.mimeType(), upload.bytes().length);
     }
 
     /**
-     * Writes the configured scaled copies next to the original. Only downscales: an original that
-     * is already narrower than a configured width gets no variant for it and falls back to a wider
-     * variant, or to the original, on download.
-     * <p>
-     * A failure here never fails the upload. The original is the payload; a missing variant costs
-     * bandwidth, not data - so it is logged (field and width, never file content) and the upload
-     * continues.
+     * The configured scaled copies of an upload, produced by {@link ImageVariantQueue} after the
+     * record is written. Only downscales: an original that is already narrower than a configured
+     * width gets no variant for it and falls back to a wider variant, or to the original, on
+     * download - which is also what a download sees until the variants are there.
      */
-    private void storeImageVariants(
-            TenantContext ctx,
+    private static Optional<ImageVariantQueue.Job> variantJob(
             FieldDefinition field,
             String fileId,
             MultipartSupport.UploadedFile upload) {
 
         List<Integer> widths = field.optionsOrDefault().imageWidthsOrEmpty();
         if (widths.isEmpty() || !ImageVariants.isSupported(upload.mimeType())) {
-            return;
+            return Optional.empty();
         }
-
-        for (int width : widths) {
-            try {
-                byte[] variant = ImageVariants.scaleToWidth(upload.bytes(), upload.mimeType(), width);
-                if (variant != null) {
-                    storage.store(ctx, FileStorageService.variantKey(fileId, width), variant);
-                }
-            } catch (IOException | RuntimeException e) {
-                LOG.warn("Failed to create the {} px variant for field {}: {}",
-                        width, field.name(), e.getMessage());
-            }
-        }
+        return Optional.of(new ImageVariantQueue.Job(fileId, upload.mimeType(), widths, field.name()));
     }
 
     private void deleteStoredFiles(TenantContext ctx, List<FileReference> references) {
@@ -345,9 +336,12 @@ public class FileFieldService {
         }
     }
 
-    public record UploadChanges(List<String> storedFileIds, List<String> replacedFileIds) {
+    public record UploadChanges(
+            List<String> storedFileIds,
+            List<String> replacedFileIds,
+            List<ImageVariantQueue.Job> variantJobs) {
         public static UploadChanges empty() {
-            return new UploadChanges(List.of(), List.of());
+            return new UploadChanges(List.of(), List.of(), List.of());
         }
     }
 

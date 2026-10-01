@@ -23,6 +23,8 @@ import utils.DbWrites;
 import validation.FieldSchemaValidation;
 import validation.SchemaNames;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -122,7 +124,10 @@ public class TenantCollectionService {
      * {@code group} and {@code peers} presets.
      */
     public void validateDefinition(TenantContext ctx, CollectionDefinition definition) throws RuleParseException {
-        validateDefinition(definition, name -> findDefinition(ctx, name));
+        validateDefinition(
+                definition,
+                name -> findDefinition(ctx, name),
+                metaCollections(ctx).find().into(new ArrayList<>()));
     }
 
     /**
@@ -131,12 +136,20 @@ public class TenantCollectionService {
      * points at may well be another entry of that same file - one that is not in the database
      * yet and, if the file is rejected, never will be.
      *
-     * @param lookup resolves a collection name to its definition, or to {@code null}
+     * @param lookup             resolves a collection name to its definition, or to {@code null}
+     * @param tenantDefinitions  every collection of the tenant as it will be once this one is saved;
+     *                           an entry for the collection being validated is ignored
      */
-    public void validateDefinition(CollectionDefinition definition, Function<String, CollectionDefinition> lookup)
-            throws RuleParseException {
+    public void validateDefinition(
+            CollectionDefinition definition,
+            Function<String, CollectionDefinition> lookup,
+            Collection<CollectionDefinition> tenantDefinitions) throws RuleParseException {
+
         validateDefinition(definition);
-        validateMembershipTargets(definition, lookup);
+        // A collection that holds its own memberships is checked as it is about to be saved, not
+        // as it is stored - on create it is not stored at all yet
+        validateMembershipTargets(definition, name -> definition.name().equals(name) ? definition : lookup.apply(name));
+        validateMembershipSources(definition, tenantDefinitions);
     }
 
     /**
@@ -165,6 +178,7 @@ public class TenantCollectionService {
 
         requireLookupField(membershipCollection, rules.groupMemberField(), "groupMemberField");
         requireLookupField(membershipCollection, rules.groupField(), "groupField");
+        requireSafeMembershipWrites(membershipCollection, definition.name());
 
         // "id" is the third case: the records of this collection *are* the groups, so the group
         // is the record's own identity and no declared field points at it. It is the only system
@@ -173,6 +187,52 @@ public class TenantCollectionService {
                 && !SystemFields.ID.equals(rules.groupRecordField())) {
             requireLookupField(definition, rules.groupRecordField(), "groupRecordField");
         }
+    }
+
+    /**
+     * The other direction of {@link #requireSafeMembershipWrites}: a membership collection must not
+     * be loosened after the fact, while another collection already grants access through it.
+     */
+    private static void validateMembershipSources(
+            CollectionDefinition definition,
+            Collection<CollectionDefinition> tenantDefinitions) throws RuleParseException {
+
+        for (CollectionDefinition source : tenantDefinitions) {
+            CollectionRules rules = source.rules();
+            if (source.name().equals(definition.name()) || rules == null || !usesMembershipRule(rules)
+                    || !definition.name().equals(rules.groupCollection())) {
+                continue;
+            }
+            requireSafeMembershipWrites(definition, source.name());
+        }
+    }
+
+    /**
+     * Every record of a membership collection grants its member the group it names - who wrote
+     * the record plays no part. Writing there is therefore handing out access, and only two write
+     * rules keep that in the right hands: locked (memberships come from the admin, a rule-bypassing
+     * key or a backend) and "group" (only a member of a group can add to that group). "owner" in
+     * particular looks safe and is not: it pins the member field to the caller and leaves the
+     * group free, so it reads "anyone may join any group, as long as it is themselves".
+     */
+    private static void requireSafeMembershipWrites(CollectionDefinition membershipCollection, String usedBy)
+            throws RuleParseException {
+
+        CollectionRules rules = membershipCollection.rulesOrDefault();
+        requireSafeMembershipWrite(membershipCollection.name(), usedBy, "create", rules.createRule());
+        requireSafeMembershipWrite(membershipCollection.name(), usedBy, "update", rules.updateRule());
+    }
+
+    private static void requireSafeMembershipWrite(String membershipCollection, String usedBy, String operation, String rule)
+            throws RuleParseException {
+
+        if (StringUtils.isBlank(rule) || RuleService.isGroupRule(rule)) {
+            return;
+        }
+
+        throw new RuleParseException(membershipCollection + " holds the memberships for " + usedBy
+                + ": its " + operation + " rule must be locked or \"group\". With \"" + rule.trim()
+                + "\" any user could add themselves to any group.");
     }
 
     private static boolean usesMembershipRule(CollectionRules rules) {

@@ -64,14 +64,17 @@ class UsersOwnRecordsIntegrationTest {
             String otherId = userId(userService.createUser("own-update-other", null, "secret-password-123"));
             String token = accessTokenFor("own-update-me");
 
+            // The email is a credential, so changing even the own one needs the current password
             TestResponse own = patch("/api/collections/users/" + meId, token,
-                    "{\"email\":\"own-update-me@example.com\"}");
+                    "{\"email\":\"own-update-me@example.com\",\"oldPassword\":\"secret-password-123\"}");
             assertThat(own.getStatusCode(), equalTo(StatusCodes.OK));
 
-            TestResponse readBack = get("/api/collections/users/" + meId, token);
+            // A credential change revokes every token of the account, the one that made it included
+            String freshToken = accessTokenFor("own-update-me");
+            TestResponse readBack = get("/api/collections/users/" + meId, freshToken);
             assertThat(readBack.getContent(), containsString("own-update-me@example.com"));
 
-            TestResponse foreign = patch("/api/collections/users/" + otherId, token,
+            TestResponse foreign = patch("/api/collections/users/" + otherId, freshToken,
                     "{\"email\":\"hijacked@example.com\"}");
             assertThat(foreign.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
 
@@ -158,14 +161,16 @@ class UsersOwnRecordsIntegrationTest {
             String token = accessTokenFor("own-noleak-me");
 
             TestResponse update = patch("/api/collections/users/" + meId, token,
-                    "{\"email\":\"own-noleak@example.com\"}");
+                    "{\"email\":\"own-noleak@example.com\",\"oldPassword\":\"secret-password-123\"}");
             assertThat(update.getStatusCode(), equalTo(StatusCodes.OK));
 
             Document stored = userRecord(meId);
             assertThat("the owner field plays no part on users",
                     stored.containsKey("owner"), is(false));
-            assertThat(get("/api/collections/users/" + meId, token).getContent(),
-                    not(containsString("\"owner\"")));
+            // The email change revoked the token it was made with
+            TestResponse readBack = get("/api/collections/users/" + meId, accessTokenFor("own-noleak-me"));
+            assertThat(readBack.getStatusCode(), equalTo(StatusCodes.OK));
+            assertThat(readBack.getContent(), not(containsString("\"owner\"")));
         });
 
         // Also for a create through the data plane, which needs an open create rule

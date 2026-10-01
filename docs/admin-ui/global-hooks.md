@@ -1,6 +1,6 @@
 # Global Hooks
 
-`/admin/global-hooks` — **superadmin only**, requires an [active tenant](/concepts/tenants). Configures tenant-wide `beforeRequest` hooks: they run before *every* matching collection operation, and before the auth flows (login, register, refresh) — unlike [collection hooks](/admin-ui/collection-hooks), which are scoped to one collection and one specific lifecycle event.
+`/admin/global-hooks` — **superadmin only**, requires an [active tenant](/concepts/tenants). Configures tenant-wide `beforeRequest` hooks: they run before *every* matching collection operation, and before the auth flows (login, register, refresh, password reset, email verification) — unlike [collection hooks](/admin-ui/collection-hooks), which are scoped to one collection and one specific lifecycle event.
 
 Global hooks always run **before** any collection-specific hooks for the same request.
 
@@ -12,7 +12,11 @@ Each global hook applies either:
 - **to a specific list of target collections**, chosen explicitly.
 
 ::: tip Scope doesn't apply to auth flows
-The collection scope above only matters for collection operations. For `login`/`register`/`refresh`, **every enabled global hook fires regardless of its target-collection setting** — a hook scoped to just `posts` still runs before a login request. If you only want a hook to run for collection operations and never for auth, that's not currently configurable — it always sees both.
+The collection scope above only matters for collection operations. For the auth flows, **every enabled global hook fires regardless of its target-collection setting** — a hook scoped to just `posts` still runs before a login request. If you only want a hook to run for collection operations and never for auth, that's not currently configurable — it always sees both.
+:::
+
+::: info Which tenant's hooks run on an auth flow
+Login, register and the recovery routes (`/api/auth/password/forgot|reset`, `/api/auth/verify/request|confirm`) run the global hooks of the tenant named in the body's `tenant` field. Refresh runs those of the tenant the refresh token belongs to. A login without `tenant` is a login for the default tenant, so it runs the default tenant's hooks ([details](/concepts/tenants#logging-in-without-a-tenant-slug)). Every other request whose `tenant` is missing, unknown or inactive runs **no** global hook at all. It never falls back to the default tenant, whose hook target would otherwise see another tenant's tokens and email addresses. A bearer token sent along with an auth request never decides whose hooks run.
 :::
 
 ## File routes: off by default
@@ -51,7 +55,7 @@ A `beforeRequest` hook is an external authorization decision, so it often needs 
 
 `Authorization`, `Cookie`, `Set-Cookie` and `Proxy-Authorization` are never forwardable: they authenticate the caller against Paprika itself, and a hook target that received one could impersonate them. Saving a hook that lists one of them is rejected with `400`, and a definition that carries one anyway (e.g. written straight into the database) still won't leak it at dispatch time.
 
-Since these hooks also gate auth flows, the [request/response envelope](/admin-ui/collection-hooks#the-request-paprika-sends) looks slightly different for a login/register/refresh delivery: `context.collection` and `context.recordId` are `null`, and `data.body` is the raw login/register/refresh payload instead of a collection record body.
+Since these hooks also gate auth flows, the [request/response envelope](/admin-ui/collection-hooks#the-request-paprika-sends) looks slightly different for an auth-flow delivery: `context.collection` and `context.recordId` are `null`, and `data.body` is the raw auth payload instead of a collection record body. Credentials are removed from it before delivery: `password`, the single-use `token` of the reset and verification routes, and the `refreshToken` of a refresh — a hook target holding one of them could redeem it before Paprika does.
 
 Forwarding works the same on file routes when **Also guard file routes** is on: the configured headers are in `context.http.headers`, the blocked ones never are.
 

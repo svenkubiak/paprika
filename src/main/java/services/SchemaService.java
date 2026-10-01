@@ -188,13 +188,19 @@ public class SchemaService {
             }
         }
 
+        // The tenant as it will be after the import: an import adds and replaces, it never removes
+        Map<String, CollectionDefinition> resulting = new LinkedHashMap<>();
+        tenantCollections.metaCollections(ctx).find().forEach(stored -> resulting.put(stored.name(), stored));
+        resulting.putAll(incoming);
+
         for (PlannedCollection planned : plan) {
             try {
                 tenantCollections.validateDefinition(
                         planned.definition(),
                         name -> incoming.containsKey(name)
                                 ? incoming.get(name)
-                                : tenantCollections.findDefinition(ctx, name));
+                                : tenantCollections.findDefinition(ctx, name),
+                        resulting.values());
             } catch (RuleParseException | IllegalArgumentException e) {
                 problems.add(planned.definition().name() + ": " + e.getMessage());
             }

@@ -122,6 +122,12 @@ class TenantIsolationIntegrationTest {
                     leaks.add(method + " " + uri + " -> leaked '" + leaked + "' (status "
                             + response.getStatusCode() + "): " + abbreviate(response.getContent()));
                 }
+
+                // Logout revokes the caller's tokens - every route after it would only see a 401
+                // and pass without proving anything
+                if ("/api/auth/logout".equals(route.getUrl())) {
+                    tokenA = login(tenantA.slug(), PASSWORD_A);
+                }
             }
         }
 

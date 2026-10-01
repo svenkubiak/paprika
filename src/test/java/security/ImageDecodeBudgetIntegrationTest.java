@@ -12,6 +12,7 @@ import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.FileFieldService;
+import services.ImageVariantQueue;
 import services.FileStorageService;
 import utils.ImageVariants;
 import utils.MultipartSupport;
@@ -98,19 +99,21 @@ class ImageDecodeBudgetIntegrationTest {
     }
 
     @Test
-    void ordinaryImagesStillGetTheirVariants() throws IOException {
+    void ordinaryImagesStillGetTheirVariants() throws IOException, InterruptedException {
         FileFieldService files = Application.getInstance(FileFieldService.class);
         FileStorageService storage = Application.getInstance(FileStorageService.class);
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
 
         Document record = new Document();
-        files.applyUploads(
+        FileFieldService.UploadChanges changes = files.applyUploads(
                 ctx,
                 definitionWithVariants(),
                 record,
                 Map.of("attachment", List.of(
                         new MultipartSupport.UploadedFile("ok.png", onePixelPerBitPng(512, 512), "image/png"))),
                 false);
+        files.commitUploads(ctx, changes);
+        assertThat(Application.getInstance(ImageVariantQueue.class).awaitIdle(java.time.Duration.ofSeconds(10)), is(true));
 
         assertThat("the budget must not break ordinary uploads", record.get("attachment"), notNullValue());
 
@@ -139,13 +142,13 @@ class ImageDecodeBudgetIntegrationTest {
     }
 
     @Test
-    void aHardFailureWhileScalingLeavesNothingBehind() throws IOException {
-        // The budget refuses the images that would exhaust the heap, but it cannot promise the
-        // decode never fails hard for another reason - a smaller heap, a format the budget cannot
-        // read a size from, memory pressure from elsewhere. When it does, the original is already
-        // in storage and no record will ever point at it. The cleanup has to cover Error too.
-        FileFieldService files = new FileFieldService(
-                new HeapExhaustedOnVariant(Application.getInstance(Config.class)));
+    void aHardFailureWhileStoringLeavesNothingBehind() throws IOException {
+        // The decode no longer runs in the request, but an upload of several files can still fail
+        // hard halfway through - memory pressure from elsewhere is enough. When it does, the first
+        // original is already in storage and no record will ever point at it. The cleanup has to
+        // cover Error too.
+        HeapExhaustedOnVariant storage = new HeapExhaustedOnVariant(Application.getInstance(Config.class));
+        FileFieldService files = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
 
         long before = storedFileCount();
@@ -156,7 +159,8 @@ class ImageDecodeBudgetIntegrationTest {
                 definitionWithVariants(),
                 record,
                 Map.of("attachment", List.of(
-                        new MultipartSupport.UploadedFile("ok.png", onePixelPerBitPng(512, 512), "image/png"))),
+                        new MultipartSupport.UploadedFile("ok.png", onePixelPerBitPng(512, 512), "image/png"),
+                        new MultipartSupport.UploadedFile("fails.png", onePixelPerBitPng(512, 512), "image/png"))),
                 false));
 
         assertThat("the original must not survive a failure that leaves no record behind",
@@ -216,9 +220,8 @@ class ImageDecodeBudgetIntegrationTest {
     }
 
     /**
-     * Stands in for the decode that exhausts the heap: the original is written, every scaled copy
-     * after it fails with an {@code Error} - which is exactly what the variant code's
-     * {@code catch (IOException | RuntimeException)} does not catch.
+     * Stands in for a heap that runs out mid-upload: the first file is written, every write after
+     * it fails with an {@code Error}, which no {@code catch (IOException | RuntimeException)} sees.
      */
     private static final class HeapExhaustedOnVariant extends FileStorageService {
         private final AtomicInteger stores = new AtomicInteger();

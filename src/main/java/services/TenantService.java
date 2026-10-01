@@ -174,6 +174,20 @@ public class TenantService {
         return soleActiveTenantId().flatMap(this::findById);
     }
 
+    /**
+     * The tenant a login is for: the one the slug names, or the default tenant when there is no
+     * slug. The login itself and the hooks that guard it both ask here, so they can never end up
+     * with two different tenants.
+     *
+     * @return empty for an unknown or inactive slug, or when there is no default tenant
+     */
+    public Optional<TenantDefinition> resolveLoginTenant(String slug) {
+        if (StringUtils.isBlank(slug)) {
+            return resolveDefaultTenant();
+        }
+        return findBySlug(slug.trim()).filter(TenantDefinition::isActive);
+    }
+
     public List<TenantDefinition> listAll() {
         return StreamSupport.stream(
                         resolver.systemCollection(TenantDefinition.COLLECTION).find().spliterator(), false)
@@ -182,15 +196,12 @@ public class TenantService {
     }
 
     /**
-     * The active tenants, reduced to what a cross-tenant lookup needs.
+     * The active tenants, reduced to their id, slug and database name.
      * <p>
-     * A login without a tenant slug has to find out which tenant a username belongs to, which
-     * means one query per tenant. Loading every tenant document in full to then use three of its
-     * fields makes an already expensive operation worse, so this reads only what is needed, only
-     * for tenants that can be logged into, and never more than {@code limit} of them - the caller
-     * decides what it is willing to spend.
+     * Reads only those fields, only for tenants that can be logged into, and never more than
+     * {@code limit} of them - the caller decides what it is willing to spend.
      *
-     * @param limit the most entries to return; pass one more than the cap to detect the overflow
+     * @param limit the most entries to return; pass one more than needed to detect "more than"
      */
     public List<TenantLookup> findActiveForLookup(int limit) {
         return StreamSupport.stream(

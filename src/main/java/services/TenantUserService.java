@@ -48,14 +48,6 @@ public class TenantUserService {
     private static final int MIN_PASSWORD_LENGTH = SystemUserService.MIN_PASSWORD_LENGTH;
 
     /**
-     * How many tenants a login without a tenant slug may search through. One database query per
-     * tenant is an amplification a rate limiter cannot see - it counts requests, not what they
-     * cost - so the convenience has a ceiling. Instances beyond it are exactly the ones whose
-     * clients should be naming their tenant anyway.
-     */
-    static final int MAX_SCANNED_TENANTS = 25;
-
-    /**
      * A salt and hash that no password matches, used to spend the time an Argon2 verification
      * would have taken when there is no user to verify against. Derived once and not per request,
      * because deriving it is exactly as expensive as the check it stands in for.
@@ -87,6 +79,7 @@ public class TenantUserService {
     private final RealtimeService realtimeService;
     private final TenantCollectionService tenantCollections;
     private final ValidationService validationService;
+    private final TokenVersionService tokenVersionService;
 
     @Inject
     public TenantUserService(
@@ -94,7 +87,9 @@ public class TenantUserService {
             TenantService tenantService,
             RealtimeService realtimeService,
             TenantCollectionService tenantCollections,
-            ValidationService validationService) {
+            ValidationService validationService,
+            TokenVersionService tokenVersionService) {
+        this.tokenVersionService = Objects.requireNonNull(tokenVersionService, "tokenVersionService must not be null");
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
@@ -118,22 +113,12 @@ public class TenantUserService {
             return loginResult(tenant, normalizedUsername, password);
         }
 
-        List<TenantService.TenantLookup> matches = findTenantsWithUsername(normalizedUsername);
-        if (matches.size() != 1) {
-            // Every outcome answers the same way: no match, more than one match, or a scan that
-            // was refused. Telling a caller that a username exists in several tenants - which a
-            // dedicated status code did - is cross-tenant information about somebody else's user
-            // base, handed out without any authentication. The recovery endpoints already answer
-            // uniformly for the same reason; the detail belongs in the log, below.
-            if (matches.size() > 1) {
-                LOG.info("Login without a tenant slug for a username that exists in {} tenants - "
-                        + "answered as invalid credentials; the client has to name the tenant", matches.size());
-            }
-            return burnedOrAtCapacity(password);
-        }
-
-        TenantDefinition tenant = tenantService.findById(matches.getFirst().id()).orElse(null);
-        if (tenant == null || !tenant.isActive()) {
+        // Without a slug the login is for the default tenant, and only for it. Finding the tenant
+        // by the username instead meant the hooks had already run for another tenant by the time
+        // it was known - the target tenant's blocking beforeLogin never saw the login - and every
+        // answer was a statement about other tenants' user bases.
+        TenantDefinition tenant = tenantService.resolveDefaultTenant().orElse(null);
+        if (tenant == null) {
             return burnedOrAtCapacity(password);
         }
 
@@ -285,11 +270,17 @@ public class TenantUserService {
             updates.append("username", trimmedUsername);
         }
 
+        boolean credentialsChanged = false;
         if (email != null) {
             updates.append("email", normalizeEmail(email));
+            if (UserRecordUtils.changesEmail(existing, updates, unsets)) {
+                UserRecordUtils.invalidateEmailBoundState(updates, unsets);
+                credentialsChanged = true;
+            }
         }
 
         if (password != null && !password.isBlank()) {
+            credentialsChanged = true;
             validatePassword(password);
             String salt = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
             updates.append("passwordSalt", salt);
@@ -307,6 +298,9 @@ public class TenantUserService {
         }
         DbWrites.rejectDuplicateAs("Username already exists",
                 () -> usersCollection(tenant).updateOne(eq("id", normalizedUserId), operations));
+        if (credentialsChanged) {
+            tokenVersionService.revokeAll(tenant, normalizedUserId);
+        }
 
         return Optional.of(toPublicMap(findById(tenant, normalizedUserId)));
     }
@@ -360,6 +354,9 @@ public class TenantUserService {
                         .append("passwordHash", hashPassword(newPassword, salt))
                         .append(SystemFields.UPDATED_AT, SystemFields.timestamp())));
 
+        // A reset is how a compromised account is taken back: whoever holds a token issued under
+        // the old password is out from here on
+        tokenVersionService.revokeAll(tenant, user.getString("id"));
         return true;
     }
 
@@ -569,43 +566,6 @@ public class TenantUserService {
     }
 
     /**
-     * Which active tenants know this username. One query per tenant, so the cost of a single
-     * unauthenticated request grows with the number of customers - which is the number a BaaS
-     * exists to grow. The scan is therefore capped: past {@link #MAX_SCANNED_TENANTS} the
-     * convenience of leaving the slug out is not worth what it costs the database, and clients
-     * have to name their tenant.
-     *
-     * @return the matching tenants, or an empty list when the scan was refused - the caller
-     *         answers both the same way
-     */
-    private List<TenantService.TenantLookup> findTenantsWithUsername(String username) {
-        List<TenantService.TenantLookup> candidates = activeTenantsForLookup();
-        if (candidates.size() > MAX_SCANNED_TENANTS) {
-            LOG.warn("Refusing a login without a tenant slug: this instance has more than {} active tenants, "
-                    + "and resolving the username would query every one of them. Clients have to send \"tenant\".",
-                    MAX_SCANNED_TENANTS);
-            return List.of();
-        }
-
-        List<TenantService.TenantLookup> matches = new ArrayList<>();
-        for (TenantService.TenantLookup tenant : candidates) {
-            if (findByUsername(tenant.databaseName(), username) != null) {
-                matches.add(tenant);
-            }
-        }
-        return matches;
-    }
-
-    /**
-     * The tenants a slug-less login would search, one more than the cap allows so the overflow
-     * is visible without counting the whole collection. Overridable so a test can put the
-     * instance over the cap without creating that many tenant databases.
-     */
-    List<TenantService.TenantLookup> activeTenantsForLookup() {
-        return tenantService.findActiveForLookup(MAX_SCANNED_TENANTS + 1);
-    }
-
-    /**
      * The outcome of a password verification, including the case where the instance had no
      * capacity left to run one.
      */
@@ -690,12 +650,7 @@ public class TenantUserService {
     }
 
     boolean matchesPassword(String password, Document user) {
-        String salt = user.getString("passwordSalt");
-        String hash = user.getString("passwordHash");
-        if (StringUtils.isBlank(salt) || StringUtils.isBlank(hash)) {
-            return false;
-        }
-        return CommonUtils.matchArgon2(password, salt, hash);
+        return UserRecordUtils.matchesPassword(password, user);
     }
 
     /**

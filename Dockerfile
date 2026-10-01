@@ -20,4 +20,6 @@ COPY --chown=appuser:appgroup target/paprika.jar ./paprika.jar
 
 USER appuser
 
-ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS:-} -jar /app/paprika.jar"]
+# ExitOnOutOfMemoryError as in the native packages: after an OutOfMemoryError the JVM is in an
+# undefined state, and a container that exits gets restarted where one that limps on does not.
+ENTRYPOINT ["sh", "-c", "exec java -XX:+ExitOnOutOfMemoryError ${JAVA_OPTS:-} -jar /app/paprika.jar"]

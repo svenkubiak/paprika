@@ -324,6 +324,17 @@ There is exactly one superadmin identity and it can do everything. Enable TOTP t
 # Throttle zones, keyed on the real client IP.
 limit_req_zone  $binary_remote_addr zone=paprika_auth:10m rate=5r/s;
 
+# Writes to the data plane only: an empty key is not counted, so reads stay unthrottled. Uploads
+# arrive here, and every image upload queues work for the variant worker.
+map $request_method $paprika_write_key {
+    default "";
+    POST    $binary_remote_addr;
+    PATCH   $binary_remote_addr;
+    PUT     $binary_remote_addr;
+    DELETE  $binary_remote_addr;
+}
+limit_req_zone  $paprika_write_key zone=paprika_write:10m rate=10r/s;
+
 # Concurrent connections, not requests per second. This is what bounds /api/realtime: an SSE
 # stream is one long-lived connection that is accepted before anything is authenticated, and
 # the request rate limit above never sees it again. See "Cap the concurrent realtime
@@ -410,6 +421,11 @@ server {
         # A blunt backstop, not a throttle: uploads and long polls should not let one IP occupy
         # the worker pool. 50 is far above what a normal client needs.
         limit_conn paprika_conn 50;
+
+        # Writes per IP. The variant worker decodes one image at a time and its queue is bounded,
+        # so this is not what keeps the heap safe - it keeps one client from filling that queue
+        # and leaving everyone else's uploads without variants.
+        limit_req zone=paprika_write burst=20 nodelay;
 
         # File uploads go through here. nginx defaults to 1m, which caps every upload at one
         # megabyte no matter what the field's maxSize says. 4m matches Undertow's own limit

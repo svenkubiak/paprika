@@ -68,8 +68,16 @@ the creator should change it.
 On the membership collection itself — `team_members` in the example — **Membership collection** can
 be set to this very collection. **Group field on this collection** is then its own group field
 (`team`), and every member of a team sees all membership records of that team: the member list.
-The lookup is resolved once, before the list is scoped, so this is not a circular reference. Keep
-the write rules narrower (locked or **Own records**) unless every member may change memberships.
+The lookup is resolved once, before the list is scoped, so this is not a circular reference.
+
+::: warning Who may write memberships
+Every membership record grants access to its group, no matter who wrote it. So on any collection
+used as **Membership collection**, Create and Update must be **No access** or **Group members**.
+**Own records**, **Signed in** and **Public** are refused with `400`. **Own records** would only
+pin the member to the caller and leave the group free, which lets anyone join any group by adding
+themselves. The check also applies the other way round: a membership collection can't be loosened
+while another collection uses it. Delete is not restricted, since leaving a group grants nothing.
+:::
 
 The field dropdowns are filled from the schema of the collection you pick, so pick the membership
 collection first. Saving with an incomplete configuration, an unknown collection or an unknown
@@ -84,7 +92,9 @@ collection.
 :::
 
 On `users`, **Group peers** treats Update like View: a user could then edit their teammates'
-records, not just read them. If the application only needs to *show* teammates, set View (and
+records, not just read them. That covers their profile fields only: `password` and `email` stay
+with the user themselves (and the admin), whatever the rule, see
+[Tenant Users](/admin-ui/tenant-users#rules-tab). If the application only needs to *show* teammates, set View (and
 List) to **Group peers** and leave Update on **Own records**. Create is never granted by it at all: sign-up goes through `POST /api/auth/register`.
 
 Two things that are easy to expect and do not happen: the group field is **not** filled in on

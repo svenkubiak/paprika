@@ -109,6 +109,10 @@ public class FileStorageService {
         return Files.readAllBytes(target);
     }
 
+    public boolean exists(TenantContext ctx, String fileId) {
+        return Files.exists(resolvePath(ctx, fileId));
+    }
+
     /** The storage key of the scaled copy of {@code fileId} at {@code width}. */
     public static String variantKey(String fileId, int width) {
         return fileId + VARIANT_MARKER + width;

@@ -7,6 +7,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.CollectionDefinition;
 import models.FieldDefinition;
+import utils.UserRecordUtils;
 import validation.ValidationContext;
 import validation.ValidationResult;
 import validation.validators.*;
@@ -137,6 +138,15 @@ public class ValidationService {
 
             if (SystemFields.isReadOnlyOnWrite(fieldName)) {
                 result.add(fieldName, "Field is read-only");
+                return;
+            }
+
+            // Virtual and write-only like password: proves the current password when a user
+            // changes their own credentials, and is never stored
+            if (UserRecordUtils.isUsers(collection.name()) && UserRecordUtils.OLD_PASSWORD.equals(fieldName)) {
+                if (value != null && !value.isNull() && !value.isTextual()) {
+                    result.add(fieldName, "Expected string");
+                }
                 return;
             }
 
