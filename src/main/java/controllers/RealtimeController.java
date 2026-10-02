@@ -11,6 +11,7 @@ import io.undertow.util.StatusCodes;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import models.RealtimeCredential;
 import services.AuthService;
 import services.RealtimeService;
 
@@ -44,7 +45,10 @@ public class RealtimeController {
                     .end();
         }
 
-        if (!realtimeService.subscribe(dto.clientId(), auth, dto.subscriptions())) {
+        RealtimeCredential credential = new RealtimeCredential(
+                authService.resolveBearerApiKeyId(request).orElse(null),
+                authService.resolveBearerExpiry(request).orElse(null));
+        if (!realtimeService.subscribe(dto.clientId(), auth, dto.subscriptions(), credential)) {
             return Response.notFound().bodyJson(Map.of("error", "Unknown clientId")).end();
         }
 

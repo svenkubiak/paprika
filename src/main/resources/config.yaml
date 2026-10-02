@@ -43,6 +43,9 @@ default:
     # Appends the requested path as origin to the login redirect, so an expired session on a deep
     # link returns there after sign-in.
     origin: true
+    # Revokes the admin UI cookie on logout, and every cookie of an account on a password or 2FA
+    # change. MongoTokenBlacklist keeps the revocations, so a restart does not revive them.
+    blacklist: true
     cookie:
       name: paprika-authentication
       secret: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000

@@ -53,6 +53,7 @@ public class ApiKeyService {
     private final TenantDatabaseResolver resolver;
     private final TenantService tenantService;
     private final TenantUserService tenantUserService;
+    private final RealtimeService realtimeService;
     private final ConcurrentHashMap<String, Instant> lastTouch = new ConcurrentHashMap<>();
     private final ExecutorService touchExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -60,18 +61,22 @@ public class ApiKeyService {
     public ApiKeyService(
             TenantDatabaseResolver resolver,
             TenantService tenantService,
-            TenantUserService tenantUserService) {
+            TenantUserService tenantUserService,
+            RealtimeService realtimeService) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.tenantUserService = Objects.requireNonNull(tenantUserService, "tenantUserService must not be null");
+        this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
     }
 
+    /** {@code expiresAt} is {@code null} for a key that never expires. */
     public record ResolvedApiKey(
             AuthContext auth,
             String keyId,
             String keyName,
             boolean bypassRules,
-            boolean bypassHooks) {}
+            boolean bypassHooks,
+            Instant expiresAt) {}
 
     /**
      * {@code sourceRejected} is for the request log only: the client response must stay identical
@@ -198,10 +203,17 @@ public class ApiKeyService {
             return false;
         }
 
-        return keys().updateOne(
+        boolean revoked = keys().updateOne(
                         and(eq("tenantId", tenantId), eq("id", keyId.trim()), eq("revokedAt", null)),
                         new Document("$set", new Document("revokedAt", SystemFields.timestamp())))
                 .getModifiedCount() == 1;
+
+        if (revoked) {
+            // A stream checked the key only at subscribe
+            realtimeService.revokeApiKey(keyId);
+        }
+
+        return revoked;
     }
 
     // The only mutable key property: it restricts where a key works rather than granting reach.
@@ -219,6 +231,8 @@ public class ApiKeyService {
         if (updated) {
             LOG.info("Source binding of API key {} in tenant {} set to {}",
                     keyId.trim(), tenantId, normalized.isEmpty() ? "unrestricted" : normalized);
+            // A stream does not know the source it subscribed from; subscribing again checks the new ranges
+            realtimeService.revokeApiKey(keyId);
         }
 
         return updated;
@@ -236,20 +250,27 @@ public class ApiKeyService {
 
         if (deleted) {
             lastTouch.remove(normalizedKeyId);
+            realtimeService.revokeApiKey(normalizedKeyId);
         }
 
         return deleted;
     }
 
     public void revokeForUser(String tenantId, String userId) {
-        keys().updateMany(
-                and(eq("tenantId", tenantId), eq("userId", userId), eq("revokedAt", null)),
-                new Document("$set", new Document("revokedAt", SystemFields.timestamp())));
+        var active = and(eq("tenantId", tenantId), eq("userId", userId), eq("revokedAt", null));
+        List<String> keyIds = new ArrayList<>();
+        for (Document document : keys().find(active)) {
+            keyIds.add(document.getString("id"));
+        }
+
+        keys().updateMany(active, new Document("$set", new Document("revokedAt", SystemFields.timestamp())));
+        keyIds.forEach(realtimeService::revokeApiKey);
     }
 
     public void deleteForTenant(String tenantId) {
         for (Document document : keys().find(eq("tenantId", tenantId))) {
             lastTouch.remove(document.getString("id"));
+            realtimeService.revokeApiKey(document.getString("id"));
         }
         keys().deleteMany(eq("tenantId", tenantId));
     }
@@ -292,8 +313,10 @@ public class ApiKeyService {
 
         touch(key);
 
+        // isExpired has already refused an expiry that does not parse
+        Instant expiresAt = StringUtils.isBlank(key.expiresAt()) ? null : Instant.parse(key.expiresAt());
         return ApiKeyResolution.of(new ResolvedApiKey(
-                auth, key.id(), key.name(), key.bypassRules(), key.bypassHooks()));
+                auth, key.id(), key.name(), key.bypassRules(), key.bypassHooks(), expiresAt));
     }
 
     private static boolean isAllowedSource(ApiKeyDefinition key, InetAddress source) {

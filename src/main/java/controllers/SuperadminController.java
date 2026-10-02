@@ -11,6 +11,7 @@ import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import services.MailService;
+import services.RealtimeService;
 import services.SystemUserService;
 import utils.InstanceLinks;
 
@@ -22,11 +23,13 @@ import java.util.Objects;
 public class SuperadminController {
     private final SystemUserService systemUserService;
     private final MailService mailService;
+    private final RealtimeService realtimeService;
 
     @Inject
-    public SuperadminController(SystemUserService systemUserService, MailService mailService) {
+    public SuperadminController(SystemUserService systemUserService, MailService mailService, RealtimeService realtimeService) {
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
         this.mailService = Objects.requireNonNull(mailService, "mailService must not be null");
+        this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
     }
 
     public Response list() {
@@ -66,7 +69,11 @@ public class SuperadminController {
 
     public Response delete(String id) {
         return switch (systemUserService.deleteSuperadmin(id)) {
-            case DELETED -> Response.ok().bodyJson(Map.of("success", true));
+            case DELETED -> {
+                // Tokens and cookies die with the account, but a stream checked its token only at subscribe
+                realtimeService.revokeUserEverywhere(id);
+                yield Response.ok().bodyJson(Map.of("success", true));
+            }
             case NOT_FOUND -> Response.notFound().bodyJson(Map.of("error", "Superadmin not found")).end();
             case LAST_ADMIN -> Response.badRequest()
                     .bodyJson(Map.of("error", "The last superadmin cannot be removed")).end();

@@ -29,10 +29,8 @@ db.createUser({
 
 You'll enter this username and password into `.env` as `PERSISTENCE_MONGO_USERNAME` / `PERSISTENCE_MONGO_PASSWORD` further down.
 
-::: warning Keep the password free of URI characters
-Paprika assembles the MongoDB connection string as `mongodb://<username>:<password>@<host>:<port>/?authSource=admin` and passes the values through verbatim — they are **not** URL-encoded for you. A password containing `:`, `@`, `/`, `?`, `#`, or `%` breaks that string, and the service refuses to start with `IllegalArgumentException: The connection string contains invalid user information`.
-
-Use a long password limited to letters, digits, and `-_.~` (e.g. `openssl rand -hex 32`). If you must keep an existing password with such a character, percent-encode it in `.env` instead — `@` becomes `%40`, `:` becomes `%3A`. systemd passes `%` through literally in an `EnvironmentFile`, and the MongoDB driver decodes it back.
+::: tip Enter the password as it is
+Paprika hands username and password to the MongoDB driver separately, not inside a connection string, so characters like `:`, `@`, `/`, `?`, `#` or `%` need no encoding — and must not be percent-encoded, since `%40` would be taken as those three characters. Quotes and backslashes are interpreted by systemd when it reads `.env`, so leave those out. A long random password such as `openssl rand -hex 32` avoids the question entirely.
 :::
 
 ::: warning This is still a broadly-scoped account

@@ -8,7 +8,6 @@ import io.mangoo.exceptions.MangooJwtException;
 import io.mangoo.routing.bindings.Authentication;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JwtUtils;
-import io.undertow.server.handlers.Cookie;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.TokenPair;
@@ -43,17 +42,25 @@ public class AuthService {
     // Bounds renewal (refresh or tenant switch); otherwise a leaked refresh token renews itself forever
     private static final Duration MAX_SESSION = Duration.ofDays(30);
     private static final String BEARER_ATTRIBUTE = "paprika.bearer";
-    private final Config config;
     private final SystemUserService systemUserService;
     private final ApiKeyService apiKeyService;
     private final TokenVersionService tokenVersionService;
     private final byte[] tokenSecret;
     private final byte[] tokenKey;
 
-    /** {@code authTime} is the original sign-in; renewal carries it over instead of resetting it. */
-    public record TokenSession(AuthContext auth, Instant authTime) { }
+    /**
+     * {@code authTime} is the original sign-in; renewal carries it over instead of resetting it.
+     * {@code expiresAt} is the expiry of this token alone.
+     */
+    public record TokenSession(AuthContext auth, Instant authTime, Instant expiresAt) { }
 
-    private record BearerResolution(AuthContext auth, TokenSession session) { }
+    /**
+     * {@code apiKeyId} is set only for an API key; {@code expiresAt} is {@code null} for a credential
+     * without expiry and for no credential at all.
+     */
+    private record BearerResolution(AuthContext auth, TokenSession session, String apiKeyId, Instant expiresAt) {
+        private static final BearerResolution GUEST = new BearerResolution(AuthContext.guest(), null, null, null);
+    }
 
     @Inject
     public AuthService(
@@ -61,7 +68,7 @@ public class AuthService {
             SystemUserService systemUserService,
             ApiKeyService apiKeyService,
             TokenVersionService tokenVersionService) {
-        this.config = Objects.requireNonNull(config, "config must not be null");
+        Objects.requireNonNull(config, "config must not be null");
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
         this.apiKeyService = Objects.requireNonNull(apiKeyService, "apiKeyService must not be null");
         this.tokenVersionService = Objects.requireNonNull(tokenVersionService, "tokenVersionService must not be null");
@@ -97,6 +104,16 @@ public class AuthService {
         return Optional.ofNullable(bearer(request).session());
     }
 
+    /** Empty for a bearer that never expires (an API key without expiry) and for none at all. */
+    public Optional<Instant> resolveBearerExpiry(Request request) {
+        return Optional.ofNullable(bearer(request).expiresAt());
+    }
+
+    /** Empty unless the bearer is an API key. */
+    public Optional<String> resolveBearerApiKeyId(Request request) {
+        return Optional.ofNullable(bearer(request).apiKeyId());
+    }
+
     // Cached per request: checking a token reads its account, and several filters ask for it
     private BearerResolution bearer(Request request) {
         if (request.getAttribute(BEARER_ATTRIBUTE) instanceof BearerResolution resolved) {
@@ -112,16 +129,16 @@ public class AuthService {
         String token = bearerToken(request);
         if (token != null) {
             if (ApiKeys.isApiKey(token)) {
-                return new BearerResolution(resolveApiKey(token, request), null);
+                return resolveApiKey(token, request);
             }
 
             TokenSession session = parseAccessToken(token);
             if (session != null) {
-                return new BearerResolution(session.auth(), session);
+                return new BearerResolution(session.auth(), session, null, session.expiresAt());
             }
         }
 
-        return new BearerResolution(AuthContext.guest(), null);
+        return BearerResolution.GUEST;
     }
 
     /**
@@ -142,14 +159,14 @@ public class AuthService {
      * controls. A source rejection looks like an unknown key to the caller; only the request log
      * is told the difference.
      */
-    private AuthContext resolveApiKey(String key, Request request) {
+    private BearerResolution resolveApiKey(String key, Request request) {
         ApiKeyService.ApiKeyResolution resolution =
                 apiKeyService.resolve(key, Exchanges.peerAddress(request));
 
         if (resolution.sourceRejected()) {
             request.addAttribute(ApiKeys.ATTRIBUTE_SOURCE_REJECTED, Boolean.TRUE);
             request.addAttribute(ApiKeys.ATTRIBUTE_REJECTED_NAME, resolution.rejectedKeyName());
-            return AuthContext.guest();
+            return BearerResolution.GUEST;
         }
 
         return resolution.key()
@@ -162,9 +179,9 @@ public class AuthService {
                     if (resolved.bypassHooks()) {
                         request.addAttribute(ApiKeys.ATTRIBUTE_BYPASS_HOOKS, Boolean.TRUE);
                     }
-                    return resolved.auth();
+                    return new BearerResolution(resolved.auth(), null, resolved.keyId(), resolved.expiresAt());
                 })
-                .orElseGet(AuthContext::guest);
+                .orElse(BearerResolution.GUEST);
     }
 
     public boolean hasBearerToken(Request request) {
@@ -177,34 +194,14 @@ public class AuthService {
             return Optional.empty();
         }
 
+        // mangoo binds the cookie on every controller route, already checked against the blacklist;
+        // parsing it again here would accept a revoked one
         Authentication authentication = request.getAuthentication();
-        if (authentication != null && authentication.isValid()) {
-            return resolveSuperadmin(authentication.getSubject());
-        }
-
-        Cookie cookie = request.getCookie(config.getAuthenticationCookieName());
-        if (cookie == null || StringUtils.isBlank(cookie.getValue())) {
+        if (authentication == null || !authentication.isValid()) {
             return Optional.empty();
         }
 
-        try {
-            JwtUtils.JwtData jwtData = JwtUtils.jwtData()
-                    .withKey(config.getAuthenticationCookieKey())
-                    .withSecret(config.getAuthenticationCookieSecret())
-                    .withIssuer(config.getApplicationName())
-                    .withAudience(config.getAuthenticationCookieName())
-                    .withTtlSeconds(config.getAuthenticationCookieRememberExpires());
-
-            JWTClaimsSet claims = JwtUtils.parseJwt(cookie.getValue(), jwtData);
-            String subject = claims.getSubject();
-            if (StringUtils.isBlank(subject)) {
-                return Optional.empty();
-            }
-
-            return resolveSuperadmin(subject);
-        } catch (MangooJwtException | IllegalArgumentException e) {
-            return Optional.empty();
-        }
+        return resolveSuperadmin(authentication.getSubject());
     }
 
     /**
@@ -351,7 +348,8 @@ public class AuthService {
                 return null;
             }
 
-            return new TokenSession(auth, Instant.ofEpochSecond(Long.parseLong(authTime)));
+            return new TokenSession(auth, Instant.ofEpochSecond(Long.parseLong(authTime)),
+                    claims.getExpirationTime().toInstant());
         } catch (MangooJwtException | ParseException | IllegalArgumentException e) {
             return null;
         }

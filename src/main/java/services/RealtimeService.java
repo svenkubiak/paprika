@@ -19,6 +19,7 @@ import org.bson.Document;
 import rules.RuleService;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -82,6 +83,14 @@ public class RealtimeService {
         return revoke(client -> userId.equals(client.userId()));
     }
 
+    // Only the streams subscribed with this key: the user's own sign-in is not revoked with it
+    public int revokeApiKey(String keyId) {
+        if (StringUtils.isBlank(keyId)) {
+            return 0;
+        }
+        return revoke(client -> client.isSubscribedWithApiKey(keyId.trim()));
+    }
+
     private int revoke(java.util.function.Predicate<RealtimeClient> affected) {
         int removed = 0;
         for (RealtimeClient client : clients.values()) {
@@ -105,6 +114,11 @@ public class RealtimeService {
 
     @Run(at = PURGE_INTERVAL)
     public void purgeStaleClients() {
+        purgeStaleClients(Instant.now());
+    }
+
+    // The token is checked only at subscribe, so a stream ends with it unless a refreshed token renews it
+    void purgeStaleClients(Instant now) {
         int removed = 0;
 
         for (RealtimeClient client : clients.values()) {
@@ -116,12 +130,18 @@ public class RealtimeService {
             }
         }
 
-        if (removed > 0) {
-            LOG.debug("Purged {} stale realtime client(s)", removed);
+        int expired = revoke(client -> client.isExpiredAt(now));
+
+        if (removed > 0 || expired > 0) {
+            LOG.debug("Purged {} stale and closed {} expired realtime client(s)", removed, expired);
         }
     }
 
-    public boolean subscribe(String clientId, AuthContext auth, List<String> subscriptions) {
+    /**
+     * {@code credential} is what the caller subscribed with: the stream ends when it expires or, for
+     * an API key, when the key is revoked. Subscribing again on the same client renews it.
+     */
+    public boolean subscribe(String clientId, AuthContext auth, List<String> subscriptions, RealtimeCredential credential) {
         if (StringUtils.isBlank(clientId) || auth == null || !auth.isAuthenticated()) {
             return false;
         }
@@ -138,7 +158,7 @@ public class RealtimeService {
         }
 
         List<String> normalized = normalizeSubscriptions(subscriptions);
-        client.authenticate(auth.id(), auth.role(), auth.tenantId(), normalized);
+        client.authenticate(auth.id(), auth.role(), auth.tenantId(), normalized, credential);
 
         String confirmation = JsonUtils.toJson(Map.of(
                 "clientId", clientId,

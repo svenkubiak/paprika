@@ -1,5 +1,6 @@
 package models;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -9,6 +10,7 @@ public final class RealtimeClient {
     private volatile String userId;
     private volatile String role;
     private volatile String tenantId;
+    private volatile RealtimeCredential credential = RealtimeCredential.UNBOUNDED;
     private final List<String> subscriptions = new CopyOnWriteArrayList<>();
 
     public RealtimeClient(String clientId, RealtimeConnection connection) {
@@ -40,15 +42,36 @@ public final class RealtimeClient {
         return List.copyOf(subscriptions);
     }
 
-    public void authenticate(String userId, String role, String tenantId, List<String> subscriptions) {
+    public RealtimeCredential credential() {
+        return credential;
+    }
+
+    /** {@code credential} is what the caller subscribed with; it decides when the stream ends. */
+    public void authenticate(
+            String userId,
+            String role,
+            String tenantId,
+            List<String> subscriptions,
+            RealtimeCredential credential) {
+
         this.userId = userId;
         this.role = role;
         this.tenantId = tenantId;
+        this.credential = credential == null ? RealtimeCredential.UNBOUNDED : credential;
         this.subscriptions.clear();
         this.subscriptions.addAll(subscriptions);
     }
 
     public boolean isAuthenticated() {
         return userId != null && !userId.isBlank();
+    }
+
+    public boolean isExpiredAt(Instant now) {
+        Instant expiry = credential.expiresAt();
+        return isAuthenticated() && expiry != null && !now.isBefore(expiry);
+    }
+
+    public boolean isSubscribedWithApiKey(String keyId) {
+        return isAuthenticated() && keyId != null && keyId.equals(credential.apiKeyId());
     }
 }

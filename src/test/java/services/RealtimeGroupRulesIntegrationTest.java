@@ -12,6 +12,7 @@ import models.FieldDefinition;
 import models.FieldOptions;
 import models.HookEvent;
 import models.RealtimeConnection;
+import models.RealtimeCredential;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,13 +54,13 @@ class RealtimeGroupRulesIntegrationTest {
         RecordingConnection connectionA = new RecordingConnection();
         String clientA = service.onConnect(connectionA);
         connectionA.awaitAtLeast(1);
-        service.subscribe(clientA, AuthContext.of("rt-user-a", Role.USER, ctx.effectiveTenantId()), List.of(POSTS));
+        service.subscribe(clientA, AuthContext.of("rt-user-a", Role.USER, ctx.effectiveTenantId()), List.of(POSTS), RealtimeCredential.UNBOUNDED);
         connectionA.awaitAtLeast(2);
 
         RecordingConnection connectionB = new RecordingConnection();
         String clientB = service.onConnect(connectionB);
         connectionB.awaitAtLeast(1);
-        service.subscribe(clientB, AuthContext.of("rt-user-b", Role.USER, ctx.effectiveTenantId()), List.of(POSTS));
+        service.subscribe(clientB, AuthContext.of("rt-user-b", Role.USER, ctx.effectiveTenantId()), List.of(POSTS), RealtimeCredential.UNBOUNDED);
         connectionB.awaitAtLeast(2);
 
         Document record = new Document("id", DbUtils.id())

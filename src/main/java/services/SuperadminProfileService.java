@@ -226,7 +226,7 @@ public class SuperadminProfileService {
             }
 
             // No token issued under the old password may outlive a change.
-            tokenVersionService.revokeAllOfSuperadmin(userId);
+            revokeOtherSessions(request, userId);
             return AdminSettingsResult.ok(Map.of("success", true));
         });
     }
@@ -266,7 +266,7 @@ public class SuperadminProfileService {
             String fallbackCode = systemUserService.generateTotpFallbackCode(userId);
             PendingTwoFactorSession.clear(request);
             // A token issued before 2FA was on never passed the second factor
-            tokenVersionService.revokeAllOfSuperadmin(userId);
+            revokeOtherSessions(request, userId);
 
             return AdminSettingsResult.ok(Map.of(
                     "twoFactorEnabled", true,
@@ -298,10 +298,17 @@ public class SuperadminProfileService {
 
             systemUserService.clearTotpSecret(userId);
             PendingTwoFactorSession.clear(request);
-            tokenVersionService.revokeAllOfSuperadmin(userId);
+            revokeOtherSessions(request, userId);
 
             return AdminSettingsResult.ok(Map.of("twoFactorEnabled", false));
         });
+    }
+
+    // Revokes every session of the account, then reissues this one's cookie: issued after the
+    // revocation, it stays valid and keeps the lifetime counted from sign-in.
+    private void revokeOtherSessions(Request request, String userId) {
+        tokenVersionService.revokeAllOfSuperadmin(userId);
+        request.getAuthentication().update();
     }
 
     @FunctionalInterface

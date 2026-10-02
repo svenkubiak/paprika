@@ -162,8 +162,8 @@ connections that stay open — so it is the wrong tool for `/api/realtime`.
 `GET /api/realtime` opens a Server-Sent-Events stream. The connection is accepted and registered
 **before** anything is authenticated: a client gets its `clientId` first and authenticates
 afterwards, when it calls `POST /api/realtime/subscribe` with a token. Paprika puts no ceiling on
-how many of those streams one client may hold open, and the proxy is told to keep them alive for
-an hour (`proxy_read_timeout 1h`, which SSE needs). Without a connection limit, an
+how many of those streams one client may hold open, and it sends a heartbeat on every stream
+every 30 seconds, so no read timeout on the proxy ever closes one. Without a connection limit, an
 unauthenticated client can therefore park as many open streams as it can afford file descriptors
 for, and each one costs a socket on the proxy, a socket on the app, and an entry in the client
 registry.
@@ -210,7 +210,7 @@ Operational hints:
   during a review. Delete is for housekeeping once that history is no longer interesting.
 - **Store keys like passwords:** in the consumer's secret store, never in a repository, never in
   a mobile or browser client. Whoever holds the key *is* the bound user.
-- **A leaked key is revoked, not rotated in place.** Revocation is immediate.
+- **A leaked key is revoked, not rotated in place.** Revocation is immediate, and also closes the realtime streams subscribed with the key.
 - **Bind the key to where it is used.** A service calls from a known address range, a thief does
   not. [Allowed source ranges](/admin-ui/auth-settings#restricting-a-key-to-a-source) refuse a
   key that arrives from anywhere else, indistinguishably from an invalid one. The address checked
@@ -453,12 +453,14 @@ server {
     location /api/realtime {
         # One tab is one stream, so ten per IP is generous for a browser app. Raise it if your
         # users share a NAT. Without it, an unauthenticated client can hold open as many streams
-        # as it likes for an hour each - the request rate limit does not see them.
+        # as it likes, for as long as it likes - the request rate limit does not see them.
         limit_conn paprika_conn 10;
 
         proxy_pass http://paprika;
-        proxy_buffering off;                 # let SSE stream through
-        proxy_read_timeout 1h;
+        # Paprika sends X-Accel-Buffering: no itself; kept so streaming does not depend on it
+        proxy_buffering off;
+        # Paprika sends a heartbeat every 30 seconds, so only a dead stream is quiet this long
+        proxy_read_timeout 90s;
     }
 
     # Superadmin credentials: the only admin paths worth throttling. A regex location wins over

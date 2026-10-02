@@ -6,6 +6,7 @@ import com.mongodb.client.model.Projections;
 import constants.CollectionName;
 import constants.SystemCollections;
 import enums.Role;
+import io.mangoo.interfaces.TokenBlacklist;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.TenantDefinition;
@@ -28,15 +29,18 @@ public class TokenVersionService {
     private final TenantDatabaseResolver resolver;
     private final TenantService tenantService;
     private final RealtimeService realtimeService;
+    private final TokenBlacklist tokenBlacklist;
 
     @Inject
     public TokenVersionService(
             TenantDatabaseResolver resolver,
             TenantService tenantService,
-            RealtimeService realtimeService) {
+            RealtimeService realtimeService,
+            TokenBlacklist tokenBlacklist) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
+        this.tokenBlacklist = Objects.requireNonNull(tokenBlacklist, "tokenBlacklist must not be null");
     }
 
     /** Empty when the account does not exist, so no token of it is valid. */
@@ -64,8 +68,10 @@ public class TokenVersionService {
         revokeAll(AuthContext.of(userId, Role.USER, tenant.id()));
     }
 
+    // Also ends the admin UI sessions: the cookie carries no version, mangoo revokes it by issue time
     public void revokeAllOfSuperadmin(String userId) {
         revokeAll(AuthContext.of(userId, Role.SUPERADMIN, null));
+        tokenBlacklist.revokeSubject(userId);
     }
 
     private static int of(Document account) {

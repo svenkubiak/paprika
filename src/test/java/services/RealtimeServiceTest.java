@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import rules.RuleService;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -125,7 +127,7 @@ class RealtimeServiceTest {
         boolean subscribed = service.subscribe(
                 clientId,
                 AuthContext.of("user-1", Role.USER, "tenant-1"),
-                List.of("trips"));
+                List.of("trips"), RealtimeCredential.UNBOUNDED);
 
         assertThat(subscribed, is(true));
         connection.awaitEventCount(2);
@@ -147,17 +149,17 @@ class RealtimeServiceTest {
         assertThat(service.subscribe(
                 clientId,
                 AuthContext.of("user-1", Role.USER, "tenant-1"),
-                List.of("trips")), is(true));
+                List.of("trips"), RealtimeCredential.UNBOUNDED), is(true));
 
         assertThat("a different user must not attach to this stream", service.subscribe(
                 clientId,
                 AuthContext.of("attacker", Role.USER, "tenant-1"),
-                List.of("secrets")), is(false));
+                List.of("secrets"), RealtimeCredential.UNBOUNDED), is(false));
 
         assertThat(service.subscribe(
                 clientId,
                 AuthContext.of("user-1", Role.USER, "tenant-1"),
-                List.of("trips", "bookings")), is(true));
+                List.of("trips", "bookings"), RealtimeCredential.UNBOUNDED), is(true));
     }
 
     @Test
@@ -169,7 +171,7 @@ class RealtimeServiceTest {
         service.subscribe(
                 clientId,
                 AuthContext.of("user-1", Role.USER, "tenant-1"),
-                List.of("trips"));
+                List.of("trips"), RealtimeCredential.UNBOUNDED);
 
         assertThat(service.revokeUser("tenant-1", "user-1"), is(1));
         assertThat(connection.isOpen(), is(false));
@@ -185,7 +187,7 @@ class RealtimeServiceTest {
         service.subscribe(
                 clientId,
                 AuthContext.of("user-1", Role.USER, "tenant-1"),
-                List.of("trips"));
+                List.of("trips"), RealtimeCredential.UNBOUNDED);
 
         CollectionDefinition definition = new CollectionDefinition(
                 "def-1",
@@ -215,7 +217,7 @@ class RealtimeServiceTest {
         boolean subscribed = service.subscribe(
                 clientId,
                 AuthContext.of("user-1", Role.USER, "tenant-1"),
-                List.of("users", "trips"));
+                List.of("users", "trips"), RealtimeCredential.UNBOUNDED);
         assertThat(subscribed, is(true));
         connection.awaitEventCount(2);
 
@@ -240,9 +242,109 @@ class RealtimeServiceTest {
         assertThat(connection.eventNames(), hasItem("trips"));
     }
 
+    @Test
+    void aStreamClosesOnceTheTokenItWasSubscribedWithHasExpired() throws Exception {
+        RealtimeService service = new RealtimeService(ruleService);
+        RecordingConnection connection = new RecordingConnection();
+        String clientId = service.onConnect(connection);
+        connection.awaitEventCount(1);
+        Instant expiresAt = Instant.parse("2026-10-02T12:00:00Z");
+        service.subscribe(clientId, AuthContext.of("user-1", Role.USER, "tenant-1"), List.of("trips"), new RealtimeCredential(null, expiresAt));
+
+        service.purgeStaleClients(expiresAt.minusSeconds(1));
+        assertThat("still within the token's lifetime", connection.isOpen(), is(true));
+
+        service.purgeStaleClients(expiresAt);
+        assertThat(connection.isOpen(), is(false));
+        assertThat("the closed client is gone", service.revokeUser("tenant-1", "user-1"), is(0));
+    }
+
+    @Test
+    void subscribingAgainWithAFreshTokenRenewsTheStream() throws Exception {
+        RealtimeService service = new RealtimeService(ruleService);
+        RecordingConnection connection = new RecordingConnection();
+        String clientId = service.onConnect(connection);
+        connection.awaitEventCount(1);
+        Instant firstExpiry = Instant.parse("2026-10-02T12:00:00Z");
+        AuthContext user = AuthContext.of("user-1", Role.USER, "tenant-1");
+
+        service.subscribe(clientId, user, List.of("trips"), new RealtimeCredential(null, firstExpiry));
+        service.subscribe(clientId, user, List.of("trips"), new RealtimeCredential(null, firstExpiry.plus(Duration.ofHours(1))));
+        service.purgeStaleClients(firstExpiry.plusSeconds(1));
+
+        assertThat(connection.isOpen(), is(true));
+    }
+
+    /** As before: a credential without expiry, an API key that never expires, keeps its stream. */
+    @Test
+    void aStreamOfACredentialWithoutExpiryStaysOpen() throws Exception {
+        RealtimeService service = new RealtimeService(ruleService);
+        RecordingConnection connection = new RecordingConnection();
+        String clientId = service.onConnect(connection);
+        connection.awaitEventCount(1);
+        service.subscribe(clientId, AuthContext.of("user-1", Role.USER, "tenant-1"), List.of("trips"), new RealtimeCredential("key-1", null));
+
+        service.purgeStaleClients(Instant.parse("2100-01-01T00:00:00Z"));
+
+        assertThat(connection.isOpen(), is(true));
+    }
+
+    /** As before: a stream that never subscribed carries no token, and receives nothing either. */
+    @Test
+    void aStreamThatNeverSubscribedIsNotClosedByExpiry() throws Exception {
+        RealtimeService service = new RealtimeService(ruleService);
+        RecordingConnection connection = new RecordingConnection();
+        service.onConnect(connection);
+        connection.awaitEventCount(1);
+
+        service.purgeStaleClients(Instant.parse("2100-01-01T00:00:00Z"));
+
+        assertThat(connection.isOpen(), is(true));
+    }
+
+    @Test
+    void revokingAKeyClosesOnlyTheStreamsSubscribedWithIt() throws Exception {
+        RealtimeService service = new RealtimeService(ruleService);
+        AuthContext user = AuthContext.of("user-1", Role.USER, "tenant-1");
+        RecordingConnection keyStream = new RecordingConnection();
+        RecordingConnection otherKeyStream = new RecordingConnection();
+        RecordingConnection tokenStream = new RecordingConnection();
+        String keyClient = service.onConnect(keyStream);
+        String otherKeyClient = service.onConnect(otherKeyStream);
+        String tokenClient = service.onConnect(tokenStream);
+        keyStream.awaitEventCount(1);
+        otherKeyStream.awaitEventCount(1);
+        tokenStream.awaitEventCount(1);
+
+        service.subscribe(keyClient, user, List.of("trips"), new RealtimeCredential("key-1", null));
+        service.subscribe(otherKeyClient, user, List.of("trips"), new RealtimeCredential("key-2", null));
+        service.subscribe(tokenClient, user, List.of("trips"), new RealtimeCredential(null, Instant.now().plusSeconds(3600)));
+
+        assertThat(service.revokeApiKey("key-1"), is(1));
+        assertThat(keyStream.isOpen(), is(false));
+        assertThat("another key of the same user is not revoked with it", otherKeyStream.isOpen(), is(true));
+        assertThat("the user's own sign-in is not revoked with the key", tokenStream.isOpen(), is(true));
+    }
+
+    /** A stream that changed to another credential is no longer tied to the key it started with. */
+    @Test
+    void aStreamResubscribedWithATokenIsNoLongerTiedToTheKey() throws Exception {
+        RealtimeService service = new RealtimeService(ruleService);
+        AuthContext user = AuthContext.of("user-1", Role.USER, "tenant-1");
+        RecordingConnection connection = new RecordingConnection();
+        String clientId = service.onConnect(connection);
+        connection.awaitEventCount(1);
+
+        service.subscribe(clientId, user, List.of("trips"), new RealtimeCredential("key-1", null));
+        service.subscribe(clientId, user, List.of("trips"), new RealtimeCredential(null, Instant.now().plusSeconds(3600)));
+
+        assertThat(service.revokeApiKey("key-1"), is(0));
+        assertThat(connection.isOpen(), is(true));
+    }
+
     private static RealtimeClient subscribedClient(String userId, String collection) {
         RealtimeClient client = new RealtimeClient("client-" + userId, null);
-        client.authenticate(userId, Role.USER, "tenant-1", List.of(collection));
+        client.authenticate(userId, Role.USER, "tenant-1", List.of(collection), RealtimeCredential.UNBOUNDED);
         return client;
     }
 

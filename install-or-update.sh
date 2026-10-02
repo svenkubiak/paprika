@@ -477,10 +477,10 @@ else
 #      ]
 #    })
 #
-#  The password goes into the connection string verbatim and is not
-#  URL-encoded, so it must not contain : @ / ? # or % — pick one made up
-#  of letters, digits and -_.~ (e.g. openssl rand -hex 32), or
-#  percent-encode it here (@ -> %40, : -> %3A).
+#  Enter the password as it is: characters like : @ / ? # or % need
+#  no encoding, and a percent-encoded one (%40) would be taken
+#  literally. Leave out quotes and backslashes, which systemd
+#  interprets when it reads this file (e.g. openssl rand -hex 32).
 #
 #  See: https://svenkubiak.github.io/paprika/installation/standalone#mongodb-setup
 PERSISTENCE_MONGO_HOST=CHANGE_ME

@@ -3,6 +3,7 @@ package services;
 import auth.AuthContext;
 import dtos.TwoFactorCodeDto;
 import enums.Role;
+import io.mangoo.core.Config;
 import io.mangoo.routing.bindings.Authentication;
 import io.mangoo.routing.bindings.Request;
 import jakarta.inject.Inject;
@@ -12,6 +13,7 @@ import results.SuperadminPasswordResult;
 import session.AdminTenantSession;
 import session.PendingTwoFactorSession;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -25,17 +27,31 @@ public class AdminLoginService {
     private final TwoFactorService twoFactorService;
     private final AuthService authService;
     private final LoginAlertService loginAlertService;
+    private final Config config;
 
     @Inject
     public AdminLoginService(
             SystemUserService systemUserService,
             TwoFactorService twoFactorService,
             AuthService authService,
-            LoginAlertService loginAlertService) {
+            LoginAlertService loginAlertService,
+            Config config) {
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
         this.twoFactorService = Objects.requireNonNull(twoFactorService, "twoFactorService must not be null");
         this.authService = Objects.requireNonNull(authService, "authService must not be null");
         this.loginAlertService = Objects.requireNonNull(loginAlertService, "loginAlertService must not be null");
+        this.config = Objects.requireNonNull(config, "config must not be null");
+    }
+
+    /**
+     * mangoo issues a cookie on sign-in only when the request carried none, so a browser still
+     * holding a revoked cookie, or one of another account, would keep it. Forcing the update issues
+     * a fresh one, with its lifetime counted from this sign-in rather than taken over from the old.
+     */
+    public void signIn(Authentication authentication, String userId) {
+        authentication.withExpires(LocalDateTime.now().plusSeconds(config.getAuthenticationCookieTokenExpires()));
+        authentication.login(userId);
+        authentication.update();
     }
 
     public AdminLoginResult login(String username, String password, Authentication authentication, Request request) {
@@ -78,7 +94,7 @@ public class AdminLoginService {
             return AdminLoginResult.invalidCode();
         }
 
-        authentication.login(userId.orElseThrow());
+        signIn(authentication, userId.orElseThrow());
         PendingTwoFactorSession.clear(request);
         AdminTenantSession.resetTenantSelection(request);
         loginAlertService.recordLogin(userId.orElseThrow(), request);
@@ -123,7 +139,7 @@ public class AdminLoginService {
             return AdminLoginResult.requiresTwoFactor();
         }
 
-        authentication.login(auth.id());
+        signIn(authentication, auth.id());
         AdminTenantSession.resetTenantSelection(request);
         PendingTwoFactorSession.clear(request);
         loginAlertService.recordLogin(auth.id(), request);

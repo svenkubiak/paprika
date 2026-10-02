@@ -409,6 +409,11 @@ public class CollectionRecordService {
                     : RecordResult.notFound();
         }
 
+        if (UserRecordUtils.isUsers(collection)) {
+            // Tokens die with the account, but a stream checked its token only at subscribe
+            tokenVersionService.revokeAll(AuthContext.of(id, Role.USER, ctx.effectiveTenantId()));
+        }
+
         try {
             fileFieldService.deleteRecordFiles(ctx, definition, deleted);
             relationCascadeService.cascadeDelete(
