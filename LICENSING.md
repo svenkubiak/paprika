@@ -132,6 +132,14 @@ The continued availability or possession of previously released versions does no
 
 See `COMMERCIAL-LICENSE.md` for the complete commercial licensing terms.
 
+## Production Instances
+
+A Commercial License is licensed per Production Instance. A Production Instance is one running Paprika process in a production environment.
+
+The relevant figure is the highest number of Production Instances running at the same time during a billing period. Processes that run in parallel only briefly while Paprika is being updated or redeployed are not counted.
+
+Development, test, and staging environments are free, as long as they do not serve live production workloads.
+
 ## Releases and Updates
 
 The Licensor may publish:
@@ -159,22 +167,25 @@ Any such commitment must be expressly agreed in writing.
 
 ## Support
 
+The non-commercial license does not include support. Questions and bug reports can be submitted through the public issue tracker, where they are answered on a best-effort basis.
+
+A Commercial License includes email support with an initial response within 24 hours on Business Days for as long as the license is active.
+
 Neither the non-commercial license nor the Commercial License automatically includes:
 
-* technical support;
-* guaranteed response times;
+* guaranteed resolution times;
 * guaranteed bug fixes;
 * guaranteed security fixes;
-* service-level agreements;
+* service-level agreements beyond the stated response time;
 * migration support;
 * consulting;
 * architecture reviews;
 * custom development; or
-* dedicated support channels.
+* phone, chat, video, or on-site support.
 
-Support services may be offered separately.
+Additional support services may be offered separately.
 
-See `SUPPORT.md` for additional information.
+See `SUPPORT.md` for the details of the included email support.
 
 ## Hosted and Managed Services
 
@@ -215,7 +226,7 @@ Commercial licensing inquiries:
 
 Sven Kubiak
 
-sk@svenkubiak.de
+hello@getpaprika.dev
 
 ## Legal Terms
 

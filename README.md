@@ -166,7 +166,7 @@ Paprika uses a dual-licensing model, but there's only one version of the softwar
 
 **A commercial license** is required once you run Paprika in production for anything commercial, for example as the backend of a paid app or a live business system.
 
-Not sure which applies to you? See [LICENSING.md](LICENSING.md) for the full breakdown with examples, or get in touch at sk@svenkubiak.de.
+Not sure which applies to you? See [LICENSING.md](LICENSING.md) for the full breakdown with examples, or get in touch at hello@getpaprika.dev.
 
 ## 🔗 Links
 

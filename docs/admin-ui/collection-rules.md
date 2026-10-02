@@ -88,7 +88,9 @@ state where they do not mean what they say.
 Every API request against this collection queries the membership collection to resolve the
 caller's groups. On its [Schema tab](/admin-ui/collection-schema), add an index on the **member
 field** and one on the **group field** — without them, each request costs a full scan of that
-collection.
+collection. A compound index counts only for its first field: one on `user, team` covers the
+member field, the group field still needs its own. The Rules tab shows this warning only while
+one of the two is missing; the group field only matters for **Group peers**.
 :::
 
 On `users`, **Group peers** treats Update like View: a user could then edit their teammates'

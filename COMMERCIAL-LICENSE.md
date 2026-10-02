@@ -24,6 +24,10 @@ For purposes of this Commercial License:
 
 **"Order Form"** means an order, invoice, quotation, subscription confirmation, signed agreement, or other written document that identifies the Licensee and specifies the applicable license scope, term, fees, or other commercial conditions.
 
+**"Production Instance"** means one running process of the Software in a production environment. Development, test, and staging environments are not production environments for this purpose.
+
+**"Licensed Instances"** means the number of Production Instances stated in the applicable Order Form.
+
 ## 2. License Grant
 
 Subject to:
@@ -58,6 +62,13 @@ The scope of the Commercial License may be defined in the applicable Order Form 
 * infrastructure capacity;
 * geographic scope; or
 * another agreed licensing metric.
+
+Unless the Order Form specifies a different metric, the Commercial License is licensed per Production Instance:
+
+* the Licensee may operate at most the number of Licensed Instances at the same time;
+* the relevant figure is the highest number of Production Instances running at the same time during a billing period;
+* processes that run in parallel only briefly while the Software is being updated or redeployed are not counted; and
+* development, test, and staging environments may be operated without a Commercial License, as long as they do not serve live production workloads.
 
 If the Order Form does not specify a more limited scope, the Commercial License applies only to the Licensee legal entity identified in the Order Form.
 
@@ -183,20 +194,23 @@ Failure to pay applicable fees may result in suspension or termination of the Co
 
 ## 11. Support
 
-The Commercial License does not, by itself, include:
+During an active License Term, the Commercial License includes email support with an initial response within 24 hours on Business Days, as described in the section "Email Support for Commercial Licensees" of `SUPPORT.md`. The version of that section applicable at the start of the current billing period applies.
 
-* technical support;
-* guaranteed response times;
-* service-level agreements;
+Unless expressly agreed in an applicable Order Form or Support Agreement, the Commercial License does not include:
+
+* guaranteed resolution times;
+* service-level agreements beyond the response time stated in `SUPPORT.md`;
 * guaranteed bug fixes;
 * guaranteed security fixes;
 * migration assistance;
 * consulting;
 * architecture reviews;
 * custom development; or
-* dedicated support channels.
+* phone, chat, video, or on-site support.
 
-Support services may be purchased separately or expressly included in an applicable Order Form.
+Missing a response time does not entitle the Licensee to refunds, service credits, or damages unless expressly agreed in writing.
+
+Additional support services may be purchased separately or expressly included in an applicable Order Form.
 
 If support obligations are agreed separately, those obligations are governed by the applicable Support Agreement or Order Form.
 
@@ -356,6 +370,6 @@ Licensor:
 
 Sven Kubiak
 
-Commercial licensing:
+Commercial licensing and support:
 
-sk@svenkubiak.de
+hello@getpaprika.dev

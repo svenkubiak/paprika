@@ -241,7 +241,7 @@ The Licensor may require explicit acceptance before merging a Contribution.
 
 Contributor licensing questions:
 
-sk@svenkubiak.de
+hello@getpaprika.dev
 
 Licensor:
 

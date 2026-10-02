@@ -13,7 +13,13 @@ import {
   ruleValueFromLevel,
   SELECT_EMPTY
 } from '@/lib/utils'
-import type { CollectionDefinition, FieldDefinition, RuleLevel, RulePreset } from '@/types'
+import type {
+  CollectionDefinition,
+  FieldDefinition,
+  IndexDefinition,
+  RuleLevel,
+  RulePreset
+} from '@/types'
 
 type RuleSelectLevel = RuleLevel | typeof SELECT_EMPTY
 
@@ -41,6 +47,7 @@ const form = ref({
 })
 
 const membershipFields = ref<FieldDefinition[]>([])
+const membershipIndexes = ref<IndexDefinition[]>([])
 
 /** Kept out of the template because the sentence quotes the literal field 'id'. */
 const groupRecordFieldDetails =
@@ -140,6 +147,17 @@ const allLevels = computed(() => [
 
 const usesMembershipRules = computed(() => allLevels.value.some(isMembershipLevel))
 const usesGroupRules = computed(() => allLevels.value.some((level) => level === 'group'))
+const usesPeersRules = computed(() => allLevels.value.some((level) => level === 'peers'))
+
+// The lookup filters on the member field on every request, and on the group field to find the
+// peers. MongoDB serves a filter only from an index that starts with the field, so a compound
+// index counts for its leading field alone.
+const unindexedMembershipFields = computed(() => {
+  if (!form.value.groupCollection) return []
+  const leading = new Set(membershipIndexes.value.map((index) => index.fields[0]?.field))
+  return [form.value.groupMemberField, usesPeersRules.value ? form.value.groupField : '']
+    .filter((field) => field && !leading.has(field))
+})
 
 // The own collection stays in the list: a self-scoping membership collection is how a group's
 // member list is shown. Not circular - the resolver queries the memberships once.
@@ -170,16 +188,21 @@ watch(
   async (name) => {
     if (!name) {
       membershipFields.value = []
+      membershipIndexes.value = []
       return
     }
     if (name === collection.value && definition.value) {
       membershipFields.value = definition.value.fields ?? []
+      membershipIndexes.value = definition.value.indexes ?? []
       return
     }
     try {
-      membershipFields.value = (await api.getCollectionDefinition(name)).fields ?? []
+      const membership = await api.getCollectionDefinition(name)
+      membershipFields.value = membership.fields ?? []
+      membershipIndexes.value = membership.indexes ?? []
     } catch {
       membershipFields.value = []
+      membershipIndexes.value = []
     }
   }
 )
@@ -353,11 +376,12 @@ async function saveRules() {
 
         <template v-if="usesMembershipRules">
           <UAlert
+            v-if="unindexedMembershipFields.length > 0"
             color="warning"
             variant="soft"
             icon="i-lucide-gauge"
             title="Index the membership collection"
-            :description="`Every request resolves the caller's groups by querying ${form.groupCollection || 'the membership collection'}. Add an index on the member field and one on the group field in that collection's Schema tab, otherwise each call costs a full collection scan.`"
+            :description="`Every request resolves the caller's groups by querying ${form.groupCollection}. Add an index on ${unindexedMembershipFields.join(' and one on ')} in that collection's Schema tab - a compound index counts only for its first field. Otherwise each call costs a full collection scan.`"
           />
 
           <div class="grid gap-4 md:grid-cols-2">

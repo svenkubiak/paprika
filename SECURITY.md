@@ -10,7 +10,7 @@ Please do **not** report suspected security vulnerabilities through public issue
 
 Instead, report security vulnerabilities privately to:
 
-sk@svenkubiak.de
+hello@getpaprika.dev
 
 Please include as much relevant information as possible.
 
@@ -232,4 +232,4 @@ The public availability of a security fix does not change the licensing requirem
 
 Security reports:
 
-sk@svenkubiak.de
+hello@getpaprika.dev

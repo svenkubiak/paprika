@@ -12,12 +12,14 @@ There is no separate Community Edition, Enterprise Edition, or private support-o
 
 Bug fixes, security fixes, patch releases, minor releases, and major releases may be made generally available to all users.
 
-## Support Is Not Included by Default
+## What Is Included
 
-Neither the non-commercial license nor the Commercial License automatically includes:
+The non-commercial license does not include support. Non-commercial users can use the community channels described below.
 
-* guaranteed technical support;
-* guaranteed response times;
+An active Commercial License includes email support as described in "Email Support for Commercial Licensees".
+
+Beyond that, neither the non-commercial license nor the Commercial License automatically includes:
+
 * guaranteed resolution times;
 * guaranteed bug fixes;
 * guaranteed security fixes;
@@ -26,8 +28,8 @@ Neither the non-commercial license nor the Commercial License automatically incl
 * consulting;
 * architecture reviews;
 * migration assistance;
-* dedicated support channels; or
-* service-level agreements.
+* phone, chat, video, or on-site support; or
+* service-level agreements beyond the response time stated in this document.
 
 Any such commitment must be expressly agreed in writing.
 
@@ -55,15 +57,63 @@ There is no guarantee that:
 * a workaround will be provided; or
 * a response will be provided within any particular time.
 
-## Commercial Licensees
+## Email Support for Commercial Licensees
 
-A Commercial License grants commercial usage rights to the Software.
+### Eligibility
 
-Unless otherwise stated in an applicable Order Form or Support Agreement, it does not include any enhanced support entitlement.
+Email support is available to Licensees with an active Commercial License for the duration of the License Term. A support request must name the Licensee and, where available, the order or invoice reference.
 
-Commercial licensees may use the same public support channels as other users.
+### Channel
 
-Priority support or contractual support commitments may be purchased separately.
+Support requests are sent by email to:
+
+hello@getpaprika.dev
+
+Requests can be written in German or English. Commercial licensees do not need to use the public issue tracker, although they may.
+
+### Response Time
+
+The Licensor provides an initial response within 24 hours on Business Days.
+
+A Business Day is Monday through Friday, excluding public holidays observed nationwide in Germany.
+
+The response period only runs on Business Days. A request received on a Friday afternoon is therefore answered by the same time on the following Monday at the latest. A request received on a day that is not a Business Day is treated as received at the start of the next Business Day.
+
+The initial response is a qualified reply by a person, for example an answer, a request for further information, or an assessment of the issue. An automatic acknowledgment does not count as an initial response.
+
+A response-time commitment is not a guarantee that an issue will be resolved within the same period.
+
+### Scope
+
+Email support covers:
+
+* installing, configuring, and upgrading the Software;
+* operating the Software within the licensed scope; and
+* investigating suspected defects in the Software.
+
+Email support does not cover:
+
+* the Licensee's own application code;
+* third-party software, services, or infrastructure, except where it directly concerns running the Software;
+* custom development, consulting, or architecture reviews;
+* migration projects; or
+* phone, chat, video, or on-site support.
+
+Support is provided for the latest generally available release. Resolving an issue may require upgrading to that release.
+
+### Absences
+
+Planned absences of the Licensor are announced to commercial licensees at least seven days in advance. During an announced absence, the response period is extended to three Business Days.
+
+During an unforeseen absence, such as illness, the response period is extended accordingly, and the Licensor responds as soon as reasonably possible.
+
+### Missed Response Times
+
+Missing a response time does not entitle the Licensee to refunds, service credits, or damages unless expressly agreed in writing.
+
+### Changes to Email Support
+
+The Licensor may change this section for future License Terms. A change does not reduce the support of a License Term that is already paid for. For monthly licenses, a change applies from the next billing period.
 
 ## Bug Reports
 
@@ -179,11 +229,11 @@ The Licensor does not control third-party products and does not guarantee contin
 
 Changes to third-party dependencies may require changes to the Software or to user deployments.
 
-## Paid Support
+## Additional Support
 
-The Licensor may offer paid support under a separate Support Agreement or Order Form.
+Beyond the email support included in a Commercial License, the Licensor may offer additional support under a separate Support Agreement or Order Form.
 
-Paid support may include, depending on the agreed plan:
+Additional support may include, depending on the agreed plan:
 
 * defined support channels;
 * priority handling;
@@ -200,7 +250,7 @@ Only commitments expressly stated in the applicable written agreement are bindin
 
 ## Response Times
 
-No response time is guaranteed under this general support policy.
+Except for the email support for commercial licensees described above, no response time is guaranteed under this support policy.
 
 If a separate Support Agreement defines response times, those response times refer to an initial response or acknowledgment unless the agreement expressly states otherwise.
 
@@ -262,12 +312,12 @@ If this Support Policy conflicts with an applicable signed Support Agreement or 
 
 General support and bug reports:
 
-sk@svenkubiak.de
+hello@getpaprika.dev
 
 Security reports:
 
-sk@svenkubiak.de
+hello@getpaprika.dev
 
-Commercial support inquiries:
+Email support for commercial licensees and commercial support inquiries:
 
-sk@svenkubiak.de
+hello@getpaprika.dev
