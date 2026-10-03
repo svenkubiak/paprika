@@ -24,9 +24,9 @@ For purposes of this Commercial License:
 
 **"Order Form"** means an order, invoice, quotation, subscription confirmation, signed agreement, or other written document that identifies the Licensee and specifies the applicable license scope, term, fees, or other commercial conditions.
 
-**"Production Instance"** means one running process of the Software in a production environment. Development, test, and staging environments are not production environments for this purpose.
+**"Installation"** means one system of the Software in a production environment, including all of its tenants and users. The number of processes of the Software an Installation runs on does not matter for this Commercial License. Several separate production systems, for example one per customer, are several Installations, and each requires its own license. Development, test, and staging environments are not production environments for this purpose and do not require a Commercial License.
 
-**"Licensed Instances"** means the number of Production Instances stated in the applicable Order Form.
+**"Licensed Installations"** means the number of Installations stated in the applicable Order Form.
 
 ## 2. License Grant
 
@@ -63,11 +63,10 @@ The scope of the Commercial License may be defined in the applicable Order Form 
 * geographic scope; or
 * another agreed licensing metric.
 
-Unless the Order Form specifies a different metric, the Commercial License is licensed per Production Instance:
+Unless the Order Form specifies a different metric, the Commercial License is licensed per Installation:
 
-* the Licensee may operate at most the number of Licensed Instances at the same time;
-* the relevant figure is the highest number of Production Instances running at the same time during a billing period;
-* processes that run in parallel only briefly while the Software is being updated or redeployed are not counted; and
+* the Licensee may operate at most the number of Licensed Installations;
+* the number of processes an Installation runs on is not counted; and
 * development, test, and staging environments may be operated without a Commercial License, as long as they do not serve live production workloads.
 
 If the Order Form does not specify a more limited scope, the Commercial License applies only to the Licensee legal entity identified in the Order Form.

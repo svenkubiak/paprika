@@ -132,13 +132,15 @@ The continued availability or possession of previously released versions does no
 
 See `COMMERCIAL-LICENSE.md` for the complete commercial licensing terms.
 
-## Production Instances
+## Installations
 
-A Commercial License is licensed per Production Instance. A Production Instance is one running Paprika process in a production environment.
+A Commercial License is licensed per Installation. An Installation is one Paprika system in a production environment, including all of its tenants and users.
 
-The relevant figure is the highest number of Production Instances running at the same time during a billing period. Processes that run in parallel only briefly while Paprika is being updated or redeployed are not counted.
+The number of Paprika processes an Installation runs on does not matter for the license.
 
-Development, test, and staging environments are free, as long as they do not serve live production workloads.
+Several separate production systems, for example one per customer, are several Installations, and each needs its own license.
+
+Development, test, and staging environments do not need a license, as long as they do not serve live production workloads.
 
 ## Releases and Updates
 
