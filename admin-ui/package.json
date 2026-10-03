@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.138",
+    "@iconify-json/lucide": "^1.2.139",
     "@nuxt/ui": "^4.11.3",
     "@vueuse/core": "^14.4.0",
     "qrcode": "^1.5.4",
