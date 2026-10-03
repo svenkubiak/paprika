@@ -482,7 +482,7 @@ else
 #  literally. Leave out quotes and backslashes, which systemd
 #  interprets when it reads this file (e.g. openssl rand -hex 32).
 #
-#  See: https://svenkubiak.github.io/paprika/installation/standalone#mongodb-setup
+#  See: https://docs.getpaprika.dev/installation/standalone#mongodb-setup
 PERSISTENCE_MONGO_HOST=CHANGE_ME
 PERSISTENCE_MONGO_PORT=27017
 PERSISTENCE_MONGO_USERNAME=CHANGE_ME
@@ -705,7 +705,7 @@ else
     echo "      role scoped to a single database isn't enough: create a user"
     echo "      authenticated against 'admin' (authSource=admin) with the"
     echo "      readWriteAnyDatabase and dbAdminAnyDatabase roles."
-    echo "      See: https://svenkubiak.github.io/paprika/installation/standalone#mongodb-setup"
+    echo "      See: https://docs.getpaprika.dev/installation/standalone#mongodb-setup"
     echo ""
     echo "   2. ✏️  Edit ${ENV_FILE}"
     echo "      Replace all CHANGE_ME values with your"

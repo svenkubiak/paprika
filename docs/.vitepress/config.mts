@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Paprika Docs',
   description: 'How to use the Paprika admin UI: tenants, roles, collections, rules, hooks, and more.',
-  base: '/paprika/',
+  base: '/',
   cleanUrls: true,
   lastUpdated: true,
 

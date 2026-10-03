@@ -2,7 +2,7 @@
 [![Release](https://img.shields.io/github/v/release/svenkubiak/paprika?label=release)](https://github.com/svenkubiak/paprika/releases/latest)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0.0-green)](https://semver.org/lang/de)
 [![Release Build](https://github.com/svenkubiak/paprika/actions/workflows/release.yml/badge.svg)](https://github.com/svenkubiak/paprika/actions/workflows/release.yml)
-[![Docs](https://img.shields.io/badge/docs-online-blue?logo=readthedocs&logoColor=white)](https://svenkubiak.github.io/paprika/)
+[![Docs](https://img.shields.io/badge/docs-online-blue?logo=readthedocs&logoColor=white)](https://docs.getpaprika.dev/)
 [![Status](https://img.shields.io/badge/status-beta-orange)](https://github.com/svenkubiak/paprika#-paprika)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](https://github.com/svenkubiak/paprika/blob/main/LICENSING.md)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-%F0%9F%8D%BA-yellow)](https://buymeacoffee.com/svenkubiak)
@@ -75,15 +75,15 @@ Paprika can be deployed two ways, both via a single install script that generate
 - **Docker** — one command downloads a `compose.yml`, spins up Paprika alongside a bundled MongoDB container, and starts the stack. No separate database to install. Runs on any Linux, macOS, or Windows host with Docker Compose v2.
 - **Standalone (`.deb`)** — installs Paprika as a hardened systemd service on Ubuntu 22.04+ or Debian 12+, with sandboxing applied out of the box. You bring your own MongoDB instance; the installer pauses and asks for its connection details before starting the service.
 
-Either way, once the service is up, a one-time setup link is printed to the log to create your first superadmin — see [Initial Setup](https://svenkubiak.github.io/paprika/installation/initial-setup).
+Either way, once the service is up, a one-time setup link is printed to the log to create your first superadmin — see [Initial Setup](https://docs.getpaprika.dev/installation/initial-setup).
 
-Full installation instructions, including update and service-management commands, are in the [documentation](https://svenkubiak.github.io/paprika/installation/docker).
+Full installation instructions, including update and service-management commands, are in the [documentation](https://docs.getpaprika.dev/installation/docker).
 
 ## ⚙️ Configuration
 
 Paprika is configured entirely through environment variables in a `.env` file. Both install scripts auto-generate the internal signing secrets (JWT, session, flash, and admin auth cookies), but not everything: Docker also generates a MongoDB root password, while the standalone install leaves MongoDB credentials for you to fill in, since it doesn't manage the database itself. SMTP is never auto-configured on either install method — it's optional and only needed if you enable password reset or email verification for a tenant.
 
-Full variable reference is in the [documentation](https://svenkubiak.github.io/paprika/installation/configuration).
+Full variable reference is in the [documentation](https://docs.getpaprika.dev/installation/configuration).
 
 ## 🏗️ Architecture
 
@@ -98,7 +98,7 @@ Full variable reference is in the [documentation](https://svenkubiak.github.io/p
 
 ## 💻 Local Development
 
-Setup instructions for running backend, admin UI, and tests locally are in the [documentation](https://svenkubiak.github.io/paprika/contributing/local-development).
+Setup instructions for running backend, admin UI, and tests locally are in the [documentation](https://docs.getpaprika.dev/contributing/local-development).
 
 ## 🤝 Contributing
 
@@ -170,7 +170,7 @@ Not sure which applies to you? See [LICENSING.md](LICENSING.md) for the full bre
 
 ## 🔗 Links
 
-- [Documentation](https://svenkubiak.github.io/paprika/), the admin UI guide and concepts (tenants, roles, collections)
+- [Documentation](https://docs.getpaprika.dev/), the admin UI guide and concepts (tenants, roles, collections)
 - [mangoo I/O](https://github.com/svenkubiak/mangooio), the underlying Java web framework
 - [Licensing](LICENSING.md)
 - [Commercial License](COMMERCIAL-LICENSE.md)
