@@ -12,11 +12,7 @@ import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.mangoo.utils.JsonUtils;
 import io.undertow.util.StatusCodes;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.HookDefinition;
-import models.HookEvent;
-import models.TenantDefinition;
+import models.*;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +29,6 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
@@ -426,9 +421,7 @@ class RequestLogTelemetryIntegrationTest {
 
     private static HttpServer startHookServer(String body, int status, long delayMs) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        AtomicInteger calls = new AtomicInteger();
         server.createContext("/hook", exchange -> {
-            calls.incrementAndGet();
             exchange.getRequestBody().readAllBytes();
             if (delayMs > 0) {
                 try {

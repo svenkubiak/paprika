@@ -1,11 +1,7 @@
 package services;
 
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.IndexOptions;
-import com.mongodb.client.model.Indexes;
-import com.mongodb.client.model.ReplaceOptions;
-import com.mongodb.client.model.UpdateOptions;
-import com.mongodb.client.model.Updates;
+import com.mongodb.client.model.*;
 import io.mangoo.core.Config;
 import io.mangoo.interfaces.TokenBlacklist;
 import jakarta.inject.Inject;

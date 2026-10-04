@@ -4,26 +4,16 @@ import auth.TenantContext;
 import constants.CollectionName;
 import constants.SystemCollections;
 import dtos.SchemaExportDto;
+import hooks.HookRequestUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import models.CollectionDefinition;
-import models.CollectionRules;
-import hooks.HookRequestUtils;
-import models.FieldDefinition;
-import models.HookDefinition;
-import models.IndexDefinition;
+import models.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import rules.RuleParseException;
 import utils.Timestamps;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.StreamSupport;
 
 @Singleton

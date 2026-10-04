@@ -2,12 +2,13 @@ package security;
 
 import auth.TenantContext;
 import com.sun.net.httpserver.HttpServer;
-import enums.FieldType;
 import io.mangoo.core.Application;
 import io.mangoo.test.TestRunner;
 import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
-import models.*;
+import models.HookDefinition;
+import models.HookEvent;
+import models.TenantDefinition;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;

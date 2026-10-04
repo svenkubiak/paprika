@@ -15,11 +15,8 @@ import services.UserService;
 import utils.TenantTestUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 
-/** The {@code peers} preset on users: only the accounts a user shares a group with are visible. */
 @ExtendWith({TestRunner.class})
 class UsersPeersRulesIntegrationTest {
     private static final String MEMBERSHIPS = "grp_memberships";

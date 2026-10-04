@@ -9,18 +9,12 @@ import io.mangoo.test.TestRunner;
 import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.undertow.util.StatusCodes;
-import models.CollectionDefinition;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.HookDefinition;
-import models.HookEvent;
-import models.TenantDefinition;
+import models.*;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.TenantCollectionService;
 import services.TenantService;
-import services.TenantUserService;
 import services.UserService;
 import utils.AdminTestUtils;
 import utils.DbUtils;
@@ -39,7 +33,6 @@ import java.util.concurrent.TimeUnit;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/** Rule-bypassing API keys must neither reach the management API nor skip the hooks. */
 @ExtendWith({TestRunner.class})
 class ApiKeyBypassIntegrationTest {
 
@@ -143,7 +136,6 @@ class ApiKeyBypassIntegrationTest {
         String boundId = userId(userService.createUser("bypass-default-user", null, "secret-password-123"));
         TenantDefinition tenant = TenantTestUtils.defaultTenant();
 
-        // A body without the field must keep its previous meaning
         TestResponse created = AdminTestUtils.postWithAdminCookies(
                 "/api/meta/tenants/" + tenant.id() + "/api-keys",
                 adminCookies(),

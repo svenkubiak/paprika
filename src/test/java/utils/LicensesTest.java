@@ -10,7 +10,8 @@ import java.util.Base64;
 import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 
 class LicensesTest {
     private static final LocalDate TODAY = LocalDate.of(2026, 10, 3);

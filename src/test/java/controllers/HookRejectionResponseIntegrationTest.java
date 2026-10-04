@@ -8,11 +8,7 @@ import io.mangoo.test.TestRunner;
 import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.undertow.util.StatusCodes;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.HookDefinition;
-import models.HookEvent;
-import models.TenantDefinition;
+import models.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
@@ -35,10 +31,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 
 /** A hook may pick its rejection status, but never make a rejection look like a success or redirect. */
 @ExtendWith({TestRunner.class})

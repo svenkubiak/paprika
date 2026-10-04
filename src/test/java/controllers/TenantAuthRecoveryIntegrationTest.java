@@ -15,7 +15,8 @@ import services.UserService;
 import utils.TenantTestUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
 
 @ExtendWith({TestRunner.class})
 class TenantAuthRecoveryIntegrationTest {

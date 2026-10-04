@@ -6,13 +6,7 @@ import enums.FieldType;
 import enums.Role;
 import io.mangoo.core.Application;
 import io.mangoo.test.TestRunner;
-import models.CollectionDefinition;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.FieldOptions;
-import models.HookEvent;
-import models.RealtimeConnection;
-import models.RealtimeCredential;
+import models.*;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,10 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 
 /** A group rule enforced only on the request path would leak through the stream what a GET refuses. */
 @ExtendWith({TestRunner.class})

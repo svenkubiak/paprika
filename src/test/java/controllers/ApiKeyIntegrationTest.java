@@ -6,20 +6,11 @@ import io.mangoo.test.TestRunner;
 import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.undertow.util.StatusCodes;
-import models.ApiKeyDefinition;
-import models.CollectionDefinition;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.TenantDefinition;
+import models.*;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import services.ApiKeyService;
-import services.TenantCollectionService;
-import services.TenantDatabaseResolver;
-import services.TenantService;
-import services.TenantUserService;
-import services.UserService;
+import services.*;
 import utils.AdminTestUtils;
 import utils.DbUtils;
 import utils.TenantTestUtils;
@@ -33,7 +24,6 @@ import java.util.Map;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-/** A key must behave exactly like an access token of the bound user, and never more than that. */
 @ExtendWith({TestRunner.class})
 class ApiKeyIntegrationTest {
 
@@ -81,7 +71,6 @@ class ApiKeyIntegrationTest {
         assertThat(service.resolve(created.plaintext(), InetAddress.getLoopbackAddress()).key().isPresent(), is(true));
     }
 
-    /** Keys written before the change keep their expiry string; it must still be honored. */
     @Test
     void legacyExpiryWithoutMillisecondsIsStillHonored() {
         UserService userService = Application.getInstance(UserService.class);
@@ -277,7 +266,6 @@ class ApiKeyIntegrationTest {
         assertThat(locked.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
         assertThat(locked.getContent(), not(containsString("locked record")));
 
-        // A user whose role is not `user` must not get a key at all
         String elevatedId = DbUtils.id();
         Application.getInstance(services.TenantDatabaseResolver.class)
                 .tenantDatabase(tenant.databaseName())

@@ -2,11 +2,11 @@ package utils;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import constants.CollectionName;
 import io.mangoo.core.Application;
 import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.undertow.util.StatusCodes;
-import constants.CollectionName;
 import models.TenantDefinition;
 import services.SystemUserService;
 import services.TenantDatabaseResolver;
@@ -87,9 +87,9 @@ public final class AdminTestUtils {
     }
 
     /**
-     * Removes a superadmin a test created. Bypasses the last-admin guard on purpose: until a test
-     * sets the password of "admin", the test's account may be the only completed one, and a refused
-     * delete would leave it behind for the tests that count superadmins.
+     * Bypasses the last-admin guard on purpose: until a test sets the password of "admin", the test's
+     * account may be the only completed one, and a refused delete would leave it behind for the tests
+     * that count superadmins.
      */
     public static void removeSuperadmin(String id) {
         Application.getInstance(TenantDatabaseResolver.class)

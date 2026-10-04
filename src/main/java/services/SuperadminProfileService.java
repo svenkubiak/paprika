@@ -1,15 +1,9 @@
 package services;
 
-import io.mangoo.exceptions.MangooHashingException;
 import auth.AuthContext;
-import dtos.ChangePasswordDto;
-import dtos.LoginAlertDto;
-import dtos.ProfileEmailDto;
-import dtos.TwoFactorCodeDto;
-import dtos.TwoFactorSetupDto;
-import dtos.UpdateAvatarDto;
-import dtos.VerifyEmailDto;
+import dtos.*;
 import io.mangoo.core.Config;
+import io.mangoo.exceptions.MangooHashingException;
 import io.mangoo.routing.bindings.Request;
 import io.undertow.util.Headers;
 import jakarta.inject.Inject;
@@ -22,12 +16,7 @@ import session.PendingTwoFactorSession;
 import utils.InstanceLinks;
 import utils.MimeTypes;
 
-import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 

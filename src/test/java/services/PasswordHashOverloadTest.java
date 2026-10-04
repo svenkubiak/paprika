@@ -20,9 +20,7 @@ import results.TenantLoginResult;
 import java.util.Optional;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 
 /**
  * A hashing capacity refusal must not read as a credential error. Provoked by overriding the hashing,

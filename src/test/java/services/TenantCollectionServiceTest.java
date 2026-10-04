@@ -4,11 +4,7 @@ import auth.TenantContext;
 import enums.FieldType;
 import enums.IndexDirection;
 import io.mangoo.core.Application;
-import models.CollectionDefinition;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.IndexDefinition;
-import models.IndexField;
+import models.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import rules.RuleParseException;
@@ -17,9 +13,7 @@ import utils.TenantTestUtils;
 import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

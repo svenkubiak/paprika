@@ -14,9 +14,7 @@ import utils.AdminTestUtils;
 import utils.TenantTestUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 
 @ExtendWith({TestRunner.class})
 class TenantUsersCustomFieldsIntegrationTest {
@@ -51,7 +49,7 @@ class TenantUsersCustomFieldsIntegrationTest {
             assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
             assertThat(create.getContent(), containsString("\"displayName\":\"Custom Fields\""));
             assertThat(create.getContent(), containsString("\"loyaltyPoints\":42"));
-            // Credentials must not leak now that the response is no longer a fixed whitelist
+            // The response follows the schema, not a fixed whitelist, so credentials could slip through
             assertThat(create.getContent(), not(containsString("passwordHash")));
             assertThat(create.getContent(), not(containsString("passwordSalt")));
 

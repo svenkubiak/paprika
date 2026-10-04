@@ -11,27 +11,23 @@ import validation.ValidationResult;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 
-/**
- * Every value accepted before stays accepted ("still accepts"); only values that cannot be stored
- * in a sortable form are now refused ("now rejects").
- */
 class TemporalFieldValidatorTest {
 
     @Test
-    void dateStillAcceptsIsoDates() {
+    void dateAcceptsOnlyValidIsoDates() {
         assertThat(validDate("2026-10-03"), is(true));
         assertThat(validDate("2026-02-30"), is(false));
         assertThat(validDate("03.10.2026"), is(false));
     }
 
     @Test
-    void dateNowRejectsSignedYears() {
+    void dateRejectsSignedYears() {
         assertThat(validDate("+10000-01-01"), is(false));
         assertThat(validDate("-0001-01-01"), is(false));
     }
 
     @Test
-    void timeStillAcceptsHoursMinutesAndSeconds() {
+    void timeAcceptsHoursMinutesAndSeconds() {
         assertThat(validTime("10:00"), is(true));
         assertThat(validTime("10:00:00"), is(true));
         assertThat(validTime("10:00:00.000"), is(true));
@@ -39,7 +35,7 @@ class TemporalFieldValidatorTest {
     }
 
     @Test
-    void timeNowRejectsFractionalSeconds() {
+    void timeRejectsFractionalSeconds() {
         ValidationResult result = validate(field("opensAt", FieldType.TIME, null), "10:00:00.5");
 
         assertThat(result.isValid(), is(false));
@@ -48,7 +44,7 @@ class TemporalFieldValidatorTest {
     }
 
     @Test
-    void dateTimeStillAcceptsAnyOffsetAndPrecision() {
+    void dateTimeAcceptsAnyOffsetAndPrecision() {
         assertThat(validDateTime("2026-10-03T10:00:00Z"), is(true));
         assertThat(validDateTime("2026-10-03T11:30:00+02:00"), is(true));
         assertThat(validDateTime("2026-10-03T10:00Z"), is(true));
@@ -57,11 +53,10 @@ class TemporalFieldValidatorTest {
     }
 
     @Test
-    void dateTimeNowRejectsYearsBeyondFourDigits() {
+    void dateTimeRejectsYearsBeyondFourDigits() {
         assertThat(validDateTime("+10000-01-01T00:00:00Z"), is(false));
     }
 
-    /** The range check compares instants, not strings, so offsets on either side do not matter. */
     @Test
     void dateTimeRangeIsComparedAcrossOffsets() {
         FieldDefinition field = field("startsAt", FieldType.DATETIME,
@@ -78,7 +73,7 @@ class TemporalFieldValidatorTest {
     }
 
     @Test
-    void timeRangeStillComparesParsedValues() {
+    void timeRangeComparesParsedValues() {
         FieldDefinition field = field("opensAt", FieldType.TIME, FieldOptions.forTimeRange("08:00", "18:00:00"));
 
         assertThat(validate(field, "08:00:00").isValid(), is(true));

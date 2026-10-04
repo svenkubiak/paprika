@@ -1,8 +1,8 @@
 package services;
 
 import auth.TenantContext;
-import constants.CollectionName;
 import com.mongodb.client.MongoDatabase;
+import constants.CollectionName;
 import io.mangoo.core.Application;
 import io.mangoo.test.TestRunner;
 import models.CollectionRules;
@@ -25,13 +25,7 @@ import java.util.zip.ZipOutputStream;
 
 import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.greaterThan;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.hasItems;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -44,21 +38,32 @@ class BackupImportSafetyTest {
     private static final String PROBE_TITLE = "backup-probe-record";
 
     private static String probeRecordId;
+    private static ImportService.ImportResult restore;
 
+    /**
+     * One successful restore, shared by the tests of the successful path: a restore drops and recreates
+     * every collection, which takes seconds once the rest of the suite has filled the default tenant.
+     * The rejection tests do not write, so they can run before or after it.
+     */
     @BeforeAll
-    static void seed() {
+    static void seedAndRestore() throws Exception {
         // A pending invite has no passwordHash, and a backup restoring only pending invites must be refused.
         utils.AdminTestUtils.prepareAdminPassword();
 
         TenantTestUtils.seedCollection(COLLECTION, new CollectionRules("*", "*", "*", "*", "*", "owner"));
         probeRecordId = TenantTestUtils.seedRecord(COLLECTION, PROBE_TITLE);
+
+        byte[] backup = export();
+        probeCollection().deleteOne(eq("id", probeRecordId));
+        assertThat(probeRecord(), is((Document) null));
+
+        restore = importService().importAll(backup);
     }
 
     @Test
     void aBackupWithoutTheSystemUsersIsRejectedAndTheSuperadminsSurvive() throws Exception {
         long before = superadmins();
         assertThat("the fixture needs at least one superadmin to lose", before, greaterThan(0L));
-
 
         byte[] broken = withoutEntry(export(), "system/users.json");
 
@@ -124,15 +129,8 @@ class BackupImportSafetyTest {
 
     /** Without this, refusing everything would pass the tests above. */
     @Test
-    void aCompleteBackupStillRestoresWhatWasDeleted() throws Exception {
-        byte[] backup = export();
-
-        probeCollection().deleteOne(eq("id", probeRecordId));
-        assertThat(probeRecord(), is((Document) null));
-
-        ImportService.ImportResult result = importService().importAll(backup);
-
-        assertThat(result.tenants(), greaterThan(0));
+    void aCompleteBackupStillRestoresWhatWasDeleted() {
+        assertThat(restore.tenants(), greaterThan(0));
         assertThat("the deleted record has to come back", probeRecord(), notNullValue());
         assertThat(probeRecord().getString("title"), equalTo(PROBE_TITLE));
         assertThat(superadmins(), greaterThan(0L));
@@ -141,13 +139,9 @@ class BackupImportSafetyTest {
     /** The snapshot path is part of the contract: an operator needs it when the restore was the wrong one. */
     @Test
     void aSnapshotOfTheCurrentStateIsTakenBeforeTheFirstWrite() throws Exception {
-        byte[] backup = export();
-
-        ImportService.ImportResult result = importService().importAll(backup);
-
-        assertThat(result.snapshot(), notNullValue());
-        assertThat(java.nio.file.Files.isRegularFile(java.nio.file.Path.of(result.snapshot())), is(true));
-        assertThat(java.nio.file.Files.size(java.nio.file.Path.of(result.snapshot())), greaterThan(0L));
+        assertThat(restore.snapshot(), notNullValue());
+        assertThat(java.nio.file.Files.isRegularFile(java.nio.file.Path.of(restore.snapshot())), is(true));
+        assertThat(java.nio.file.Files.size(java.nio.file.Path.of(restore.snapshot())), greaterThan(0L));
     }
 
     /**
@@ -155,9 +149,7 @@ class BackupImportSafetyTest {
      * creates both succeed and the next restart cannot build the index over the duplicates.
      */
     @Test
-    void aRestoreLeavesTheDatabasesWithTheIndexesAFreshInstallHas() throws Exception {
-        importService().importAll(export());
-
+    void aRestoreLeavesTheDatabasesWithTheIndexesAFreshInstallHas() {
         MongoDatabase system = Application.getInstance(TenantDatabaseResolver.class).system();
         assertThat("a superadmin username has to stay unique after a restore",
                 indexNames(system.getCollection(CollectionName.USERS)), hasItem("username_unique"));
@@ -177,9 +169,7 @@ class BackupImportSafetyTest {
     }
 
     @Test
-    void aCollectionNameStaysUniqueAfterARestore() throws Exception {
-        importService().importAll(export());
-
+    void aCollectionNameStaysUniqueAfterARestore() {
         var metaCollections = Application.getInstance(TenantCollectionService.class)
                 .metaCollections(TenantTestUtils.defaultTenantContext());
         String name = "restore_unique_" + DbUtils.id().substring(0, 8);

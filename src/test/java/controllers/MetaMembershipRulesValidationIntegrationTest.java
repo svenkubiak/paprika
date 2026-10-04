@@ -15,9 +15,7 @@ import utils.DbUtils;
 import utils.TenantTestUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.*;
 
 /** An incomplete membership rule is refused on save rather than stored and denying every request. */
 @ExtendWith({TestRunner.class})

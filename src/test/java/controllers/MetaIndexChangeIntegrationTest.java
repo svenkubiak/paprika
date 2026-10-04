@@ -5,7 +5,6 @@ import io.mangoo.core.Application;
 import io.mangoo.test.TestRunner;
 import io.mangoo.test.http.TestResponse;
 import io.undertow.util.StatusCodes;
-import models.CollectionDefinition;
 import models.CollectionRules;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
@@ -19,9 +18,7 @@ import java.util.List;
 import java.util.stream.StreamSupport;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.*;
 
 /**
  * MongoDB rejects a createIndex that reuses a name with different options (IndexOptionsConflict),

@@ -10,11 +10,7 @@ import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.mangoo.utils.JsonUtils;
 import io.undertow.util.StatusCodes;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.HookDefinition;
-import models.HookEvent;
-import models.TenantDefinition;
+import models.*;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,8 +34,7 @@ import static org.hamcrest.Matchers.is;
 
 /**
  * DATE, TIME and DATETIME values and the system timestamps are stored in one sortable form, on
- * every write path. The "legacy" tests insert values the way they were stored before, directly into
- * MongoDB, to pin down why that form sorted wrongly and that such data is not rewritten.
+ * every write path.
  */
 @ExtendWith({TestRunner.class})
 class CollectionTemporalValuesIntegrationTest {
@@ -87,7 +82,7 @@ class CollectionTemporalValuesIntegrationTest {
     }
 
     @Test
-    void createStillAcceptsEveryPreviouslyValidForm() {
+    void createAcceptsEveryValidForm() {
         String collection = seed();
 
         for (String body : List.of(
@@ -102,7 +97,7 @@ class CollectionTemporalValuesIntegrationTest {
     }
 
     @Test
-    void createNowRejectsValuesWithoutASortableForm() {
+    void createRejectsValuesWithoutASortableForm() {
         String collection = seed();
 
         for (String body : List.of(
@@ -170,31 +165,8 @@ class CollectionTemporalValuesIntegrationTest {
                 is(List.of("ten-thirty", "ten-fifteen", "ten", "nine-thirty")));
     }
 
-    /** Values stored before the change keep their form, and with it the wrong order. */
     @Test
-    void legacyDateTimeValuesStoredAsSentSortOutOfTimeOrder() {
-        String collection = seed();
-        insertRaw(collection, "ten", "startsAt", "2026-10-03T10:00:00Z");
-        insertRaw(collection, "nine-thirty", "startsAt", "2026-10-03T11:30:00+02:00");
-        insertRaw(collection, "ten-thirty", "startsAt", "2026-10-03T10:30Z");
-
-        assertThat(titles(list(collection, "sort=startsAt:asc")),
-                is(List.of("ten", "ten-thirty", "nine-thirty")));
-    }
-
-    @Test
-    void legacyCreatedAtWithVariableWidthSortsOutOfTimeOrder() {
-        String collection = seed();
-        insertRaw(collection, "whole-second", "createdAt", "2026-10-03T10:00:05Z");
-        insertRaw(collection, "half-second", "createdAt", "2026-10-03T10:00:05.500Z");
-        insertRaw(collection, "same-millisecond", "createdAt", "2026-10-03T10:00:05.500100Z");
-
-        assertThat(titles(list(collection, "sort=createdAt:asc")),
-                is(List.of("same-millisecond", "half-second", "whole-second")));
-    }
-
-    @Test
-    void createdAtInTheNewFormatSortsInTimeOrderWithinTheSameSecond() {
+    void createdAtSortsInTimeOrderWithinTheSameSecond() {
         String collection = seed();
         insertRaw(collection, "whole-second", "createdAt", "2026-10-03T10:00:05.000Z");
         insertRaw(collection, "half-second", "createdAt", "2026-10-03T10:00:05.500Z");

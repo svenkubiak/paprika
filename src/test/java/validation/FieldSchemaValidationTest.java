@@ -5,9 +5,7 @@ import models.FieldDefinition;
 import models.FieldOptions;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class FieldSchemaValidationTest {
 
@@ -166,7 +164,7 @@ class FieldSchemaValidationTest {
     }
 
     @Test
-    void temporalRangesStillAcceptEveryFormTheyAcceptedBefore() {
+    void temporalRangesAcceptEveryValidForm() {
         assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(new FieldDefinition(
                 "day", FieldType.DATE, false, true, FieldOptions.forDateRange("2026-01-01", "2026-12-31"))));
         assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(new FieldDefinition(
@@ -177,7 +175,7 @@ class FieldSchemaValidationTest {
     }
 
     @Test
-    void temporalRangesNowRejectWhatTheFieldValidatorRejects() {
+    void temporalRangesRejectWhatTheFieldValidatorRejects() {
         assertThrows(IllegalArgumentException.class, () -> FieldSchemaValidation.validateFieldDefinition(
                 new FieldDefinition("day", FieldType.DATE, false, true, FieldOptions.forDateRange("+10000-01-01", null))));
         IllegalArgumentException time = assertThrows(IllegalArgumentException.class,
@@ -190,7 +188,7 @@ class FieldSchemaValidationTest {
     }
 
     @Test
-    void temporalDefaultsInAValidFormStillPass() {
+    void temporalDefaultsInAValidFormPass() {
         assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(
                 FieldDefinition.create("day", FieldType.DATE, false, true, null, "2026-10-03")));
         assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(
@@ -199,9 +197,9 @@ class FieldSchemaValidationTest {
                 FieldDefinition.create("startsAt", FieldType.DATETIME, false, true, null, "2026-10-03T11:30:00+02:00")));
     }
 
-    /** Before, any string passed and the malformed default then failed every create relying on it. */
+    /** A malformed default would otherwise fail every create that relies on it. */
     @Test
-    void temporalDefaultsInAnInvalidFormAreNowRejected() {
+    void temporalDefaultsInAnInvalidFormAreRejected() {
         assertThrows(IllegalArgumentException.class, () -> FieldSchemaValidation.validateFieldDefinition(
                 FieldDefinition.create("day", FieldType.DATE, false, true, null, "03.10.2026")));
         IllegalArgumentException time = assertThrows(IllegalArgumentException.class,

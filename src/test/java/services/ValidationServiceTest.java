@@ -1,6 +1,5 @@
 package services;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import enums.FieldType;
 import io.mangoo.core.Application;
 import io.mangoo.test.TestRunner;

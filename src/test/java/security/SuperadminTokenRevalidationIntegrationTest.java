@@ -9,13 +9,13 @@ import models.TenantDefinition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.SystemUserService;
-import services.TenantService;
 import utils.AdminTestUtils;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.equalTo;
 
 /**
  * Superadmin tokens live an hour (refresh a week), so every request revalidates that the account

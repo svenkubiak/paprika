@@ -118,7 +118,6 @@ class MembershipWriteRulesValidationIntegrationTest {
         assertThat(definition(documents), nullValue());
         assertThat(definition(memberships), nullValue());
 
-        // Loosening a stored membership collection that a stored collection already relies on
         String stored = membershipCollection(CollectionRules.locked());
         String storedDocuments = "mwr_import_docs_" + DbUtils.id();
         assertThat(createDocuments(storedDocuments, stored).getStatusCode(), equalTo(StatusCodes.CREATED));

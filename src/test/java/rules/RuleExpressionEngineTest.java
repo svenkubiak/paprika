@@ -13,7 +13,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -165,8 +166,8 @@ class RuleExpressionEngineTest {
 
         for (String expression : new String[] {
                 "record.owner = auth.id",
-                "owner = auth.id",            // the record prefix is optional
-                "auth.id = record.owner",     // operands the other way round
+                "owner = auth.id",
+                "auth.id = record.owner",
                 "auth.id = owner"}) {
 
             assertThat(expression, evaluate(expression, USER, mine), is(true));

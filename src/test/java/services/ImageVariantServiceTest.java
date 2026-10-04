@@ -2,19 +2,14 @@ package services;
 
 import auth.TenantContext;
 import enums.FieldType;
-import models.CollectionDefinition;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.FieldOptions;
-import models.FileReference;
+import models.*;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import utils.MultipartSupport;
 
 import javax.imageio.ImageIO;
-import java.awt.Color;
-import java.awt.Graphics2D;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -25,11 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.*;
 
 class ImageVariantServiceTest {
 
@@ -101,7 +92,7 @@ class ImageVariantServiceTest {
         FileFieldService service = service(storage);
         TenantContext ctx = TenantContext.guest("tenant-1", "database");
 
-        // Orientation 6 rotates 90 degrees clockwise for display, so the 400x200 variant must come out 200x400.
+        // Orientation 6 rotates 90 degrees clockwise for display, so the 400x200 source is shown as 200x400.
         byte[] rotated = jpegWithOrientation(image(400, 200, "jpg"), 6);
 
         FileFieldService.UploadChanges changes =

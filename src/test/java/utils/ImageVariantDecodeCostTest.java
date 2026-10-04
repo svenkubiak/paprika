@@ -11,9 +11,7 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.lessThan;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 
 /**
  * A uniform 20 MP JPEG is tiny on disk but decodes to ~140 MiB per width without subsampling. Measured

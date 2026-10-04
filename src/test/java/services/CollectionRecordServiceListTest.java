@@ -2,33 +2,25 @@ package services;
 
 import auth.AuthorizationDecision;
 import auth.TenantContext;
+import com.mongodb.client.model.Filters;
 import enums.FieldType;
-import rules.RuleOperation;
 import io.mangoo.core.Application;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.test.TestRunner;
 import models.CollectionRules;
 import models.FieldDefinition;
+import org.bson.Document;
+import org.bson.types.ObjectId;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import rules.RuleOperation;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
-import com.mongodb.client.model.Filters;
-import org.bson.Document;
-import org.bson.types.ObjectId;
-
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.everyItem;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 
 @ExtendWith({TestRunner.class})
 class CollectionRecordServiceListTest {
@@ -149,9 +141,9 @@ class CollectionRecordServiceListTest {
     void sortsOnASystemTimestamp() {
         String collection = seededCollection("notes_sortsystem_");
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
-        insertWithCreatedAt(ctx, collection, "second", "2024-01-02T00:00:00Z");
-        insertWithCreatedAt(ctx, collection, "first", "2024-01-01T00:00:00Z");
-        insertWithCreatedAt(ctx, collection, "third", "2024-01-03T00:00:00Z");
+        insertWithCreatedAt(ctx, collection, "second", "2024-01-02T00:00:00.000Z");
+        insertWithCreatedAt(ctx, collection, "first", "2024-01-01T00:00:00.000Z");
+        insertWithCreatedAt(ctx, collection, "third", "2024-01-03T00:00:00.000Z");
 
         assertThat(titlesOf(list(ctx, collection, 0, 25, null, "createdAt:asc")),
                 is(List.of("first", "second", "third")));

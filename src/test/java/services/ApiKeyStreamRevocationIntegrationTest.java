@@ -70,7 +70,6 @@ class ApiKeyStreamRevocationIntegrationTest {
         assertThat("a stream from a source the key no longer allows must not stay open", stream.isOpen(), is(false));
     }
 
-    /** Unchanged: revoking one key leaves the streams of every other key alone. */
     @Test
     void revokingAKeyLeavesOtherKeysStreamsOpen() {
         String userId = createUser("stream-key-other-" + DbUtils.id());

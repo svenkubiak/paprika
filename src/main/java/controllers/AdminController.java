@@ -1,11 +1,7 @@
 package controllers;
 
 import auth.AuthContext;
-import dtos.CompleteSetupDto;
-import dtos.LoginDto;
-import dtos.SwitchTenantDto;
-import dtos.TwoFactorCodeDto;
-import dtos.VerifyEmailDto;
+import dtos.*;
 import enums.Role;
 import helpers.AdminLoginResponseHelper;
 import helpers.AdminSettingsResponseHelper;

@@ -231,7 +231,7 @@ class RealtimeServiceTest {
         service.broadcast(ctx, usersDef, HookEvent.afterCreate,
                 new Document("id", "u-1").append("username", "jane"), "u-1");
 
-        // ...while a normal collection is still delivered (proving the client is live).
+        // A normal collection is still delivered, proving the client is live.
         CollectionDefinition tripsDef = new CollectionDefinition(
                 "trips-def", "trips", List.of(), List.of(), openRules, false);
         service.broadcast(ctx, tripsDef, HookEvent.afterCreate,
@@ -275,7 +275,6 @@ class RealtimeServiceTest {
         assertThat(connection.isOpen(), is(true));
     }
 
-    /** As before: a credential without expiry, an API key that never expires, keeps its stream. */
     @Test
     void aStreamOfACredentialWithoutExpiryStaysOpen() throws Exception {
         RealtimeService service = new RealtimeService(ruleService);
@@ -289,7 +288,7 @@ class RealtimeServiceTest {
         assertThat(connection.isOpen(), is(true));
     }
 
-    /** As before: a stream that never subscribed carries no token, and receives nothing either. */
+    /** A stream that never subscribed carries no token that could expire. */
     @Test
     void aStreamThatNeverSubscribedIsNotClosedByExpiry() throws Exception {
         RealtimeService service = new RealtimeService(ruleService);
@@ -326,7 +325,6 @@ class RealtimeServiceTest {
         assertThat("the user's own sign-in is not revoked with the key", tokenStream.isOpen(), is(true));
     }
 
-    /** A stream that changed to another credential is no longer tied to the key it started with. */
     @Test
     void aStreamResubscribedWithATokenIsNoLongerTiedToTheKey() throws Exception {
         RealtimeService service = new RealtimeService(ruleService);

@@ -12,8 +12,8 @@ import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.FileFieldService;
-import services.ImageVariantQueue;
 import services.FileStorageService;
+import services.ImageVariantQueue;
 import utils.ImageVariants;
 import utils.MultipartSupport;
 import utils.TenantTestUtils;
@@ -131,8 +131,7 @@ class ImageDecodeBudgetIntegrationTest {
 
     @Test
     void aHardFailureWhileStoringLeavesNothingBehind() throws IOException {
-        // A multi-file upload can still fail hard halfway (e.g. memory pressure), leaving an orphaned
-        // original in storage. The cleanup has to cover Error too.
+        // Memory pressure can fail a multi-file upload halfway, so the cleanup has to cover Error too
         HeapExhaustedOnVariant storage = new HeapExhaustedOnVariant(Application.getInstance(Config.class));
         FileFieldService files = new FileFieldService(storage, new ImageVariantQueue(storage));
         TenantContext ctx = TenantTestUtils.defaultTenantContext();

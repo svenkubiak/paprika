@@ -19,7 +19,6 @@ import services.TenantUserService;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
-import java.util.concurrent.TimeUnit;
 
 import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -214,10 +213,5 @@ class RecoveryMailIntegrationTest {
                 .withStringBody(TenantTestUtils.loginBody(slug, username, password))
                 .withContentType("application/json")
                 .execute();
-    }
-
-    @SuppressWarnings("unused")
-    private static void quiet() throws InterruptedException {
-        TimeUnit.MILLISECONDS.sleep(50);
     }
 }

@@ -192,7 +192,6 @@ class ApiKeySourceBindingIntegrationTest {
     void requestLogNamesTheSourceAsTheReason() {
         String collection = "posts_cidr_log";
         TenantTestUtils.seedCollection(collection, authListRules());
-        createKey("cidr-log-key", user("cidr-log-user"), ELSEWHERE);
         String rejectedKey = createKey("cidr-logged-key", user("cidr-logged-user"), ELSEWHERE).key();
 
         assertThat(list(collection, rejectedKey).getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));

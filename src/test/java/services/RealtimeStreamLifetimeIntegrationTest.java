@@ -17,7 +17,6 @@ import utils.AdminTestUtils;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
-import java.net.HttpCookie;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;

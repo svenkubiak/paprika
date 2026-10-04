@@ -1,6 +1,5 @@
 package utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mangoo.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
 

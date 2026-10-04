@@ -21,9 +21,7 @@ import java.util.List;
 
 import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 
 /**
  * The {@code group} preset with {@code groupRecordField = "id"}: the record is the group. Create

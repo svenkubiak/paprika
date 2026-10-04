@@ -24,10 +24,7 @@ import java.util.List;
 
 import static com.mongodb.client.model.Filters.eq;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.anyOf;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 
 /** A third user without any membership tells a scoping filter apart from a missing one. */
 @ExtendWith({TestRunner.class})
@@ -101,7 +98,6 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(own.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(own.getContent(), containsString("Post of crew A"));
 
-        // The client filter is anded onto the rule, never substituted for it
         TestResponse filteredToForeignGroup = TestRequest
                 .get("/api/collections/" + POSTS + "?offset=0&limit=50&filter=crew:eq:" + CREW_B)
                 .withHeader("Authorization", "Bearer " + tokenA)
@@ -243,7 +239,6 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(create.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
     }
 
-    /** Memberships are not cached beyond the request. */
     @Test
     void revokingAMembershipTakesEffectOnTheNextRequest() {
         UserService userService = Application.getInstance(UserService.class);

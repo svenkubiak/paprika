@@ -12,21 +12,11 @@ import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.mangoo.utils.JsonUtils;
 import io.undertow.util.StatusCodes;
-import models.CollectionRules;
-import models.FieldDefinition;
-import models.FieldOptions;
-import models.FileReference;
-import models.HookDefinition;
-import models.HookEvent;
-import models.TenantDefinition;
+import models.*;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import services.FileStorageService;
-import services.TenantCollectionService;
-import services.TenantDatabaseResolver;
-import services.TenantService;
-import services.UserService;
+import services.*;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
@@ -182,7 +172,6 @@ class FileRouteBeforeRequestHookIntegrationTest {
             assertThat(delete.getStatusCode(), equalTo(StatusCodes.FORBIDDEN));
             assertThat(calls.get(), equalTo(1));
 
-            // The status code alone would not prove anything: check the record and the storage.
             Document record = record(fixture.collection(), fixture.recordId());
             List<FileReference> references = FileReference.listFromValue(record.get("attachment"));
             assertThat(references.stream().map(FileReference::id).toList(), hasItem(fixture.fileId()));

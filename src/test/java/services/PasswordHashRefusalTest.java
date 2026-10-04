@@ -7,7 +7,6 @@ import controllers.TenantController;
 import dtos.CompleteSetupDto;
 import dtos.UserDto;
 import dtos.UserUpdateDto;
-import rules.RuleOperation;
 import hooks.HookRequestUtils;
 import io.mangoo.core.Application;
 import io.mangoo.exceptions.MangooHashingException;
@@ -18,6 +17,7 @@ import io.undertow.util.StatusCodes;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import rules.RuleOperation;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 

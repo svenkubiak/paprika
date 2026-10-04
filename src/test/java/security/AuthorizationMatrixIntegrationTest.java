@@ -41,8 +41,6 @@ class AuthorizationMatrixIntegrationTest {
     private static final String PASSWORD_A = "matrix-password-aaa-1";
     private static final String PASSWORD_B = "matrix-password-bbb-2";
 
-
-
     private enum Rule {
         LOCKED(null),
         PUBLIC("*"),
@@ -78,10 +76,8 @@ class AuthorizationMatrixIntegrationTest {
     void enforcesRuleForEveryOperationAndRecordOwnership(Rule rule, Caller caller) {
         Fixture fixture = new Fixture(rule, caller);
 
-        // LIST first: the only read that must not leak records the caller may not view
+        // Reads before any write, so the record state is still the seeded one
         assertListVisibility(fixture);
-
-        // VIEW before any write, so the record state is still the seeded one
         for (String title : List.of(OWNED_BY_A, OWNED_BY_B, OWNERLESS)) {
             assertView(fixture, title);
         }

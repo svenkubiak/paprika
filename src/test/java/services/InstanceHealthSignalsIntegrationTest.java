@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import utils.AdminTestUtils;
 import utils.DbUtils;
+import utils.Timestamps;
 
 import java.net.HttpCookie;
 import java.time.Instant;
@@ -168,6 +169,6 @@ class InstanceHealthSignalsIntegrationTest {
                         .append("method", "GET")
                         .append("url", "/api/collections/whatever")
                         .append("statusCode", statusCode)
-                        .append("timestamp", timestamp.toString()));
+                        .append("timestamp", Timestamps.format(timestamp)));
     }
 }

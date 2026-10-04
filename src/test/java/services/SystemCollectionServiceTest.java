@@ -1,10 +1,10 @@
 package services;
 
+import constants.CollectionName;
 import io.mangoo.core.Application;
 import models.TenantDefinition;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import constants.CollectionName;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;

@@ -1,6 +1,5 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import enums.FieldType;
 import io.mangoo.utils.JsonUtils;

@@ -1,11 +1,7 @@
 package utils;
 
 import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
-import java.security.Signature;
+import java.security.*;
 import java.util.Base64;
 
 /** Issues license keys the way the licensor's signing tool does, with throwaway key pairs. */

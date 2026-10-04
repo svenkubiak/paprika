@@ -57,7 +57,6 @@ class TwoFactorBruteForceIntegrationTest {
         }
         assertThat(first, notNullValue());
 
-        // A guesser must not be able to extend the lockout of the rightful owner
         java.time.Instant afterMore = users.recordTwoFactorFailure(userId).orElseThrow();
 
         assertThat("a lock that renews itself would be a denial of service against the superadmin",

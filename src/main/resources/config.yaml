@@ -104,8 +104,12 @@ environments:
     authentication:
       # One slot; the suite hashes sequentially, well within the 200 ms timeout. Overload is tested
       # through the hashing seams (PasswordHashOverloadTest, PasswordHashRefusalTest).
+      # Memory and iterations at mangoo's minimum: the suite hashes on almost every login and user it
+      # creates, and with the production cost that alone takes about half a minute.
       hashing:
         concurrency: 1
+        memory: 8192
+        iterations: 2
       cookie:
         secret: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000
         key: defaultTokenSecretForLocalDevOnly0000000000000000000000000000000

@@ -62,7 +62,6 @@ class SuperadminLoginAlertIntegrationTest {
         String password = AdminTestUtils.prepareAdminPassword();
         HttpCookie auth = AdminTestUtils.loginAsAdmin();
 
-        // 1. Store the address and confirm it with the token that only exists in the mail
         TestResponse stored = postJson("/api/admin/profile/email", auth, "{\"email\":\"" + EMAIL + "\"}");
         assertThat(stored.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat("the response must never carry the confirmation token",
@@ -77,7 +76,7 @@ class SuperadminLoginAlertIntegrationTest {
                 .execute();
         assertThat(confirmed.getStatusCode(), equalTo(StatusCodes.OK));
 
-        // 2. Switching the alert on trusts the current device, so it does not mail itself about its own login
+        // Switching the alert on trusts the current device, so it does not mail itself about its own login
         greenMail.purgeEmailFromAllMailboxes();
         TestResponse enabled = TestRequest.post("/api/admin/profile/login-alert")
                 .withCookie(auth)
@@ -93,7 +92,6 @@ class SuperadminLoginAlertIntegrationTest {
                 login(password, KNOWN_AGENT, KNOWN_IP).getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(greenMail.waitForIncomingEmail(1000, 1), is(false));
 
-        // 3. A different browser on a different network is an unknown device
         assertThat(login(password, OTHER_AGENT, OTHER_IP).getStatusCode(), equalTo(StatusCodes.OK));
 
         MimeMessage alert = awaitLatestMail();
@@ -106,7 +104,6 @@ class SuperadminLoginAlertIntegrationTest {
                 body, not(containsString(password)));
         assertThat(body, not(containsString("token=")));
 
-        // 4. That device is now known, so it only ever produces one mail
         greenMail.purgeEmailFromAllMailboxes();
         assertThat(login(password, OTHER_AGENT, OTHER_IP).getStatusCode(), equalTo(StatusCodes.OK));
         assertThat("a device is reported once, not on every login",

@@ -12,7 +12,8 @@ import java.time.Duration;
 import java.time.Instant;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.instanceOf;
 
 /** Each check reads through a second instance, as a restarted application would. */
 @ExtendWith({TestRunner.class})

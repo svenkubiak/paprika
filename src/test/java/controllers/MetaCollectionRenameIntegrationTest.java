@@ -21,13 +21,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasItem;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.*;
 
 /**
  * A rename moves the definition and the MongoDB collection, which must stay in step: a refused
@@ -69,7 +63,6 @@ class MetaCollectionRenameIntegrationTest {
         assertThat(read(before, recordId).getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
     }
 
-    /** A 400 for an unbuildable index must mean nothing moved, including the rename. */
     @Test
     void aRefusedIndexChangeInTheSameRequestLeavesTheCollectionUnrenamed() {
         String before = "rename_reject_" + DbUtils.id();
@@ -93,7 +86,6 @@ class MetaCollectionRenameIntegrationTest {
         assertThat(definition, notNullValue());
         assertThat(definition.name(), equalTo(before));
 
-        // The data must not have moved to the new physical collection while the definition stayed
         assertThat(physicalCollections(ctx), not(hasItem(CollectionName.physicalTenantData(after))));
         assertThat(collections.dataCollection(ctx, before).countDocuments(), is(2L));
         assertThat(read(before, recordId).getStatusCode(), equalTo(StatusCodes.OK));

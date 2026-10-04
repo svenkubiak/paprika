@@ -9,8 +9,8 @@ import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.util.Objects;
-import java.util.function.BinaryOperator;
 import java.util.Set;
+import java.util.function.BinaryOperator;
 
 public final class UserRecordUtils {
     public static final String USERNAME = "username";

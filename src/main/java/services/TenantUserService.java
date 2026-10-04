@@ -25,11 +25,7 @@ import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import results.TenantLoginResult;
 import results.TokenIssueResult;
-import utils.AuthTokens;
-import utils.DbUtils;
-import utils.DbWrites;
-import utils.RecordValueNormalizer;
-import utils.UserRecordUtils;
+import utils.*;
 import validation.ValidationResult;
 
 import java.util.*;

@@ -21,11 +21,11 @@ import models.CollectionRules;
 import models.FieldDefinition;
 import models.HookEvent;
 import org.apache.logging.log4j.LogManager;
-import rules.ListFilterParser;
-import rules.ListSortParser;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import rules.ListFilterParser;
+import rules.ListSortParser;
 import utils.*;
 
 import java.io.IOException;

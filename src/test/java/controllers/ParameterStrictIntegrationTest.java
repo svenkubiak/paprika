@@ -20,8 +20,8 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 /**
- * Guards the {@code application.parameter.strict} setting: a query parameter that collides with a
- * route parameter of the matched route is rejected instead of being silently ignored.
+ * Without {@code application.parameter.strict} a query parameter colliding with a route parameter
+ * would be silently ignored.
  */
 @ExtendWith({TestRunner.class})
 class ParameterStrictIntegrationTest {

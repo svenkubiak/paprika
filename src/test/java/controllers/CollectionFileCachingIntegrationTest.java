@@ -18,10 +18,7 @@ import utils.TenantTestUtils;
 import java.util.List;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 
 /** A replaced file always gets a new id, so the file id is a valid strong validator. */
 @ExtendWith({TestRunner.class})

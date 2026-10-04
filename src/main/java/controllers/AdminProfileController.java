@@ -1,11 +1,6 @@
 package controllers;
 
-import dtos.ChangePasswordDto;
-import dtos.LoginAlertDto;
-import dtos.ProfileEmailDto;
-import dtos.TwoFactorCodeDto;
-import dtos.TwoFactorSetupDto;
-import dtos.UpdateAvatarDto;
+import dtos.*;
 import filters.admin.AdminAuthFilter;
 import helpers.AdminSettingsResponseHelper;
 import io.mangoo.annotations.FilterWith;
