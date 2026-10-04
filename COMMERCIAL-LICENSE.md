@@ -4,9 +4,9 @@ Copyright © 2026 Sven Kubiak
 
 This Commercial License governs commercial use of the Software identified by the Licensor.
 
-The Software is also made available under a separate non-commercial license. This Commercial License grants additional rights for commercial use.
+The Software is also made available under a separate noncommercial license. This Commercial License grants additional rights for commercial use.
 
-There is only one version of the Software. Commercial licensees and non-commercial users may use the same source code, binaries, features, releases, bug fixes, security fixes, and updates.
+There is only one version of the Software. Commercial licensees and noncommercial users may use the same source code, binaries, features, releases, bug fixes, security fixes, and updates.
 
 ## 1. Definitions
 
@@ -102,7 +102,7 @@ If the Licensee wishes to provide the Software itself as a hosted, managed, embe
 
 ## 6. Source Code and Modifications
 
-The Commercial License may include access to source code that is publicly available under the Software's non-commercial licensing model.
+The Commercial License may include access to source code that is publicly available under the Software's noncommercial licensing model.
 
 The Licensee may modify the Software for its own permitted use under this Commercial License.
 
@@ -131,7 +131,7 @@ This includes generally available:
 * security fixes; and
 * other generally available updates.
 
-Commercial licensees may receive the same generally available releases as non-commercial users.
+Commercial licensees may receive the same generally available releases as noncommercial users.
 
 The Commercial License grants commercial usage rights to such releases. It does not guarantee exclusive, early, private, or continued access to any release.
 
@@ -176,7 +176,7 @@ The Licensee's continued possession of:
 
 does not by itself grant continued Commercial Production Use rights after expiration.
 
-After expiration, the Licensee may continue to exercise any rights independently available under the Software's non-commercial license, provided that the applicable use qualifies under that license.
+After expiration, the Licensee may continue to exercise any rights independently available under the Software's noncommercial license, provided that the applicable use qualifies under that license.
 
 ## 10. License Fees
 
@@ -235,7 +235,7 @@ Upon reasonable written request, the Licensee will provide information reasonabl
 
 Any verification request must be conducted in a reasonable manner and must not unreasonably interfere with the Licensee's business operations.
 
-The Software does not require technical license enforcement unless separately implemented or agreed by the Licensor.
+The Software may display a license key issued by the Licensor; it does not enforce the license technically.
 
 ## 14. Ownership
 
@@ -318,7 +318,7 @@ Termination does not affect:
 
 * payment obligations accrued before termination;
 * rights or obligations that by their nature are intended to survive termination; or
-* rights independently available under the Software's non-commercial license.
+* rights independently available under the Software's noncommercial license.
 
 Sections concerning ownership, payment obligations, warranty disclaimers, liability, and other provisions that by their nature should survive will survive termination.
 

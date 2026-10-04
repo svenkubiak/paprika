@@ -263,13 +263,24 @@ export interface ValidationError {
   message: string
 }
 
+/** The checked content of the stored license key; the key itself is never sent back. */
+export interface AppLicense {
+  status: 'none' | 'valid' | 'expired' | 'invalid'
+  licenseId?: string
+  licensee?: string
+  installations?: number
+  /** ISO date; the license is valid through the whole day. */
+  expiresAt?: string
+}
+
 export interface AppSettings {
   requestLogRetentionDays: number
   defaultTenantId?: string | null
   requestLogClientInfo?: boolean
   requestLogClientIp?: 'off' | 'truncated' | 'full'
   requestLogAdminUi?: boolean
-  [key: string]: string | boolean | number | null | undefined
+  license?: AppLicense
+  [key: string]: string | boolean | number | null | undefined | AppLicense
 }
 
 export interface SuperadminProfile {

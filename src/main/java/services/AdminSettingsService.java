@@ -4,9 +4,11 @@ import constants.SettingKeys;
 import dtos.UpdateAdminSettingsDto;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import models.License;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import results.AdminSettingsResult;
+import utils.Licenses;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,19 +24,23 @@ public class AdminSettingsService {
     private final SettingsService settingsService;
     private final RequestLogService requestLogService;
     private final TenantService tenantService;
+    private final LicenseService licenseService;
 
     @Inject
     public AdminSettingsService(
             SettingsService settingsService,
             RequestLogService requestLogService,
-            TenantService tenantService) {
+            TenantService tenantService,
+            LicenseService licenseService) {
         this.settingsService = Objects.requireNonNull(settingsService, "settingsService must not be null");
         this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
+        this.licenseService = Objects.requireNonNull(licenseService, "licenseService must not be null");
     }
 
     public AdminSettingsResult readSettings() {
         Map<String, Object> payload = new LinkedHashMap<>(settingsService.getAll());
+        payload.remove(SettingKeys.LICENSE_KEY);
         payload.put(
                 "requestLogRetentionDays",
                 settingsService.getInt(
@@ -52,6 +58,7 @@ public class AdminSettingsService {
         payload.put(
                 "requestLogAdminUi",
                 settingsService.getBoolean(SettingKeys.REQUEST_LOG_ADMIN_UI, false));
+        payload.put("license", licenseService.current().toPayload());
 
         return AdminSettingsResult.ok(payload);
     }
@@ -62,7 +69,8 @@ public class AdminSettingsService {
                 && dto.defaultTenantId() == null
                 && dto.requestLogClientInfo() == null
                 && dto.requestLogClientIp() == null
-                && dto.requestLogAdminUi() == null)) {
+                && dto.requestLogAdminUi() == null
+                && dto.licenseKey() == null)) {
             return AdminSettingsResult.badRequest("No settings to update");
         }
 
@@ -80,6 +88,18 @@ public class AdminSettingsService {
         if (StringUtils.isNotEmpty(defaultTenantId)
                 && tenantService.findById(defaultTenantId).filter(TenantDefinition::isActive).isEmpty()) {
             return AdminSettingsResult.badRequest("Tenant not found");
+        }
+
+        // Only a key that checks out is stored: a broken paste is reported now, not found later on the page
+        String licenseKey = Licenses.normalize(dto.licenseKey());
+        if (StringUtils.isNotEmpty(licenseKey)) {
+            License license = licenseService.check(licenseKey);
+            if (license.status() == License.Status.EXPIRED) {
+                return AdminSettingsResult.badRequest("License expired on " + license.expiresAt());
+            }
+            if (license.status() != License.Status.VALID) {
+                return AdminSettingsResult.badRequest("License key is invalid");
+            }
         }
 
         if (retentionDays != null) {
@@ -107,6 +127,11 @@ public class AdminSettingsService {
             settingsService.set(
                     SettingKeys.REQUEST_LOG_ADMIN_UI,
                     String.valueOf(dto.requestLogAdminUi()));
+        }
+
+        // An empty key removes the license
+        if (licenseKey != null) {
+            settingsService.set(SettingKeys.LICENSE_KEY, licenseKey);
         }
 
         return readSettings();

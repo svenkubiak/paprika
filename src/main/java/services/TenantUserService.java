@@ -28,6 +28,7 @@ import results.TokenIssueResult;
 import utils.AuthTokens;
 import utils.DbUtils;
 import utils.DbWrites;
+import utils.RecordValueNormalizer;
 import utils.UserRecordUtils;
 import validation.ValidationResult;
 
@@ -649,6 +650,7 @@ public class TenantUserService {
         }
 
         document.putAll(customFields);
+        RecordValueNormalizer.normalize(document, users);
         return document;
     }
 

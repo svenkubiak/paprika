@@ -16,6 +16,7 @@ import utils.TenantTestUtils;
 
 import com.mongodb.client.model.Filters;
 import org.bson.Document;
+import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -200,6 +201,76 @@ class CollectionRecordServiceListTest {
                     list(ctx, collection, 0, 25, null, sort).status(),
                     is(CollectionRecordService.RecordResult.Status.BAD_REQUEST));
         }
+    }
+
+    /**
+     * Without a tiebreaker MongoDB leaves the order of equal sort values open; in practice it is the
+     * natural (insertion) order, which is why the records are inserted against their _id order here.
+     */
+    @Test
+    void equalSortValuesAreOrderedByIdInBothDirections() {
+        String collection = seededCollection("notes_sorttie_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        List<String> idOrder = insertAgainstIdOrder(ctx, collection, List.of("same", "same", "same", "same", "same"));
+
+        assertThat(idsOf(list(ctx, collection, 0, 25, null, "title:asc")), is(idOrder));
+        assertThat(idsOf(list(ctx, collection, 0, 25, null, "title:desc")), is(idOrder));
+    }
+
+    @Test
+    void tiebreakerOnlyDecidesBetweenEqualValues() {
+        String collection = seededCollection("notes_sorttiemixed_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        insertAgainstIdOrder(ctx, collection, List.of("b", "a", "c", "a", "b"));
+
+        assertThat(titlesOf(list(ctx, collection, 0, 25, null, "title:asc")), is(List.of("a", "a", "b", "b", "c")));
+        assertThat(titlesOf(list(ctx, collection, 0, 25, null, "title:desc")), is(List.of("c", "b", "b", "a", "a")));
+    }
+
+    /** Every page is its own query; only a total order guarantees that the pages fit together. */
+    @Test
+    void pagingOverANonUniqueSortKeyNeitherRepeatsNorSkipsARecord() {
+        String collection = seededCollection("notes_sorttiepaging_");
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        List<String> titles = new ArrayList<>();
+        for (int i = 0; i < 31; i++) {
+            titles.add("group-" + (i % 3));
+        }
+        insertAgainstIdOrder(ctx, collection, titles);
+
+        List<String> full = idsOf(list(ctx, collection, 0, 100, null, "title:asc"));
+        List<String> paged = new ArrayList<>();
+        for (int offset = 0; offset < 31; offset += 7) {
+            paged.addAll(idsOf(list(ctx, collection, offset, 7, null, "title:asc")));
+        }
+
+        assertThat(paged, hasSize(31));
+        assertThat(new LinkedHashSet<>(paged), hasSize(31));
+        assertThat(paged, is(full));
+    }
+
+    /** Inserts in reverse _id order and returns the ids in _id order, so natural order and _id order differ. */
+    static List<String> insertAgainstIdOrder(TenantContext ctx, String collection, List<String> titles) {
+        List<ObjectId> objectIds = new ArrayList<>();
+        for (int i = 0; i < titles.size(); i++) {
+            objectIds.add(new ObjectId());
+        }
+        List<String> idsInIdOrder = new ArrayList<>();
+        List<Document> documents = new ArrayList<>();
+        for (int i = 0; i < titles.size(); i++) {
+            String id = DbUtils.id();
+            idsInIdOrder.add(id);
+            documents.add(new Document()
+                    .append("_id", objectIds.get(i))
+                    .append("id", id)
+                    .append("title", titles.get(i)));
+        }
+        for (Document document : documents.reversed()) {
+            Application.getInstance(TenantCollectionService.class)
+                    .dataCollection(ctx, collection)
+                    .insertOne(document);
+        }
+        return idsInIdOrder;
     }
 
     static String seededCollection(String prefix) {

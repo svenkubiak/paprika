@@ -162,7 +162,7 @@ That doesn't mean AI never touched the backend. It has definitely been used to r
 
 Paprika uses a dual-licensing model, but there's only one version of the software. Everyone gets the same code, features, and fixes; the license just depends on how you use it.
 
-**Free** under the [PolyForm Noncommercial License 1.0.0](LICENSE) for non-commercial use: personal and hobby projects, education, research, and nonprofits. Companies can also use it for free to evaluate, develop, and test.
+**Free** under the [PolyForm Noncommercial License 1.0.0](LICENSE) for noncommercial use: personal and hobby projects, education, research, and nonprofits. Companies can also use it for free to evaluate, develop, and test.
 
 **A commercial license** is required once you run Paprika in production for anything commercial, for example as the backend of a paid app or a live business system.
 

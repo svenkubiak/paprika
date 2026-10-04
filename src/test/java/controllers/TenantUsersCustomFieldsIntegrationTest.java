@@ -157,6 +157,83 @@ class TenantUsersCustomFieldsIntegrationTest {
         }
     }
 
+    /** Users are written by TenantUserService, not the record service, and need the same normalization. */
+    @Test
+    void temporalCustomFieldsAreNormalizedOnCreateAndUpdate() {
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantDefinition tenant = TenantTestUtils.defaultTenant();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        CollectionDefinition original = collections.findDefinition(ctx, "users");
+
+        try {
+            AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+            TestResponse patch = AdminTestUtils.patchWithAdminCookies(
+                    "/api/meta/collections/users/" + original.id(),
+                    cookies,
+                    """
+                    {
+                      "name": "users",
+                      "fields": [
+                        {"name": "memberSince", "type": "DATETIME", "required": false, "nullable": true},
+                        {"name": "shiftStart", "type": "TIME", "required": false, "nullable": true}
+                      ],
+                      "indexes": []
+                    }
+                    """,
+                    "application/json");
+            assertThat(patch.getStatusCode(), equalTo(StatusCodes.OK));
+
+            String usersUrl = "/api/meta/tenants/" + tenant.id() + "/users";
+            TestResponse create = AdminTestUtils.postWithAdminCookies(
+                    usersUrl,
+                    cookies,
+                    """
+                    {
+                      "username": "temporal-custom-user",
+                      "password": "secret-password-123",
+                      "memberSince": "2026-10-03T11:30:00+02:00",
+                      "shiftStart": "08:00"
+                    }
+                    """,
+                    "application/json");
+
+            assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
+            assertThat(create.getContent(), containsString("\"memberSince\":\"2026-10-03T09:30:00.000Z\""));
+            assertThat(create.getContent(), containsString("\"shiftStart\":\"08:00:00\""));
+
+            String userId = extractId(create.getContent());
+            TestResponse update = AdminTestUtils.patchWithAdminCookies(
+                    usersUrl + "/" + userId,
+                    cookies,
+                    """
+                    {
+                      "username": "temporal-custom-user",
+                      "memberSince": "2026-10-04T00:15:00+01:00"
+                    }
+                    """,
+                    "application/json");
+
+            assertThat(update.getStatusCode(), equalTo(StatusCodes.OK));
+            assertThat(update.getContent(), containsString("\"memberSince\":\"2026-10-03T23:15:00.000Z\""));
+
+            TestResponse fraction = AdminTestUtils.patchWithAdminCookies(
+                    usersUrl + "/" + userId,
+                    cookies,
+                    """
+                    {
+                      "username": "temporal-custom-user",
+                      "shiftStart": "08:00:00.5"
+                    }
+                    """,
+                    "application/json");
+            assertThat(fraction.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+
+            AdminTestUtils.deleteWithAdminCookies(usersUrl + "/" + userId, cookies);
+        } finally {
+            collections.replaceDefinition(ctx, original);
+        }
+    }
+
     private void addCustomFields(AdminTestUtils.AdminCookies cookies, String definitionId) {
         TestResponse patch = AdminTestUtils.patchWithAdminCookies(
                 "/api/meta/collections/users/" + definitionId,

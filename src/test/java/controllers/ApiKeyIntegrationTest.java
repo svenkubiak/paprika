@@ -6,6 +6,7 @@ import io.mangoo.test.TestRunner;
 import io.mangoo.test.http.TestRequest;
 import io.mangoo.test.http.TestResponse;
 import io.undertow.util.StatusCodes;
+import models.ApiKeyDefinition;
 import models.CollectionDefinition;
 import models.CollectionRules;
 import models.FieldDefinition;
@@ -13,7 +14,9 @@ import models.TenantDefinition;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import services.ApiKeyService;
 import services.TenantCollectionService;
+import services.TenantDatabaseResolver;
 import services.TenantService;
 import services.TenantUserService;
 import services.UserService;
@@ -21,6 +24,7 @@ import utils.AdminTestUtils;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
+import java.net.InetAddress;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -32,6 +36,8 @@ import static org.hamcrest.Matchers.*;
 /** A key must behave exactly like an access token of the bound user, and never more than that. */
 @ExtendWith({TestRunner.class})
 class ApiKeyIntegrationTest {
+
+    private static final String FIXED_WIDTH_UTC = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z";
 
     @Test
     void keyBehavesExactlyLikeAnAccessTokenOfTheBoundUser() {
@@ -59,6 +65,37 @@ class ApiKeyIntegrationTest {
         assertThat(withKey.getContent(), equalTo(withToken.getContent()));
         assertThat(withKey.getContent(), containsString("mine"));
         assertThat(withKey.getContent(), not(containsString("not mine")));
+    }
+
+    @Test
+    void expiryIsStoredAsFixedWidthUtcWhicheverOffsetItArrivesWith() {
+        UserService userService = Application.getInstance(UserService.class);
+        String boundId = userId(userService.createUser("apikey-expiry-format-user", null, "secret-password-123"));
+        ApiKeyService service = Application.getInstance(ApiKeyService.class);
+
+        ApiKeyService.CreatedApiKey created = service.create(
+                TenantTestUtils.defaultTenant(), "apikey-expiry-format", boundId, "2099-12-31T23:59:59+02:00");
+
+        assertThat((String) created.key().get("expiresAt"), is("2099-12-31T21:59:59.000Z"));
+        assertThat(((String) created.key().get("createdAt")).matches(FIXED_WIDTH_UTC), is(true));
+        assertThat(service.resolve(created.plaintext(), InetAddress.getLoopbackAddress()).key().isPresent(), is(true));
+    }
+
+    /** Keys written before the change keep their expiry string; it must still be honored. */
+    @Test
+    void legacyExpiryWithoutMillisecondsIsStillHonored() {
+        UserService userService = Application.getInstance(UserService.class);
+        String boundId = userId(userService.createUser("apikey-legacy-expiry-user", null, "secret-password-123"));
+        ApiKeyService service = Application.getInstance(ApiKeyService.class);
+        ApiKeyService.CreatedApiKey created = service.create(
+                TenantTestUtils.defaultTenant(), "apikey-legacy-expiry", boundId, "2099-12-31T23:59:59Z");
+        String id = (String) created.key().get("id");
+
+        setStoredExpiry(id, "2099-12-31T23:59:59Z");
+        assertThat(service.resolve(created.plaintext(), InetAddress.getLoopbackAddress()).key().isPresent(), is(true));
+
+        setStoredExpiry(id, Instant.now().minus(1, ChronoUnit.MINUTES).toString());
+        assertThat(service.resolve(created.plaintext(), InetAddress.getLoopbackAddress()).key().isPresent(), is(false));
     }
 
     @Test
@@ -377,6 +414,12 @@ class ApiKeyIntegrationTest {
         return new CreatedKey(
                 extractJsonString(response.getContent(), "id"),
                 extractJsonString(response.getContent(), "key"));
+    }
+
+    private static void setStoredExpiry(String keyId, String expiresAt) {
+        Application.getInstance(TenantDatabaseResolver.class)
+                .systemCollection(ApiKeyDefinition.COLLECTION)
+                .updateOne(new Document("id", keyId), new Document("$set", new Document("expiresAt", expiresAt)));
     }
 
     private static AdminTestUtils.AdminCookies adminCookies() {

@@ -658,6 +658,8 @@ export const api = {
     requestLogClientInfo?: boolean
     requestLogClientIp?: 'off' | 'truncated' | 'full'
     requestLogAdminUi?: boolean
+    /** An empty string removes the license. */
+    licenseKey?: string
   }): Promise<AppSettings> {
     return request('/api/admin/settings', {
       method: 'PATCH',

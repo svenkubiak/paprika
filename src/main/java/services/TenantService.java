@@ -18,8 +18,8 @@ import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import utils.DbUtils;
 import utils.DbWrites;
+import utils.Timestamps;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -96,7 +96,7 @@ public class TenantService {
                 slug.trim().toLowerCase(),
                 TenantDefinition.databaseNameFor(id),
                 TenantDefinition.STATUS_ACTIVE,
-                Instant.now().toString(),
+                Timestamps.now(),
                 false,
                 false,
                 false,

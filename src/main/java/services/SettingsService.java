@@ -6,8 +6,8 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.bson.Document;
 import utils.DbUtils;
+import utils.Timestamps;
 
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -52,7 +52,7 @@ public class SettingsService {
     }
 
     public void set(String key, String value) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         var collection = resolver.systemCollection(CollectionName.SETTINGS);
         Document existing = collection.find(eq("key", key)).first();
 

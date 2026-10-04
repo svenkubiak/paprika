@@ -1,6 +1,6 @@
 # Settings
 
-`/admin/settings` covers instance-wide settings: the default tenant and what the request log keeps. Most controls here are disabled unless you're signed in as a superadmin.
+`/admin/settings` covers instance-wide settings: the default tenant, what the request log keeps, and the license. Most controls here are disabled unless you're signed in as a superadmin.
 
 Everything that belongs to **your own account** — password, two-factor authentication, email address, profile picture, sign-in alerts — lives on [Profile](/admin-ui/profile) instead, reachable through the avatar in the top right corner. To add or remove superadmins, see [Superadmins](/admin-ui/superadmins).
 
@@ -14,6 +14,15 @@ Everything that belongs to **your own account** — password, two-factor authent
 - **Log admin UI requests** — off by default. Operating the admin UI is itself a stream of HTTP requests (`/admin/…`, `/api/admin/…`, `/api/meta/…`, the login flow, the UI assets); logging them buries your API traffic under Paprika's own bookkeeping. Switch it on when you want an audit trail of admin activity. **Failed** admin requests (status ≥ 400) are logged either way, so a rejected superadmin login is never hidden by this setting.
 - **Log user agent** — off by default. The user agent is personal data, so Paprika only stores it if you decide you need it.
 - **Client IP address** — `off` (default), `truncated`, or `full`. `truncated` keeps the network and drops the host (IPv4 `/24`, IPv6 `/48`), which is enough to recognise abusive traffic without singling out a caller. Addresses are read from `X-Forwarded-For` / `X-Real-IP`, so a reverse proxy has to set them.
+
+## License
+
+Shows whether a commercial license key is stored. Without one the installation reads **Noncommercial**. With one it shows the licensee, the number of licensed installations, the expiry date and the license ID.
+
+- **License key** — paste the key you received with your commercial license. It is checked offline against the public key built into Paprika; nothing is sent anywhere. Only a key that verifies and has not expired is accepted. Line breaks picked up while copying are ignored.
+- **Remove** — deletes the stored key, the installation reads **Noncommercial** again.
+
+The key is display only: no feature depends on it, and nothing stops working when it expires. Your rights come from the license itself, see `LICENSING.md`. The key is stored in the system settings and travels with a [backup](/admin-ui/backup-restore).
 
 ## Backup & Restore
 

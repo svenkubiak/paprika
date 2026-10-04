@@ -24,6 +24,7 @@ import org.bson.conversions.Bson;
 import utils.ApiKeys;
 import utils.ClientIps;
 import utils.DbUtils;
+import utils.Timestamps;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -115,7 +116,7 @@ public class RequestLogService {
                 .append("url", path)
                 .append("statusCode", statusCode)
                 .append("errorMessage", statusCode >= 400 ? errorMessage(request, errorMessage) : null)
-                .append("timestamp", Instant.now().toString())
+                .append("timestamp", Timestamps.now())
                 .append("execTimeMs", execTimeMs);
 
         appendClientInfo(entry, request);
@@ -176,7 +177,7 @@ public class RequestLogService {
                     .append("url", hookUrl(invocation))
                     .append("statusCode", invocation.status() != null ? invocation.status() : 0)
                     .append("errorMessage", errorMessage)
-                    .append("timestamp", Instant.now().toString())
+                    .append("timestamp", Timestamps.now())
                     .append("execTimeMs", invocation.duration())
                     .append("hookFired", true)
                     .append("hookBlocked", false)
@@ -308,7 +309,7 @@ public class RequestLogService {
     private void purgeExpired(TenantContext ctx, int retentionDays) {
         Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
         long deleted = resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS)
-                .deleteMany(lt("timestamp", cutoff.toString()))
+                .deleteMany(lt("timestamp", Timestamps.format(cutoff)))
                 .getDeletedCount();
         if (deleted > 0) {
             LOG.debug("Purged {} request log entries older than {} days for tenant {}", deleted, retentionDays, ctx.effectiveTenantId());
@@ -320,7 +321,7 @@ public class RequestLogService {
             return 0;
         }
 
-        String cutoff = Instant.now().minus(24, ChronoUnit.HOURS).toString();
+        String cutoff = Timestamps.format(Instant.now().minus(24, ChronoUnit.HOURS));
         return resolver.tenantMetaCollection(ctx, SystemCollections.REQUEST_LOGS)
                 .countDocuments(and(gte("timestamp", cutoff), gte("statusCode", 500)));
     }

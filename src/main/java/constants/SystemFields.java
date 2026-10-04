@@ -1,8 +1,8 @@
 package constants;
 
 import org.bson.Document;
+import utils.Timestamps;
 
-import java.time.Instant;
 import java.util.Set;
 
 public final class SystemFields {
@@ -46,6 +46,6 @@ public final class SystemFields {
     }
 
     public static String timestamp() {
-        return Instant.now().toString();
+        return Timestamps.now();
     }
 }

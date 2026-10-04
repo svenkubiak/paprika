@@ -4,7 +4,7 @@ Thank you for your interest in contributing to this project.
 
 We welcome bug reports, documentation improvements, feature proposals, code contributions, tests, examples, and other improvements.
 
-Because this project is distributed under a dual-licensing model, contributions must be made under terms that allow the project to continue to be offered under both its non-commercial and commercial licenses.
+Because this project is distributed under a dual-licensing model, contributions must be made under terms that allow the project to continue to be offered under both its noncommercial and commercial licenses.
 
 ## Code of Conduct
 
@@ -58,7 +58,7 @@ Instead, you grant the project the rights necessary to:
 * modify your contribution;
 * distribute your contribution;
 * include your contribution in public releases;
-* license your contribution under the project's non-commercial license;
+* license your contribution under the project's noncommercial license;
 * license your contribution under the project's Commercial License; and
 * relicense your contribution as reasonably necessary for the continued development and distribution of the Software.
 

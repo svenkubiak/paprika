@@ -10,13 +10,13 @@ import models.TenantDefinition;
 import org.bson.Document;
 import org.bson.json.JsonMode;
 import org.bson.json.JsonWriterSettings;
+import utils.Timestamps;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -55,7 +55,7 @@ public class ExportService {
     private void writeManifest(ZipOutputStream zip, List<TenantDefinition> tenants) throws IOException {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("version", VERSION);
-        manifest.put("exportedAt", Instant.now().toString());
+        manifest.put("exportedAt", Timestamps.now());
         manifest.put("tenants", tenants.stream().map(TenantDefinition::id).toList());
         writeEntry(zip, "manifest.json", JsonUtils.getMapper().writeValueAsBytes(manifest));
     }

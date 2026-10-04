@@ -2,7 +2,7 @@
 
 This document describes the general support policy for the Software.
 
-It applies to both non-commercial users and commercial licensees unless a separate written Support Agreement, Order Form, or service-level agreement states otherwise.
+It applies to both noncommercial users and commercial licensees unless a separate written Support Agreement, Order Form, or service-level agreement states otherwise.
 
 ## General Principle
 
@@ -14,11 +14,11 @@ Bug fixes, security fixes, patch releases, minor releases, and major releases ma
 
 ## What Is Included
 
-The non-commercial license does not include support. Non-commercial users can use the community channels described below.
+The noncommercial license does not include support. Noncommercial users can use the community channels described below.
 
 An active Commercial License includes email support as described in "Email Support for Commercial Licensees".
 
-Beyond that, neither the non-commercial license nor the Commercial License automatically includes:
+Beyond that, neither the noncommercial license nor the Commercial License automatically includes:
 
 * guaranteed resolution times;
 * guaranteed bug fixes;

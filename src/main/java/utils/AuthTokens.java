@@ -38,7 +38,7 @@ public final class AuthTokens {
     }
 
     public static String expiresAt() {
-        return Instant.now().plus(TTL).toString();
+        return Timestamps.format(Instant.now().plus(TTL));
     }
 
     public static boolean isActive(String expiresAtIso) {

@@ -18,6 +18,7 @@ import org.bson.Document;
 import utils.ApiKeys;
 import utils.Cidrs;
 import utils.DbUtils;
+import utils.Timestamps;
 
 import java.net.InetAddress;
 import java.time.Duration;
@@ -335,7 +336,7 @@ public class ApiKeyService {
         touchExecutor.submit(() -> {
             try {
                 keys().updateOne(eq("id", key.id()),
-                        new Document("$set", new Document("lastUsedAt", now.toString())));
+                        new Document("$set", new Document("lastUsedAt", Timestamps.format(now))));
             } catch (RuntimeException e) {
                 LOG.warn("Failed to record last use of API key {}: {}", key.id(), e.getMessage());
             }
@@ -359,7 +360,7 @@ public class ApiKeyService {
             return null;
         }
         try {
-            return Instant.parse(expiresAt.trim()).toString();
+            return Timestamps.format(Instant.parse(expiresAt.trim()));
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException("expiresAt must be an ISO-8601 instant, e.g. 2026-12-31T23:59:59Z");
         }

@@ -8,9 +8,9 @@ All users receive the same generally available source code, binaries, features, 
 
 The applicable license depends on how the Software is used.
 
-## Non-Commercial Use
+## Noncommercial Use
 
-Non-commercial use is permitted under the **PolyForm Noncommercial License 1.0.0**.
+Noncommercial use is permitted under the **PolyForm Noncommercial License 1.0.0**.
 
 Typical permitted uses include:
 
@@ -21,7 +21,7 @@ Typical permitted uses include:
 * qualifying nonprofit activities;
 * experimentation without a commercial production purpose.
 
-The exact rights and restrictions for non-commercial use are governed by the PolyForm Noncommercial License 1.0.0.
+The exact rights and restrictions for noncommercial use are governed by the PolyForm Noncommercial License 1.0.0.
 
 See the `LICENSE` file for details.
 
@@ -64,7 +64,7 @@ The following examples generally do not require a Commercial License:
 * an individual running the Software for a personal project;
 * a student using the Software for coursework;
 * a university using the Software for research;
-* a qualifying nonprofit using the Software for non-commercial purposes;
+* a qualifying nonprofit using the Software for noncommercial purposes;
 * a developer at a company testing the Software locally;
 * a company evaluating the Software in a proof-of-concept environment;
 * a development team using the Software for internal development or testing;
@@ -86,7 +86,7 @@ The following examples generally require a Commercial License:
 
 There is no separate Community Edition or Enterprise Edition.
 
-Commercial customers and non-commercial users may receive the same:
+Commercial customers and noncommercial users may receive the same:
 
 * source code;
 * binaries;
@@ -169,11 +169,11 @@ Any such commitment must be expressly agreed in writing.
 
 ## Support
 
-The non-commercial license does not include support. Questions and bug reports can be submitted through the public issue tracker, where they are answered on a best-effort basis.
+The noncommercial license does not include support. Questions and bug reports can be submitted through the public issue tracker, where they are answered on a best-effort basis.
 
 A Commercial License includes email support with an initial response within 24 hours on Business Days for as long as the license is active.
 
-Neither the non-commercial license nor the Commercial License automatically includes:
+Neither the noncommercial license nor the Commercial License automatically includes:
 
 * guaranteed resolution times;
 * guaranteed bug fixes;
@@ -214,9 +214,7 @@ Affiliates, subsidiaries, parent companies, contractors, customers, and other le
 
 ## License Enforcement
 
-The Software may not contain technical license enforcement or require a license key.
-
-The absence of technical enforcement does not grant additional rights.
+Paprika can display a signed commercial license key in its settings. The key is informational only: the Software never restricts functionality based on it, and the absence, expiry or invalidity of a key does not grant or remove any rights. Rights are governed solely by the applicable license.
 
 Users are responsible for ensuring that their use of the Software complies with the applicable license.
 

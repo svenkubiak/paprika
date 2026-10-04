@@ -14,8 +14,8 @@ Each field has a **name** — used as the JSON key in API requests and responses
 | `EMAIL` | Text, validated as an email address | — |
 | `URL` | Text, validated as a URL | — |
 | `DATE` | ISO date (`yyyy-MM-dd`) | `minDate`, `maxDate` |
-| `TIME` | Time of day | `minTime`, `maxTime` |
-| `DATETIME` | ISO timestamp with timezone | `minDateTime`, `maxDateTime` |
+| `TIME` | Time of day (`HH:mm` or `HH:mm:ss`, stored as `HH:mm:ss`) | `minTime`, `maxTime` |
+| `DATETIME` | ISO timestamp with timezone, stored in UTC | `minDateTime`, `maxDateTime` |
 | `SELECT` | One or more values from an allow list | `values`, `maxSelect` |
 | `JSON` | Arbitrary JSON | `maxBytes`, `maxDepth`, `onlyObject`/`onlyArray` |
 | `RELATION` | ID(s) of record(s) in another collection | target `collection`, `maxSelect`, `cascadeDelete` |
@@ -54,6 +54,10 @@ Every record automatically gets three fields that are **not** part of the schema
 - `id` — the record's unique identifier.
 - `createdAt` — set once, when the record is created.
 - `updatedAt` — refreshed every time the record is saved.
+
+Both timestamps are UTC with exactly three fractional digits (`2026-10-03T09:30:00.000Z`), the same form
+`DATETIME` values are stored in. That form sorts correctly as text, which is what `sort=createdAt:asc`
+relies on.
 
 `id`, `createdAt`, `updatedAt` (and the legacy names `created`/`updated`) are reserved and can't be used as schema field names.
 

@@ -281,6 +281,8 @@ class RequestLogTelemetryIntegrationTest {
                 .execute();
         Document older = awaitEntry(eq("url", "/api/auth/login"));
         String cursor = older.getString("timestamp");
+        // The since bound compares strings, which is only correct for a fixed-width timestamp
+        assertThat(cursor, cursor.matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z"), equalTo(true));
 
         var cookies = utils.AdminTestUtils.loginAsAdminWithDefaultTenant();
         TestResponse list = utils.AdminTestUtils.getWithAdminCookies(

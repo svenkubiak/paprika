@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import models.FieldDefinition;
 import models.FieldOptions;
+import utils.Timestamps;
 import validation.FieldConstraintUtils;
 import validation.ValidationContext;
 import validation.ValidationResult;
 
-import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 
 public class DateFieldValidator implements FieldValidator {
@@ -32,7 +32,7 @@ public class DateFieldValidator implements FieldValidator {
 
         String text = value.asText();
         try {
-            LocalDate.parse(text);
+            Timestamps.parseDate(text);
         } catch (DateTimeParseException e) {
             result.add(field.name(), "Expected ISO date (yyyy-MM-dd)");
             return;

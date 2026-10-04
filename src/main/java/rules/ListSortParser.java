@@ -47,7 +47,7 @@ public final class ListSortParser {
     }
 
     private static void validateSortable(String field, CollectionDefinition definition) {
-        // Timestamps are stored as ISO strings, which sort chronologically as strings.
+        // Timestamps are stored as fixed-width UTC strings (utils/Timestamps), which sort chronologically as strings.
         if (SystemFields.indexableFieldNames().contains(field)) {
             return;
         }

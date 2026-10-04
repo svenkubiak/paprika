@@ -164,4 +164,51 @@ class FieldSchemaValidationTest {
 
         assertThrows(IllegalArgumentException.class, () -> FieldSchemaValidation.validateFieldDefinition(field));
     }
+
+    @Test
+    void temporalRangesStillAcceptEveryFormTheyAcceptedBefore() {
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(new FieldDefinition(
+                "day", FieldType.DATE, false, true, FieldOptions.forDateRange("2026-01-01", "2026-12-31"))));
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(new FieldDefinition(
+                "opensAt", FieldType.TIME, false, true, FieldOptions.forTimeRange("08:00", "18:00:00"))));
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(new FieldDefinition(
+                "startsAt", FieldType.DATETIME, false, true,
+                FieldOptions.forDateTimeRange("2026-10-03T10:00:00+02:00", "2026-10-03T10:00:00.123456Z"))));
+    }
+
+    @Test
+    void temporalRangesNowRejectWhatTheFieldValidatorRejects() {
+        assertThrows(IllegalArgumentException.class, () -> FieldSchemaValidation.validateFieldDefinition(
+                new FieldDefinition("day", FieldType.DATE, false, true, FieldOptions.forDateRange("+10000-01-01", null))));
+        IllegalArgumentException time = assertThrows(IllegalArgumentException.class,
+                () -> FieldSchemaValidation.validateFieldDefinition(new FieldDefinition(
+                        "opensAt", FieldType.TIME, false, true, FieldOptions.forTimeRange("08:00:00.5", null))));
+        assertTrue(time.getMessage().contains("minTime"), time.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> FieldSchemaValidation.validateFieldDefinition(
+                new FieldDefinition("startsAt", FieldType.DATETIME, false, true,
+                        FieldOptions.forDateTimeRange(null, "+10000-01-01T00:00:00Z"))));
+    }
+
+    @Test
+    void temporalDefaultsInAValidFormStillPass() {
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(
+                FieldDefinition.create("day", FieldType.DATE, false, true, null, "2026-10-03")));
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(
+                FieldDefinition.create("opensAt", FieldType.TIME, false, true, null, "10:00")));
+        assertDoesNotThrow(() -> FieldSchemaValidation.validateFieldDefinition(
+                FieldDefinition.create("startsAt", FieldType.DATETIME, false, true, null, "2026-10-03T11:30:00+02:00")));
+    }
+
+    /** Before, any string passed and the malformed default then failed every create relying on it. */
+    @Test
+    void temporalDefaultsInAnInvalidFormAreNowRejected() {
+        assertThrows(IllegalArgumentException.class, () -> FieldSchemaValidation.validateFieldDefinition(
+                FieldDefinition.create("day", FieldType.DATE, false, true, null, "03.10.2026")));
+        IllegalArgumentException time = assertThrows(IllegalArgumentException.class,
+                () -> FieldSchemaValidation.validateFieldDefinition(
+                        FieldDefinition.create("opensAt", FieldType.TIME, false, true, null, "10:00:00.5")));
+        assertTrue(time.getMessage().contains("opensAt"), time.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> FieldSchemaValidation.validateFieldDefinition(
+                FieldDefinition.create("startsAt", FieldType.DATETIME, false, true, null, "2026-10-03T10:00:00")));
+    }
 }

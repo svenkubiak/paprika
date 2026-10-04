@@ -47,7 +47,7 @@ You grant the Licensor and recipients of Software distributed by the Licensor a 
 
 This license includes the right for the Licensor to distribute and sublicense your Contribution under:
 
-* the project's current non-commercial license;
+* the project's current noncommercial license;
 * the project's current Commercial License;
 * future versions of either license;
 * other source-available licenses;
@@ -204,7 +204,7 @@ Stopping future contributions or ending your participation in the project does n
 
 You acknowledge that the Licensor may change:
 
-* the project's non-commercial license;
+* the project's noncommercial license;
 * the Commercial License;
 * the dual-licensing model; or
 * the overall licensing strategy

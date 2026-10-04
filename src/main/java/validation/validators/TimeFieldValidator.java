@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import models.FieldDefinition;
 import models.FieldOptions;
+import utils.Timestamps;
 import validation.FieldConstraintUtils;
 import validation.ValidationContext;
 import validation.ValidationResult;
 
-import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 
 public class TimeFieldValidator implements FieldValidator {
@@ -32,9 +32,9 @@ public class TimeFieldValidator implements FieldValidator {
 
         String text = value.asText();
         try {
-            LocalTime.parse(text);
+            Timestamps.parseTime(text);
         } catch (DateTimeParseException e) {
-            result.add(field.name(), "Expected ISO time");
+            result.add(field.name(), "Expected ISO time (HH:mm or HH:mm:ss, no fractional seconds)");
             return;
         }
 

@@ -11,6 +11,9 @@ public final class SettingKeys {
     // Admin UI calls would bury the API traffic, so they are only logged on request (e.g. for audits).
     public static final String REQUEST_LOG_ADMIN_UI = "request.log.admin.ui";
 
+    // The signed commercial license key; never sent back as is, only its checked content.
+    public static final String LICENSE_KEY = "license.key";
+
     public static final String CLIENT_IP_OFF = "off";
     public static final String CLIENT_IP_TRUNCATED = "truncated";
     public static final String CLIENT_IP_FULL = "full";

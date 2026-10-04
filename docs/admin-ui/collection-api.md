@@ -36,7 +36,9 @@ GET /api/collections/{collection}?offset=0&limit=25&filter=<field>:eq:<value>&so
 
 Without `sort` the list has a **stable default order** (insertion order). That order is what makes
 paging reliable: without it, a write between two page requests can make the same record appear on
-two pages or disappear from all of them.
+two pages or disappear from all of them. With `sort`, records with the same value keep that
+insertion order among themselves, in both directions, so paging over a field like a status or a
+date is just as reliable.
 
 ::: tip Sorting and indexes
 Sorting on a field that has no [index](/admin-ui/collection-schema#indexes) makes MongoDB sort in

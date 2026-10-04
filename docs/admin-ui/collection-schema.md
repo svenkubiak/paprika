@@ -15,7 +15,7 @@ A few validation rules are enforced when saving a field:
 - The field name can't be a [reserved system field name](/concepts/collections#system-fields) (`id`, `createdAt`, `updatedAt`, or the legacy `created`/`updated`), and can't duplicate another field on the same collection.
 - A `RELATION` field must specify a target collection.
 - A `FILE` or `SELECT` field must allow at least one selection (`maxSelect ≥ 1`), and a `SELECT` field needs at least one allowed value.
-- A `DATETIME` range (`minDateTime`/`maxDateTime`) must be an ISO timestamp **including a zone offset**, e.g. `2026-01-01T00:00:00Z` or `2026-01-01T00:00:00+01:00`. The same applies to the values stored in a `DATETIME` field: the API rejects a timestamp without an offset, because it would be ambiguous. Dates are `yyyy-MM-dd`, times `HH:mm` or `HH:mm:ss`.
+- A `DATETIME` range (`minDateTime`/`maxDateTime`) must be an ISO timestamp **including a zone offset**, e.g. `2026-01-01T00:00:00Z` or `2026-01-01T00:00:00+01:00`. The same applies to the values stored in a `DATETIME` field: the API rejects a timestamp without an offset, because it would be ambiguous. A `DATETIME` is stored in UTC with millisecond precision, whatever offset it was sent with: `2026-10-03T11:30:00+02:00` comes back as `2026-10-03T09:30:00.000Z`. Dates are `yyyy-MM-dd` with a four-digit year, times `HH:mm` or `HH:mm:ss` without fractional seconds and are stored as `HH:mm:ss`. Default values have to follow the same format.
 
 ## `String` and `Text`
 

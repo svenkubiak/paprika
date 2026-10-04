@@ -16,8 +16,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import rules.RuleParseException;
+import utils.Timestamps;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -57,7 +57,7 @@ public class SchemaService {
                 .stream(tenantCollections.metaHooks(ctx).find().spliterator(), false)
                 .toList();
 
-        return new SchemaExportDto(VERSION, Instant.now().toString(), collections, hooks);
+        return new SchemaExportDto(VERSION, Timestamps.now(), collections, hooks);
     }
 
     public SchemaImportResult importSchema(TenantContext ctx, SchemaExportDto schema) {

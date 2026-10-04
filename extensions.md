@@ -84,8 +84,11 @@ Parsing and type conversion live in `rules/ListFilterParser`:
 - Allowed fields are the collection's schema fields plus the indexable system fields
   (`id`, `createdAt`, `updatedAt`). An unknown field is a `400`.
 - Values are converted to the field's BSON type (`BOOLEAN`, `NUMBER`, string types). `DATE`,
-  `TIME`, `DATETIME` and the timestamp system fields are stored as ISO strings and compared as
-  strings. `JSON` and `FILE` are not filterable and return `400`.
+  `TIME`, `DATETIME` and the timestamp system fields are stored as normalized ISO strings
+  (`utils/Timestamps`: UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`, `HH:mm:ss`, `yyyy-MM-dd`), and the
+  filter value is normalized the same way before the comparison, so `+02:00` and `Z` match the
+  same record. A value that does not parse as the field's type is a `400`. `JSON` and `FILE` are
+  not filterable and return `400`.
 
 An index is **not** required. Without one the filter costs a collection scan, but the rule
 filter already bounds the candidate set — this is an operational tuning question, not a reason
@@ -106,6 +109,10 @@ GET /api/collections/{collection}?sort=<field>:asc|desc
 - Without `sort`, the list is ordered by `_id`, which is always indexed and insertion-ordered.
   That default is what makes paging stable: an unordered cursor can repeat or drop a record
   once a write lands between two page requests.
+- With `sort`, `_id` ascending is always appended as the last key. Equal sort values have no
+  defined order otherwise, so paging over a non-unique field (a status, a date, `createdAt`
+  within the same millisecond) could repeat or skip records. `_id` is used rather than `id`
+  because `id` can be set by clients and has no unique index.
 - Sorting on a field without an index makes MongoDB sort in memory and fails above 32 MB. Like
   the filter, that is an operational tuning question rather than a reason to reject the request.
 

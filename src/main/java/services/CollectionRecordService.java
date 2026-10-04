@@ -115,6 +115,8 @@ public class CollectionRecordService {
             throw e;
         }
 
+        RecordValueNormalizer.normalize(document, definition);
+
         String now = SystemFields.timestamp();
         if (!document.containsKey("id") || document.getString("id") == null || document.getString("id").isBlank()) {
             document.put("id", DbUtils.id());
@@ -197,7 +199,8 @@ public class CollectionRecordService {
         tenantCollections.dataCollection(ctx, collection)
                 .find(effectiveFilter)
                 .projection(recordProjection(collection))
-                .sort(clientSort == null ? DEFAULT_SORT : clientSort)
+                // Equal sort values have no defined order either, so _id breaks ties to keep paging stable
+                .sort(clientSort == null ? DEFAULT_SORT : Sorts.orderBy(clientSort, DEFAULT_SORT))
                 .skip(effectiveOffset)
                 .limit(effectiveLimit)
                 .into(items);
@@ -283,6 +286,7 @@ public class CollectionRecordService {
 
             CollectionRules rules = definition.rulesOrDefault();
             setDocument.remove(rules.ownerFieldOrDefault());
+            RecordValueNormalizer.normalize(setDocument, definition);
             setDocument.put(SystemFields.UPDATED_AT, SystemFields.timestamp());
 
             Document before = HookRequestUtils.recordSnapshot(request);

@@ -17,6 +17,7 @@ import results.SuperadminPasswordResult;
 import utils.AuthTokens;
 import utils.DbUtils;
 import utils.DbWrites;
+import utils.Timestamps;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -155,7 +156,7 @@ public class SystemUserService {
                 .append("email", normalizeEmail(email))
                 .append("role", Role.SUPERADMIN)
                 .append("setupTokenHash", hashSetupToken(token))
-                .append("setupTokenExpiresAt", Instant.now().plus(SETUP_TOKEN_TTL).toString());
+                .append("setupTokenExpiresAt", Timestamps.format(Instant.now().plus(SETUP_TOKEN_TTL)));
 
         DbWrites.rejectDuplicateAs("Username already exists",
                 () -> resolver.systemCollection(CollectionName.USERS).insertOne(invite));
@@ -414,8 +415,8 @@ public class SystemUserService {
         }
 
         Document origin = new Document(FINGERPRINT, fingerprint)
-                .append("firstSeenAt", Instant.now().toString())
-                .append("lastSeenAt", Instant.now().toString());
+                .append("firstSeenAt", Timestamps.now())
+                .append("lastSeenAt", Timestamps.now());
 
         long added = resolver.systemCollection(CollectionName.USERS).updateOne(
                 and(eq("id", userId), ne(AUTH_ORIGINS + "." + FINGERPRINT, fingerprint)),
@@ -429,7 +430,7 @@ public class SystemUserService {
 
         resolver.systemCollection(CollectionName.USERS).updateOne(
                 and(eq("id", userId), eq(AUTH_ORIGINS + "." + FINGERPRINT, fingerprint)),
-                set(AUTH_ORIGINS + ".$.lastSeenAt", Instant.now().toString()));
+                set(AUTH_ORIGINS + ".$.lastSeenAt", Timestamps.now()));
 
         return false;
     }
@@ -728,7 +729,7 @@ public class SystemUserService {
                 eq("id", userId),
                 combine(
                         set("setupTokenHash", hashSetupToken(token)),
-                        set("setupTokenExpiresAt", Instant.now().plus(SETUP_TOKEN_TTL).toString())
+                        set("setupTokenExpiresAt", Timestamps.format(Instant.now().plus(SETUP_TOKEN_TTL)))
                 )
         );
         return token;

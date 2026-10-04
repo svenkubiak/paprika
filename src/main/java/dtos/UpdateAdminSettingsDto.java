@@ -5,5 +5,6 @@ public record UpdateAdminSettingsDto(
         String defaultTenantId,
         Boolean requestLogClientInfo,
         String requestLogClientIp,
-        Boolean requestLogAdminUi) {
+        Boolean requestLogAdminUi,
+        String licenseKey) {
 }

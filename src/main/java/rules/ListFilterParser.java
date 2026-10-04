@@ -6,6 +6,10 @@ import enums.FieldType;
 import models.CollectionDefinition;
 import models.FieldDefinition;
 import org.bson.conversions.Bson;
+import utils.Timestamps;
+
+import java.time.format.DateTimeParseException;
+import java.util.Locale;
 
 // Format is exactly <field>:eq:<value>, deliberately without and/or (see extensions.md).
 // The result is only ever ANDed with the authorization filter, so it can only narrow a list;
@@ -51,7 +55,7 @@ public final class ListFilterParser {
     }
 
     private static FieldType resolveType(String field, CollectionDefinition definition) {
-        // System fields are stored as ISO strings, so string equality is correct for all three.
+        // createdAt/updatedAt are stored like DATETIME values, so they are filtered like them.
         if (SystemFields.indexableFieldNames().contains(field)) {
             return SystemFields.ID.equals(field) ? FieldType.STRING : FieldType.DATETIME;
         }
@@ -70,14 +74,28 @@ public final class ListFilterParser {
 
     private static Object convert(String field, FieldType type, String value) {
         return switch (type) {
-            // DATE/TIME/DATETIME are stored as ISO strings, so raw string equality is correct
-            case STRING, EMAIL, URL, SELECT, RELATION, DATE, TIME, DATETIME -> value;
+            case STRING, EMAIL, URL, SELECT, RELATION -> value;
+            // Stored in normalized form, so the value is brought into the same form before comparing
+            case DATE, TIME, DATETIME -> toTemporal(field, type, value);
             case BOOLEAN -> toBoolean(field, value);
             case NUMBER -> toNumber(field, value);
             // Rejected rather than silently never matching
             case JSON, FILE -> throw new InvalidFilterException(
                     "Field type " + type.label() + " is not filterable: " + field);
         };
+    }
+
+    private static Object toTemporal(String field, FieldType type, String value) {
+        try {
+            return switch (type) {
+                case DATE -> Timestamps.normalizeDate(value);
+                case TIME -> Timestamps.normalizeTime(value);
+                default -> Timestamps.normalizeDateTime(value);
+            };
+        } catch (DateTimeParseException e) {
+            throw new InvalidFilterException("Filter value for " + type.label().toLowerCase(Locale.ROOT)
+                    + " field '" + field + "' is not a valid ISO value");
+        }
     }
 
     private static Object toBoolean(String field, String value) {

@@ -6,6 +6,7 @@ import { selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
 import { SELECT_EMPTY } from '@/lib/utils'
+import type { AppLicense } from '@/types'
 
 const toast = useAppToast()
 const { load, bootstrap } = useBootstrap()
@@ -20,6 +21,10 @@ const savingClientInfo = ref(false)
 /** Off by default: admin UI traffic is Paprika's own, not the tenant's API traffic. */
 const requestLogAdminUi = ref(false)
 const savingAdminUi = ref(false)
+const license = ref<AppLicense>({ status: 'none' })
+const licenseKey = ref('')
+const savingLicense = ref(false)
+const removingLicense = ref(false)
 
 const clientIpOptions = [
   { label: 'Do not log (default)', value: 'off' },
@@ -52,6 +57,7 @@ async function refreshSettings() {
     requestLogClientInfo.value = !!settings.requestLogClientInfo
     requestLogClientIp.value = settings.requestLogClientIp || 'off'
     requestLogAdminUi.value = !!settings.requestLogAdminUi
+    license.value = settings.license || { status: 'none' }
   } catch (error) {
     toast.add({
       title: error instanceof Error ? error.message : 'Failed to load settings',
@@ -129,6 +135,49 @@ async function saveAdminUiLogging() {
     })
   } finally {
     savingAdminUi.value = false
+  }
+}
+
+async function saveLicense() {
+  savingLicense.value = true
+  try {
+    const settings = await api.updateSettings({ licenseKey: licenseKey.value })
+    license.value = settings.license || { status: 'none' }
+    licenseKey.value = ''
+    toast.add({
+      title: 'License key saved',
+      color: 'success',
+      icon: 'i-lucide-circle-check'
+    })
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to save the license key',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+  } finally {
+    savingLicense.value = false
+  }
+}
+
+async function removeLicense() {
+  removingLicense.value = true
+  try {
+    const settings = await api.updateSettings({ licenseKey: '' })
+    license.value = settings.license || { status: 'none' }
+    toast.add({
+      title: 'License key removed',
+      color: 'success',
+      icon: 'i-lucide-circle-check'
+    })
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to remove the license key',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
+  } finally {
+    removingLicense.value = false
   }
 }
 
@@ -326,6 +375,126 @@ async function saveDefaultTenant() {
               :disabled="!bootstrap?.isSuperAdmin"
             >
               Save
+            </UButton>
+          </div>
+        </form>
+      </div>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-badge-check" class="size-5 text-primary" />
+          <h2 class="font-semibold">License</h2>
+        </div>
+      </template>
+
+      <div v-if="loading" class="text-sm text-muted">Loading settings…</div>
+
+      <div v-else class="space-y-4">
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <UBadge v-if="license.status === 'valid'" color="success" variant="soft">Commercial</UBadge>
+            <UBadge v-else color="neutral" variant="soft">Noncommercial</UBadge>
+            <UBadge v-if="license.status === 'expired'" color="warning" variant="soft">Expired</UBadge>
+            <UBadge v-else-if="license.status === 'invalid'" color="error" variant="soft">Invalid key</UBadge>
+          </div>
+
+          <p v-if="license.status === 'valid'" class="max-w-2xl text-sm text-muted">
+            This installation is covered by a commercial license and may be used in production for
+            commercial purposes within the licensed scope. Support and renewals:
+            <a
+              href="https://getpaprika.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary hover:underline"
+            >getpaprika.dev</a>.
+          </p>
+
+          <p v-else-if="license.status === 'expired'" class="max-w-2xl text-sm text-muted">
+            The commercial license for {{ license.licensee }} expired on {{ license.expiresAt }}.
+            Until a renewed key is stored, this installation counts as noncommercial. Paprika keeps
+            working either way.
+          </p>
+
+          <p v-else-if="license.status === 'invalid'" class="max-w-2xl text-sm text-muted">
+            The stored license key could not be verified, so this installation counts as
+            noncommercial. Paste the key again or ask for a new one.
+          </p>
+
+          <p v-if="license.status !== 'valid'" class="max-w-2xl text-sm text-muted">
+            Without a commercial license Paprika runs under the
+            <a
+              href="https://polyformproject.org/licenses/noncommercial/1.0.0"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary hover:underline"
+            >PolyForm Noncommercial License 1.0.0</a>.
+            It covers personal and hobby projects, education, research and qualifying nonprofits.
+            Companies may also use Paprika for evaluation, development, testing and staging. Running
+            it in production for a commercial purpose requires a commercial license per
+            installation, which you can request at
+            <a
+              href="https://getpaprika.dev"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary hover:underline"
+            >getpaprika.dev</a>.
+          </p>
+
+          <dl
+            v-if="license.status === 'valid' || license.status === 'expired'"
+            class="grid max-w-xl grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm"
+          >
+            <dt class="text-muted">Licensed to</dt>
+            <dd>{{ license.licensee }}</dd>
+            <dt class="text-muted">Installations</dt>
+            <dd>{{ license.installations }}</dd>
+            <dt class="text-muted">{{ license.status === 'expired' ? 'Expired on' : 'Valid until' }}</dt>
+            <dd>{{ license.expiresAt }}</dd>
+            <dt class="text-muted">License ID</dt>
+            <dd class="font-mono">{{ license.licenseId }}</dd>
+          </dl>
+        </div>
+
+        <USeparator />
+
+        <div class="space-y-1">
+          <h3 class="font-medium">License key</h3>
+          <p class="max-w-2xl text-sm text-muted">
+            Paste the commercial license key you received. It is checked offline against the public
+            key built into Paprika, nothing is sent anywhere.
+          </p>
+        </div>
+
+        <form class="flex max-w-2xl flex-col gap-4" @submit.prevent="saveLicense">
+          <UTextarea
+            v-model="licenseKey"
+            :rows="3"
+            placeholder="PAPRIKA1.…"
+            class="w-full font-mono"
+            :disabled="!bootstrap?.isSuperAdmin"
+          />
+
+          <div class="flex gap-2">
+            <UButton
+              type="submit"
+              :loading="savingLicense"
+              icon="i-lucide-save"
+              :disabled="!bootstrap?.isSuperAdmin || !licenseKey.trim()"
+            >
+              Save
+            </UButton>
+            <UButton
+              v-if="license.status !== 'none'"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-trash-2"
+              :loading="removingLicense"
+              :disabled="!bootstrap?.isSuperAdmin"
+              @click="removeLicense"
+            >
+              Remove
             </UButton>
           </div>
         </form>

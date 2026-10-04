@@ -6,10 +6,8 @@ import io.mangoo.utils.JsonUtils;
 import models.FieldDefinition;
 import models.FieldOptions;
 import org.apache.commons.lang3.StringUtils;
+import utils.Timestamps;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.HashSet;
 import java.util.List;
@@ -131,6 +129,16 @@ public final class FieldSchemaValidation {
             }
         }
 
+        // A default the field validator refuses would fail every create that relies on it
+        String defaultLabel = "Default for " + field.name();
+        switch (field.type()) {
+            case DATE -> validateIsoDate(value.asText(), defaultLabel);
+            case TIME -> validateIsoTime(value.asText(), defaultLabel);
+            case DATETIME -> validateIsoDateTime(value.asText(), defaultLabel);
+            default -> {
+            }
+        }
+
         if (field.type() == FieldType.STRING || field.type() == FieldType.EMAIL || field.type() == FieldType.URL) {
             // Same order as the runtime validators: a too-long default is not pattern-matched.
             if (FieldConstraintUtils.validateTextLength(
@@ -244,7 +252,7 @@ public final class FieldSchemaValidation {
             return;
         }
         try {
-            LocalDate.parse(value.trim());
+            Timestamps.parseDate(value.trim());
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(label + " must be an ISO date (yyyy-MM-dd)");
         }
@@ -255,9 +263,9 @@ public final class FieldSchemaValidation {
             return;
         }
         try {
-            LocalTime.parse(value.trim());
+            Timestamps.parseTime(value.trim());
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException(label + " must be an ISO time");
+            throw new IllegalArgumentException(label + " must be an ISO time (HH:mm or HH:mm:ss, no fractional seconds)");
         }
     }
 
@@ -266,7 +274,7 @@ public final class FieldSchemaValidation {
             return;
         }
         try {
-            OffsetDateTime.parse(value.trim());
+            Timestamps.parseDateTime(value.trim());
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(label + " must be an ISO datetime with timezone");
         }
