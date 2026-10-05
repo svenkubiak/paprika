@@ -97,10 +97,10 @@ function tenantToForm(tenant: TenantDefinition): TenantEditorForm {
   }
 }
 
-function openEdit(_event: Event, tableRow: { original: TenantDefinition }) {
-  editingTenant.value = tableRow.original
+function openEdit(tenant: TenantDefinition) {
+  editingTenant.value = tenant
   editorMode.value = 'edit'
-  form.value = tenantToForm(tableRow.original)
+  form.value = tenantToForm(tenant)
   editorOpen.value = true
 }
 
@@ -203,7 +203,7 @@ async function deleteTenantAction() {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="rows" :columns="columns" :loading="loading" @select="openEdit">
+      <UTable :data="rows" :columns="columns" :loading="loading">
         <template #slug-cell="{ row }">
           <code class="text-sm">{{ row.original.slug }}</code>
         </template>
@@ -224,7 +224,7 @@ async function deleteTenantAction() {
               size="sm"
               variant="soft"
               icon="i-lucide-pencil"
-              @click="openEdit($event, { original: row.original })"
+              @click="openEdit(row.original)"
             >
               Edit
             </UButton>

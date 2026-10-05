@@ -222,10 +222,10 @@ function userToForm(user: TenantUser): UserEditorForm {
   }
 }
 
-function openEdit(_event: Event, tableRow: { original: TenantUser }) {
-  editingUser.value = tableRow.original
+function openEdit(user: TenantUser) {
+  editingUser.value = user
   editorMode.value = 'edit'
-  form.value = userToForm(tableRow.original)
+  form.value = userToForm(user)
   editorOpen.value = true
 }
 
@@ -422,7 +422,7 @@ async function bulkDelete() {
         </UButton>
       </div>
 
-      <UTable :data="pagedUsers" :columns="columns" :loading="loading" @select="openEdit">
+      <UTable :data="pagedUsers" :columns="columns" :loading="loading">
         <template #select-header>
           <UCheckbox
             :model-value="
@@ -463,7 +463,7 @@ async function bulkDelete() {
               size="sm"
               variant="soft"
               icon="i-lucide-pencil"
-              @click="openEdit($event, { original: row.original })"
+              @click="openEdit(row.original)"
             >
               Edit
             </UButton>

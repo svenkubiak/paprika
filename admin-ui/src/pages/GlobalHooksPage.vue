@@ -91,11 +91,11 @@ function openAdd() {
   })
 }
 
-function openEdit(_event: Event, tableRow: { original: HookDefinition }) {
+function openEdit(hook: HookDefinition) {
   openEditor({
     mode: 'edit',
-    form: hookToForm(tableRow.original),
-    id: tableRow.original.id,
+    form: hookToForm(hook),
+    id: hook.id,
     save: saveHook
   })
 }
@@ -209,7 +209,7 @@ async function runTest(hook: HookDefinition) {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="hooks" :columns="columns" :loading="loading" @select="openEdit">
+      <UTable :data="hooks" :columns="columns" :loading="loading">
         <template #name-cell="{ row }">
           <div>
             <span class="font-medium">{{ row.original.name }}</span>
@@ -232,6 +232,14 @@ async function runTest(hook: HookDefinition) {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-2" @click.stop>
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="i-lucide-pencil"
+              @click="openEdit(row.original)"
+            >
+              Edit
+            </UButton>
             <UButton
               size="sm"
               variant="soft"

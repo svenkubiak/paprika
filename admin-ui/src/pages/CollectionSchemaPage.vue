@@ -128,12 +128,12 @@ function openAddField() {
   })
 }
 
-function openEditField(_event: Event, tableRow: { index: number; original: SchemaRow }) {
-  if (rows.value[tableRow.index]?.locked) return
+function openEditField(index: number) {
+  if (rows.value[index]?.locked) return
   openSchemaEditor({
     mode: 'edit',
-    row: rows.value[tableRow.index],
-    index: tableRow.index,
+    row: rows.value[index],
+    index,
     save: saveField,
     delete: requestDeleteField
   })
@@ -325,10 +325,6 @@ function openEditIndex(index: IndexDefinition) {
   indexEditorOpen.value = true
 }
 
-function openEditIndexRow(_event: Event, tableRow: { original: IndexDefinition }) {
-  openEditIndex(tableRow.original)
-}
-
 function requestDeleteIndexFromEditor() {
   const target = indexEditorTarget.value
   if (!target) return
@@ -427,7 +423,7 @@ function describeIndexFields(index: IndexDefinition): string {
     />
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="rows" :columns="columns" :loading="loading" @select="openEditField">
+      <UTable :data="rows" :columns="columns" :loading="loading">
         <template #name-cell="{ row }">
           <div class="flex items-center gap-1.5">
             <code>{{ row.original.name }}</code>
@@ -483,9 +479,16 @@ function describeIndexFields(index: IndexDefinition): string {
           <span v-else class="text-muted">—</span>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end" @click.stop>
+          <div v-if="!row.original.locked" class="flex justify-end gap-2" @click.stop>
             <UButton
-              v-if="!row.original.locked"
+              size="sm"
+              variant="soft"
+              icon="i-lucide-pencil"
+              @click="openEditField(row.index)"
+            >
+              Edit
+            </UButton>
+            <UButton
               size="sm"
               color="error"
               variant="soft"
@@ -510,12 +513,7 @@ function describeIndexFields(index: IndexDefinition): string {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable
-        :data="indexes"
-        :columns="indexColumns"
-        :loading="loading"
-        @select="openEditIndexRow"
-      >
+      <UTable :data="indexes" :columns="indexColumns" :loading="loading">
         <template #name-cell="{ row }">
           <div class="flex items-center gap-1.5">
             <code>{{ row.original.name }}</code>
@@ -540,6 +538,14 @@ function describeIndexFields(index: IndexDefinition): string {
         </template>
         <template #actions-cell="{ row }">
           <div v-if="!isManagedIndex(row.original)" class="flex justify-end gap-2" @click.stop>
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="i-lucide-pencil"
+              @click="openEditIndex(row.original)"
+            >
+              Edit
+            </UButton>
             <UButton
               size="sm"
               color="error"

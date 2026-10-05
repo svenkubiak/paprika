@@ -77,8 +77,7 @@ function openAddHook() {
   })
 }
 
-function openEditHook(_event: Event, tableRow: { original: HookDefinition }) {
-  const hook = tableRow.original
+function openEditHook(hook: HookDefinition) {
   openHookEditor({
     mode: 'edit',
     form: hookToForm(hook),
@@ -214,7 +213,7 @@ const testSucceeded = computed(() => testResult.value !== null && !testResult.va
         </div>
       </template>
 
-      <UTable :data="hooks" :columns="columns" :loading="loading" @select="openEditHook">
+      <UTable :data="hooks" :columns="columns" :loading="loading">
         <template #name-cell="{ row }">
           <div>
             <span class="font-medium">{{ row.original.name }}</span>
@@ -237,6 +236,14 @@ const testSucceeded = computed(() => testResult.value !== null && !testResult.va
         </template>
         <template #actions-cell="{ row }">
           <div class="flex justify-end gap-2" @click.stop>
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="i-lucide-pencil"
+              @click="openEditHook(row.original)"
+            >
+              Edit
+            </UButton>
             <UButton
               size="sm"
               variant="soft"

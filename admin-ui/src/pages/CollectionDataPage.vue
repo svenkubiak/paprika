@@ -411,21 +411,14 @@ async function bulkDelete() {
           />
         </template>
         <template #id-cell="{ row }">
-          <button
-            class="font-mono text-sm text-primary hover:underline"
-            @click="openEditRecord(row.original)"
-          >
-            {{ row.original.id }}
-          </button>
+          <code class="text-sm">{{ row.original.id }}</code>
         </template>
         <template
           v-for="field in definition?.fields || []"
           :key="field.name"
           #[`${field.name}-cell`]="{ row }"
         >
-          <button class="w-full text-left" @click="openEditRecord(row.original)">
-            {{ formatCellValue(row.original[field.name], field.type) }}
-          </button>
+          <span class="text-sm">{{ formatCellValue(row.original[field.name], field.type) }}</span>
         </template>
         <template #createdAt-cell="{ row }">
           <span class="font-mono text-sm text-muted">{{ row.original.createdAt }}</span>
