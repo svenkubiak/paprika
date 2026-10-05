@@ -503,10 +503,11 @@ export const api = {
   listRecords(
     collection: string,
     offset: number,
-    limit: number
+    limit: number,
+    sort: string
   ): Promise<PaginatedRecords> {
     return request(
-      `/api/collections/${encodeURIComponent(collection)}?offset=${offset}&limit=${limit}`
+      `/api/collections/${encodeURIComponent(collection)}?offset=${offset}&limit=${limit}&sort=${encodeURIComponent(sort)}`
     )
   },
 

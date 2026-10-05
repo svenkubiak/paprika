@@ -20,7 +20,7 @@ const records = ref<Record<string, unknown>[]>([])
 const total = ref(0)
 const loading = ref(true)
 const search = ref('')
-const sortField = ref('updatedAt')
+const sortField = ref('createdAt')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 const page = ref(1)
 const pageSize = ref(25)
@@ -45,10 +45,13 @@ const pageSizeOptions = [
 ]
 
 const sortOptions = computed(() => {
-  const fields = definition.value?.fields || []
+  // The server rejects sorting on JSON and FILE fields, they have no meaningful order
+  const fields = (definition.value?.fields || []).filter(
+    (field) => field.type !== 'JSON' && field.type !== 'FILE'
+  )
   return [
-    { label: 'Updated', value: 'updatedAt' },
     { label: 'Created', value: 'createdAt' },
+    { label: 'Updated', value: 'updatedAt' },
     { label: 'ID', value: 'id' },
     ...fields.map((field) => ({ label: field.name, value: field.name }))
   ]
@@ -66,24 +69,11 @@ const columns = computed(() => {
   ]
 })
 
+// Sorting happens on the server; sorting here would only reorder the current page.
 const filteredRecords = computed(() => {
-  let items = [...records.value]
   const query = search.value.trim().toLowerCase()
-
-  if (query) {
-    items = items.filter((record) => JSON.stringify(record).toLowerCase().includes(query))
-  }
-
-  items.sort((a, b) => {
-    const left = a[sortField.value]
-    const right = b[sortField.value]
-    const compare = String(left ?? '').localeCompare(String(right ?? ''), undefined, {
-      numeric: true
-    })
-    return sortDirection.value === 'asc' ? compare : -compare
-  })
-
-  return items
+  if (!query) return records.value
+  return records.value.filter((record) => JSON.stringify(record).toLowerCase().includes(query))
 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
@@ -106,7 +96,7 @@ watch(collection, async () => {
   total.value = 0
   // A sort field that does not exist in the new collection would silently sort on nothing.
   search.value = ''
-  sortField.value = 'updatedAt'
+  sortField.value = 'createdAt'
   sortDirection.value = 'desc'
   page.value = 1
 
@@ -116,6 +106,16 @@ watch(collection, async () => {
 
 watch([page, pageSize], () => {
   if (isUsers.value) return
+  refreshRecords()
+})
+
+// A new order makes the current page position meaningless; resetting the page reloads via its watcher.
+watch([sortField, sortDirection], () => {
+  if (isUsers.value) return
+  if (page.value !== 1) {
+    page.value = 1
+    return
+  }
   refreshRecords()
 })
 
@@ -152,7 +152,12 @@ async function refreshRecords() {
   selectedIds.value = new Set()
   try {
     const offset = (page.value - 1) * pageSize.value
-    const result = await api.listRecords(collection.value, offset, pageSize.value)
+    const result = await api.listRecords(
+      collection.value,
+      offset,
+      pageSize.value,
+      `${sortField.value}:${sortDirection.value}`
+    )
     // Collection switches and quick paging can overlap requests; only the newest may write.
     if (request !== latestRecordsRequest) return
     records.value = result.items
