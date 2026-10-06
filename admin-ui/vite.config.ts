@@ -5,6 +5,27 @@ import { fileURLToPath, URL } from 'node:url'
 
 const assetsOutDir = fileURLToPath(new URL('../src/main/resources/files/assets', import.meta.url))
 
+/**
+ * Nuxt UI writes colored text in the 500 shade, which stays below 4.5:1 on white and on the
+ * tinted soft background (yellow 1.8:1, green 2.1:1, blue and red 3.3:1). The 800 shade in light
+ * and the 300 shade in dark mode reach at least 6:1. Spelled out per color, so Tailwind's scanner
+ * finds the classes in this file.
+ */
+const readableText = {
+  primary: 'text-(color:--ui-color-primary-800) dark:text-(color:--ui-color-primary-300)',
+  secondary: 'text-(color:--ui-color-secondary-800) dark:text-(color:--ui-color-secondary-300)',
+  success: 'text-(color:--ui-color-success-800) dark:text-(color:--ui-color-success-300)',
+  info: 'text-(color:--ui-color-info-800) dark:text-(color:--ui-color-info-300)',
+  warning: 'text-(color:--ui-color-warning-800) dark:text-(color:--ui-color-warning-300)',
+  error: 'text-(color:--ui-color-error-800) dark:text-(color:--ui-color-error-300)'
+}
+
+function readableTextFor(variants: string[]) {
+  return Object.entries(readableText).flatMap(([color, className]) =>
+    variants.map((variant) => ({ color, variant, class: className }))
+  )
+}
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -62,18 +83,13 @@ export default defineConfig({
             root: 'w-full max-w-full'
           }
         },
-        // Every tag is a soft badge in the default size. Nuxt UI writes soft badges in the 500
-        // shade, which stays below 4.5:1 on the tinted background (yellow 1.8:1, green 2.1:1);
-        // the 800 shade in light and the 300 shade in dark mode reach at least 6:1.
+        // Every tag is a soft badge in the default size.
         badge: {
-          compoundVariants: [
-            { color: 'primary', variant: 'soft', class: 'text-(color:--ui-color-primary-800) dark:text-(color:--ui-color-primary-300)' },
-            { color: 'secondary', variant: 'soft', class: 'text-(color:--ui-color-secondary-800) dark:text-(color:--ui-color-secondary-300)' },
-            { color: 'success', variant: 'soft', class: 'text-(color:--ui-color-success-800) dark:text-(color:--ui-color-success-300)' },
-            { color: 'info', variant: 'soft', class: 'text-(color:--ui-color-info-800) dark:text-(color:--ui-color-info-300)' },
-            { color: 'warning', variant: 'soft', class: 'text-(color:--ui-color-warning-800) dark:text-(color:--ui-color-warning-300)' },
-            { color: 'error', variant: 'soft', class: 'text-(color:--ui-color-error-800) dark:text-(color:--ui-color-error-300)' }
-          ]
+          compoundVariants: readableTextFor(['soft'])
+        },
+        // Solid buttons keep white text on the 500 shade; only the colored-text variants change.
+        button: {
+          compoundVariants: readableTextFor(['soft', 'subtle', 'outline', 'ghost'])
         },
         // Nuxt UI only highlights rows that have a select handler; rows open via their Edit
         // button now, so the hover is set for every data row (the empty-state row has no
