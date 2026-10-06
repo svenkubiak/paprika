@@ -109,6 +109,22 @@ export default defineConfig({
         alert: {
           compoundVariants: readableTextFor(['soft', 'subtle', 'outline'], 'root')
         },
+        // The ring is all that shows of an unchecked checkbox, and Nuxt UI's border shade gives
+        // it 1.3:1; a control needs 3:1. The checked indicator covers the ring. Disabled works as
+        // for the switch below.
+        checkbox: {
+          slots: {
+            base: 'ring-(color:--ui-color-neutral-500) dark:ring-(color:--ui-color-neutral-400)'
+          },
+          variants: {
+            disabled: {
+              true: {
+                root: 'opacity-100',
+                base: 'opacity-75'
+              }
+            }
+          }
+        },
         // A disabled switch dims only the toggle: Nuxt UI fades the whole root, which takes the
         // description down to 2.9:1, and it often says why the switch is locked.
         switch: {
