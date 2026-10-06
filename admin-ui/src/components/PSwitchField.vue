@@ -40,7 +40,7 @@ const detailsOpen = ref(false)
           <button
             v-if="details"
             type="button"
-            class="inline-flex rounded-sm text-dimmed transition-colors hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            class="inline-flex rounded-sm text-dimmed transition-colors hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             :class="{ 'text-primary': detailsOpen }"
             :aria-expanded="detailsOpen"
             :aria-label="detailsOpen ? 'Hide details' : 'Show details'"

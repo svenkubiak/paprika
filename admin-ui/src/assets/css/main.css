@@ -20,6 +20,23 @@ html {
 }
 
 /*
+ * Nuxt UI draws the focus outline at 25% of the control's color, 1.3:1 to 2.3:1 against the page;
+ * a focus indicator needs 3:1. Every focused control gets the primary color at full strength
+ * (3.7:1 light, 7:1 dark). Unlayered, so it wins over the outline-color utilities.
+ */
+:focus-visible {
+  outline-color: var(--ui-primary);
+}
+
+/*
+ * The selected option of a toggle group (segmented controls, log filters) is marked by a soft
+ * tint that is only 1.1:1 against the group. The inset ring in the text color carries the state.
+ */
+[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/*
  * Colored text in a shade that stays readable: `text-error` and friends are the 500 shade, below
  * 4.5:1 on white and on tinted backgrounds (yellow 1.8:1, green 2.1:1, blue and red 3.3:1). The
  * 800 shade in light and the 300 shade in dark mode reach at least 6:1. Use these for colored text
