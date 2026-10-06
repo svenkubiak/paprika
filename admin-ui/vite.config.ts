@@ -109,6 +109,18 @@ export default defineConfig({
         alert: {
           compoundVariants: readableTextFor(['soft', 'subtle', 'outline'], 'root')
         },
+        // A disabled switch dims only the toggle: Nuxt UI fades the whole root, which takes the
+        // description down to 2.9:1, and it often says why the switch is locked.
+        switch: {
+          variants: {
+            disabled: {
+              true: {
+                root: 'opacity-100',
+                base: 'opacity-75'
+              }
+            }
+          }
+        },
         // The status icon of a toast; green and yellow stay below 3:1 in the 500 shade.
         toast: {
           compoundVariants: readableTextFor(null, 'icon')
