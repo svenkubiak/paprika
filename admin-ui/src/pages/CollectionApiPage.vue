@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/lib/api'
 import {
@@ -33,13 +33,18 @@ async function loadDefinition() {
   loading.value = true
   try {
     definition.value = await api.getCollectionDefinition(collection.value)
+  } catch (error) {
+    toast.add({
+      title: error instanceof Error ? error.message : 'Failed to load collection',
+      color: 'error',
+      icon: 'i-lucide-circle-x'
+    })
   } finally {
     loading.value = false
   }
 }
 
 // Also reload on a collection change: navigating between collections reuses this component.
-onMounted(loadDefinition)
 watch(collection, loadDefinition)
 
 function endpointKey(endpoint: ApiEndpointDoc) {
@@ -86,6 +91,10 @@ async function copy(text: string) {
 function copyEndpoint(endpoint: ApiEndpointDoc) {
   return copy(`${endpoint.method} ${endpoint.path}`)
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous tab on screen until this one
+// has its data instead of flashing the empty state first.
+await loadDefinition()
 </script>
 
 <template>

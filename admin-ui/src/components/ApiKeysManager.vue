@@ -432,10 +432,10 @@ async function deleteKey() {
             <PField
               label="Name"
               icon="i-lucide-tag"
-              help="Who or what uses this key, e.g. middleware-prod."
+              help="Who or what uses this key, e.g. the name of the calling service."
               details="Shown in the list and in the request log."
             >
-              <UInput v-model="form.name" placeholder="middleware-prod" />
+              <UInput v-model="form.name" placeholder="my-service" />
             </PField>
 
             <PField

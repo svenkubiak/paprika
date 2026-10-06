@@ -43,7 +43,19 @@ const isAuthLayout = computed(() => route.meta.public === true)
     <RouterView v-else-if="isAuthLayout" />
     <RouterView v-else v-slot="{ Component }">
       <AppLayout>
-        <component :is="Component" />
+        <!--
+          Pages that await their first data in setup stay off screen until it is there: the
+          previous page remains visible meanwhile, so a tab switch swaps one finished page for
+          another. Only a load slower than the timeout shows the spinner.
+        -->
+        <Suspense :timeout="300">
+          <component :is="Component" />
+          <template #fallback>
+            <div class="flex justify-center py-16">
+              <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />
+            </div>
+          </template>
+        </Suspense>
       </AppLayout>
     </RouterView>
 

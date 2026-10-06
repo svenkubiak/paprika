@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { type SchemaRow } from '@/components/SchemaEditorSheet.vue'
 import { api } from '@/lib/api'
@@ -74,7 +74,6 @@ const indexColumns = [
 ]
 
 // Also reload on a collection change: navigating between collections reuses this component.
-onMounted(loadDefinition)
 watch(collection, loadDefinition)
 
 async function loadDefinition() {
@@ -393,6 +392,10 @@ async function persistIndexes(
 function describeIndexFields(index: IndexDefinition): string {
   return index.fields.map((field) => `${field.field} ${field.direction}`).join(', ')
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous tab on screen until this one
+// has its data instead of flashing the empty state first.
+await loadDefinition()
 </script>
 
 <template>

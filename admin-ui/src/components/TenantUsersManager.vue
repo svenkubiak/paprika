@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import UserEditorSheet, {
   type UserEditorForm,
   type UserEditorMode
@@ -135,13 +135,6 @@ watch(hasActiveTenant, async (value) => {
     await refresh()
   } else {
     users.value = []
-  }
-})
-
-onMounted(async () => {
-  await load(true)
-  if (hasActiveTenant.value) {
-    await refresh()
   }
 })
 
@@ -365,6 +358,13 @@ async function bulkDelete() {
   } finally {
     deleting.value = false
   }
+}
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous tab on screen until the users
+// are loaded. A failed bootstrap reload was only logged before; it must not reject setup now.
+await load(true).catch((error) => console.error('[paprika] bootstrap reload failed', error))
+if (hasActiveTenant.value) {
+  await refresh()
 }
 </script>
 

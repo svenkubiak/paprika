@@ -123,11 +123,8 @@ watch([sortField, sortDirection], () => {
   refreshRecords()
 })
 
-onMounted(async () => {
+onMounted(() => {
   window.addEventListener('paprika:new-collection', onNewCollectionShortcut as EventListener)
-  if (isUsers.value) return
-  await loadDefinition()
-  await refreshRecords()
 })
 
 onUnmounted(() => {
@@ -348,6 +345,13 @@ async function bulkDelete() {
   } finally {
     saving.value = false
   }
+}
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous tab on screen until this one
+// has its data instead of flashing "Loading records…" first.
+if (!isUsers.value) {
+  await loadDefinition()
+  await refreshRecords()
 }
 </script>
 

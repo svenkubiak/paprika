@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/lib/api'
 import { useHookEditorSheet, emptyHookForm } from '@/composables/useHookEditorSheet'
@@ -33,7 +33,6 @@ const columns = [
 ]
 
 // Also reload on a collection change: navigating between collections reuses this component.
-onMounted(loadHooks)
 watch(collection, loadHooks)
 
 async function loadHooks() {
@@ -190,6 +189,10 @@ async function runTableTest(hook: HookDefinition, event: Event) {
 const deleteHookName = computed(() => hookToDelete.value?.name ?? 'this hook')
 
 const testSucceeded = computed(() => testResult.value !== null && !testResult.value.error)
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous tab on screen until this one
+// has its data instead of flashing the empty state first.
+await loadHooks()
 </script>
 
 <template>

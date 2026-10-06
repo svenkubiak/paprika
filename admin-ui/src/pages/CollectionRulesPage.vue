@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/lib/api'
 import PField from '@/components/PField.vue'
@@ -208,7 +208,6 @@ watch(
 )
 
 // Also reload on a collection change: navigating between collections reuses this component.
-onMounted(loadDefinition)
 watch(collection, loadDefinition)
 
 function isUsersRelationField(field: FieldDefinition) {
@@ -299,6 +298,10 @@ async function saveRules() {
     saving.value = false
   }
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous tab on screen until this one
+// has its data instead of flashing the empty state first.
+await loadDefinition()
 </script>
 
 <template>
