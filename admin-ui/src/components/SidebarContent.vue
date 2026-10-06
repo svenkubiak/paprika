@@ -108,7 +108,7 @@ function onTenantChange(value: string) {
               :class="[
                 'justify-start font-mono text-sm',
                 activeCollection === collection
-                  ? 'font-medium bg-elevated hover:bg-elevated'
+                  ? 'font-medium bg-elevated hover:bg-elevated shadow-[inset_3px_0_0_var(--ui-primary)]'
                   : 'hover:bg-muted'
               ]"
             >
@@ -152,7 +152,7 @@ function onTenantChange(value: string) {
                 :class="[
                   'justify-start',
                   item.active
-                    ? 'font-medium bg-elevated hover:bg-elevated'
+                    ? 'font-medium bg-elevated hover:bg-elevated shadow-[inset_3px_0_0_var(--ui-primary)]'
                     : 'hover:bg-muted'
                 ]"
               >

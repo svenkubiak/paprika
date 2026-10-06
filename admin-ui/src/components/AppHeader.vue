@@ -133,6 +133,7 @@ function toggleColorMode() {
           variant="ghost"
           :color="route.name === 'profile' ? 'primary' : 'neutral'"
           class="gap-2"
+          :class="{ 'ring ring-inset ring-current': route.name === 'profile' }"
           aria-label="Your profile"
         >
           <UAvatar
@@ -166,6 +167,7 @@ function toggleColorMode() {
           size="sm"
           :variant="route.path === tab.to ? 'soft' : 'ghost'"
           :color="route.path === tab.to ? 'primary' : 'neutral'"
+          :class="{ 'ring ring-inset ring-current': route.path === tab.to }"
         >
           {{ tab.label }}
         </UButton>

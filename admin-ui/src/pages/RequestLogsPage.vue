@@ -383,6 +383,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="statusFilter === 'all' ? 'primary' : 'neutral'"
                 :variant="statusFilter === 'all' ? 'soft' : 'ghost'"
+                :aria-pressed="statusFilter === 'all'"
                 @click="setStatusFilter('all')"
               >
                 All
@@ -391,6 +392,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="statusFilter === 'success' ? 'success' : 'neutral'"
                 :variant="statusFilter === 'success' ? 'soft' : 'ghost'"
+                :aria-pressed="statusFilter === 'success'"
                 @click="setStatusFilter('success')"
               >
                 Success
@@ -399,6 +401,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="statusFilter === 'error' ? 'error' : 'neutral'"
                 :variant="statusFilter === 'error' ? 'soft' : 'ghost'"
+                :aria-pressed="statusFilter === 'error'"
                 @click="setStatusFilter('error')"
               >
                 Errors
@@ -410,6 +413,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="hookFilter === 'any' ? 'primary' : 'neutral'"
                 :variant="hookFilter === 'any' ? 'soft' : 'ghost'"
+                :aria-pressed="hookFilter === 'any'"
                 @click="setHookFilter('any')"
               >
                 Any hook
@@ -418,6 +422,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="hookFilter === 'continued' ? 'primary' : 'neutral'"
                 :variant="hookFilter === 'continued' ? 'soft' : 'ghost'"
+                :aria-pressed="hookFilter === 'continued'"
                 title="A hook ran and let the request through"
                 @click="setHookFilter('continued')"
               >
@@ -427,6 +432,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="hookFilter === 'blocked' ? 'warning' : 'neutral'"
                 :variant="hookFilter === 'blocked' ? 'soft' : 'ghost'"
+                :aria-pressed="hookFilter === 'blocked'"
                 title="A hook ran and rejected the request"
                 @click="setHookFilter('blocked')"
               >
@@ -439,6 +445,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="typeFilter === 'all' ? 'primary' : 'neutral'"
                 :variant="typeFilter === 'all' ? 'soft' : 'ghost'"
+                :aria-pressed="typeFilter === 'all'"
                 @click="setTypeFilter('all')"
               >
                 All entries
@@ -447,6 +454,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="typeFilter === 'request' ? 'primary' : 'neutral'"
                 :variant="typeFilter === 'request' ? 'soft' : 'ghost'"
+                :aria-pressed="typeFilter === 'request'"
                 @click="setTypeFilter('request')"
               >
                 Requests
@@ -455,6 +463,7 @@ function showRelated(requestId: string) {
                 size="sm"
                 :color="typeFilter === 'hook' ? 'primary' : 'neutral'"
                 :variant="typeFilter === 'hook' ? 'soft' : 'ghost'"
+                :aria-pressed="typeFilter === 'hook'"
                 @click="setTypeFilter('hook')"
                 title="Entries written by asynchronous after-hooks, which run once the response is out"
               >
