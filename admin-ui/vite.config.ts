@@ -26,6 +26,21 @@ function readableTextFor(variants: string[]) {
   )
 }
 
+/**
+ * Solid buttons put white text on the 500 shade, 3.8:1 for blue and red in light mode, and the
+ * hover lightens it further. In light mode they use the first shade that reaches 4.5:1 against
+ * white (blue and red 600, green and yellow 700) and darken one step on hover. Dark mode keeps
+ * Nuxt UI's colors: dark text on the 400 shade already reaches 6:1.
+ */
+const readableSolid = {
+  primary: 'bg-(color:--ui-color-primary-600) hover:bg-(color:--ui-color-primary-700) active:bg-(color:--ui-color-primary-700) disabled:bg-(color:--ui-color-primary-600) aria-disabled:bg-(color:--ui-color-primary-600) dark:bg-primary dark:hover:bg-primary/75 dark:active:bg-primary/75 dark:disabled:bg-primary dark:aria-disabled:bg-primary',
+  secondary: 'bg-(color:--ui-color-secondary-600) hover:bg-(color:--ui-color-secondary-700) active:bg-(color:--ui-color-secondary-700) disabled:bg-(color:--ui-color-secondary-600) aria-disabled:bg-(color:--ui-color-secondary-600) dark:bg-secondary dark:hover:bg-secondary/75 dark:active:bg-secondary/75 dark:disabled:bg-secondary dark:aria-disabled:bg-secondary',
+  success: 'bg-(color:--ui-color-success-700) hover:bg-(color:--ui-color-success-800) active:bg-(color:--ui-color-success-800) disabled:bg-(color:--ui-color-success-700) aria-disabled:bg-(color:--ui-color-success-700) dark:bg-success dark:hover:bg-success/75 dark:active:bg-success/75 dark:disabled:bg-success dark:aria-disabled:bg-success',
+  info: 'bg-(color:--ui-color-info-600) hover:bg-(color:--ui-color-info-700) active:bg-(color:--ui-color-info-700) disabled:bg-(color:--ui-color-info-600) aria-disabled:bg-(color:--ui-color-info-600) dark:bg-info dark:hover:bg-info/75 dark:active:bg-info/75 dark:disabled:bg-info dark:aria-disabled:bg-info',
+  warning: 'bg-(color:--ui-color-warning-700) hover:bg-(color:--ui-color-warning-800) active:bg-(color:--ui-color-warning-800) disabled:bg-(color:--ui-color-warning-700) aria-disabled:bg-(color:--ui-color-warning-700) dark:bg-warning dark:hover:bg-warning/75 dark:active:bg-warning/75 dark:disabled:bg-warning dark:aria-disabled:bg-warning',
+  error: 'bg-(color:--ui-color-error-600) hover:bg-(color:--ui-color-error-700) active:bg-(color:--ui-color-error-700) disabled:bg-(color:--ui-color-error-600) aria-disabled:bg-(color:--ui-color-error-600) dark:bg-error dark:hover:bg-error/75 dark:active:bg-error/75 dark:disabled:bg-error dark:aria-disabled:bg-error'
+}
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -87,9 +102,15 @@ export default defineConfig({
         badge: {
           compoundVariants: readableTextFor(['soft'])
         },
-        // Solid buttons keep white text on the 500 shade; only the colored-text variants change.
         button: {
-          compoundVariants: readableTextFor(['soft', 'subtle', 'outline', 'ghost'])
+          compoundVariants: [
+            ...readableTextFor(['soft', 'subtle', 'outline', 'ghost']),
+            ...Object.entries(readableSolid).map(([color, className]) => ({
+              color,
+              variant: 'solid',
+              class: className
+            }))
+          ]
         },
         // Nuxt UI only highlights rows that have a select handler; rows open via their Edit
         // button now, so the hover is set for every data row (the empty-state row has no
