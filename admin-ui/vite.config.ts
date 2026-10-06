@@ -62,14 +62,23 @@ export default defineConfig({
             root: 'w-full max-w-full'
           }
         },
+        // Nuxt UI only highlights rows that have a select handler; rows open via their Edit
+        // button now, so the hover is set for every data row (the empty-state row has no
+        // data-selectable attribute).
         // Pinned columns are see-through by default, so scrolled cells would shine through them.
+        // Being opaque, they repeat the row hover as a solid mix of the same colors.
         // The inset shadow is the divider: a border would stay behind with the collapsed table.
+        // A pinned checkbox cell keeps some end padding, which Nuxt UI drops for checkbox cells;
+        // otherwise the divider sits right on the checkbox.
         table: {
+          slots: {
+            tbody: '[&>tr[data-selectable]]:hover:bg-elevated/50'
+          },
           variants: {
             pinned: {
               true: {
-                th: 'sticky z-1 bg-default data-[pinned=left]:shadow-[inset_-1px_0_0_var(--ui-border)] data-[pinned=right]:shadow-[inset_1px_0_0_var(--ui-border)]',
-                td: 'sticky z-1 bg-default data-[pinned=left]:shadow-[inset_-1px_0_0_var(--ui-border)] data-[pinned=right]:shadow-[inset_1px_0_0_var(--ui-border)]'
+                th: 'sticky z-1 bg-default data-[pinned=left]:shadow-[inset_-1px_0_0_var(--ui-border)] data-[pinned=right]:shadow-[inset_1px_0_0_var(--ui-border)] data-[pinned=left]:[&:has([role=checkbox])]:pe-3',
+                td: 'sticky z-1 bg-default data-[pinned=left]:shadow-[inset_-1px_0_0_var(--ui-border)] data-[pinned=right]:shadow-[inset_1px_0_0_var(--ui-border)] data-[pinned=left]:[&:has([role=checkbox])]:pe-3 [tr:hover>&]:bg-[color-mix(in_oklab,var(--ui-bg-elevated)_50%,var(--ui-bg))]'
               }
             }
           }
