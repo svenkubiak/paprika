@@ -1,21 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useBootstrap } from '@/composables/useBootstrap'
 import { api } from '@/lib/api'
 
-const { bootstrap, load } = useBootstrap()
+const { bootstrap, loadForSetup } = useBootstrap()
 const twoFactorEnabled = ref<boolean | null>(null)
-
-onMounted(async () => {
-  const data = await load()
-  if (data?.isSuperAdmin) {
-    try {
-      twoFactorEnabled.value = (await api.getProfile()).twoFactorEnabled
-    } catch {
-      twoFactorEnabled.value = null
-    }
-  }
-})
 
 const stats = computed(() => bootstrap.value?.stats)
 const serverErrors = computed(() => stats.value?.serverErrors24h ?? 0)
@@ -74,6 +63,17 @@ const statCards = computed(() => [
     color: serverErrors.value > 0 ? 'error' : 'primary'
   }
 ])
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+const data = await loadForSetup()
+if (data?.isSuperAdmin) {
+  try {
+    twoFactorEnabled.value = (await api.getProfile()).twoFactorEnabled
+  } catch {
+    twoFactorEnabled.value = null
+  }
+}
 </script>
 
 <template>

@@ -38,11 +38,25 @@ export function useBootstrap() {
     pendingDefaultTenantNotice.value = null
   }
 
+  /**
+   * For pages that await their first data in setup: a rejection there would leave the page blank,
+   * so a failed load is only logged, as it was while pages loaded in onMounted.
+   */
+  async function loadForSetup(force = false) {
+    try {
+      return await load(force)
+    } catch (error) {
+      console.error('[paprika] bootstrap load failed', error)
+      return bootstrap.value
+    }
+  }
+
   return {
     bootstrap: readonly(bootstrap),
     loading: readonly(loading),
     loaded: readonly(loaded),
     load,
+    loadForSetup,
     consumeDefaultTenantNotice,
     reset
   }

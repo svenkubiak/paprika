@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import TenantEditorSheet, {
   type TenantEditorForm,
@@ -47,11 +47,6 @@ const columns = [
 ]
 
 const rows = computed(() => tenants.value)
-
-onMounted(async () => {
-  await refresh()
-  await loadDefaultTenantId()
-})
 
 async function refresh() {
   loading.value = true
@@ -194,6 +189,11 @@ async function deleteTenantAction() {
     deleting.value = false
   }
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await refresh()
+await loadDefaultTenantId()
 </script>
 
 <template>

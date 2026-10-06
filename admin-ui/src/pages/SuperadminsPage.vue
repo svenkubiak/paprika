@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
 import { modalUi } from '@/lib/overlay-ui'
@@ -42,8 +42,6 @@ const rows = computed(() => superadmins.value)
 const inviteLink = computed(() =>
   invite.value ? `${window.location.origin}${invite.value.setupPath}` : ''
 )
-
-onMounted(refresh)
 
 async function refresh() {
   loading.value = true
@@ -143,6 +141,10 @@ async function deleteAdminAction() {
     deleting.value = false
   }
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await refresh()
 </script>
 
 <template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { api } from '@/lib/api'
 import { useBootstrap } from '@/composables/useBootstrap'
 import {
@@ -12,7 +12,7 @@ import { parseForwardHeaders } from '@/lib/utils'
 import type { HookDefinition, HookTestResult } from '@/types'
 
 const toast = useAppToast()
-const { bootstrap, load } = useBootstrap()
+const { bootstrap, loadForSetup } = useBootstrap()
 const {
   editorForm,
   editorId,
@@ -37,11 +37,6 @@ const columns = [
   { accessorKey: 'priority', header: 'Priority' },
   { id: 'actions', header: '' }
 ]
-
-onMounted(async () => {
-  await load()
-  await loadHooks()
-})
 
 async function loadHooks() {
   loading.value = true
@@ -194,6 +189,11 @@ async function runTest(hook: HookDefinition) {
     testingHookId.value = null
   }
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await loadForSetup()
+await loadHooks()
 </script>
 
 <template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ApiKeysManager from '@/components/ApiKeysManager.vue'
 import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
@@ -7,7 +7,7 @@ import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
 
 const toast = useAppToast()
-const { load, bootstrap } = useBootstrap()
+const { load, loadForSetup, bootstrap } = useBootstrap()
 
 const hasActiveTenant = computed(() => !!bootstrap.value?.hasActiveTenant)
 const activeTenant = computed(() => bootstrap.value?.activeTenant ?? null)
@@ -25,11 +25,6 @@ const passwordResetUrl = ref('')
 const emailVerificationEnabled = ref(false)
 const emailVerificationUrl = ref('')
 const emailVerificationRequired = ref(false)
-
-onMounted(async () => {
-  await load()
-  syncFromTenant()
-})
 
 watch(hasActiveTenant, () => {
   syncFromTenant()
@@ -93,6 +88,11 @@ async function save() {
     saving.value = false
   }
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await loadForSetup()
+syncFromTenant()
 </script>
 
 <template>

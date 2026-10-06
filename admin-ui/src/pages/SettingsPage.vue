@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import PField from '@/components/PField.vue'
 import { api } from '@/lib/api'
 import { selectContentProps, selectMenuUi } from '@/lib/overlay-ui'
@@ -9,7 +9,7 @@ import { SELECT_EMPTY } from '@/lib/utils'
 import type { AppLicense } from '@/types'
 
 const toast = useAppToast()
-const { load, bootstrap } = useBootstrap()
+const { loadForSetup, bootstrap } = useBootstrap()
 
 const loading = ref(true)
 const savingLogs = ref(false)
@@ -39,11 +39,6 @@ const tenantItems = computed(() =>
     value: tenant.id
   }))
 )
-
-onMounted(async () => {
-  await load()
-  await refreshSettings()
-})
 
 async function refreshSettings() {
   loading.value = true
@@ -205,6 +200,11 @@ async function saveDefaultTenant() {
     savingDefaultTenant.value = false
   }
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await loadForSetup()
+await refreshSettings()
 </script>
 
 <template>

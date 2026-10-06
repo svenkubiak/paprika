@@ -7,7 +7,7 @@ import RequestLogDetailSheet from '@/components/RequestLogDetailSheet.vue'
 import type { RequestLogEntry } from '@/types'
 
 const toast = useAppToast()
-const { load, bootstrap } = useBootstrap()
+const { loadForSetup, bootstrap } = useBootstrap()
 
 const logs = ref<RequestLogEntry[]>([])
 const total = ref(0)
@@ -113,12 +113,8 @@ watch(search, () => {
   }, 250)
 })
 
-onMounted(async () => {
+onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange)
-  await load(true)
-  if (hasActiveTenant.value) {
-    await refreshLogs()
-  }
 })
 
 onBeforeUnmount(() => {
@@ -352,6 +348,13 @@ function showRelated(requestId: string) {
   search.value = requestId
   typeFilter.value = 'all'
   page.value = 1
+}
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await loadForSetup(true)
+if (hasActiveTenant.value) {
+  await refreshLogs()
 }
 </script>
 

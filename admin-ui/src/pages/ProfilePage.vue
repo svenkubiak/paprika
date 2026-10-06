@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import CopyButton from '@/components/CopyButton.vue'
 import PField from '@/components/PField.vue'
@@ -13,7 +13,7 @@ import type { SuperadminProfile, TwoFactorSetupResult } from '@/types'
 const AVATAR_SIZE = 256
 
 const toast = useAppToast()
-const { load } = useBootstrap()
+const { load, loadForSetup } = useBootstrap()
 
 const loading = ref(true)
 const profile = ref<SuperadminProfile | null>(null)
@@ -73,11 +73,6 @@ watch(setupData, async (value) => {
   } else {
     setupQrCode.value = ''
   }
-})
-
-onMounted(async () => {
-  await load()
-  await refreshProfile()
 })
 
 function apply(next: SuperadminProfile) {
@@ -358,6 +353,11 @@ async function confirmDisable() {
     disableLoading.value = false
   }
 }
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await loadForSetup()
+await refreshProfile()
 </script>
 
 <template>

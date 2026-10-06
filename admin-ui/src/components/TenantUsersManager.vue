@@ -17,7 +17,7 @@ import type { FieldDefinition, TenantUser } from '@/types'
 const CORE_USER_FIELDS = ['username', 'email', 'password', 'role']
 
 const toast = useAppToast()
-const { load, bootstrap } = useBootstrap()
+const { loadForSetup, bootstrap } = useBootstrap()
 
 const users = ref<TenantUser[]>([])
 const customFields = ref<FieldDefinition[]>([])
@@ -361,8 +361,8 @@ async function bulkDelete() {
 }
 
 // Awaited in setup, so the <Suspense> in App.vue keeps the previous tab on screen until the users
-// are loaded. A failed bootstrap reload was only logged before; it must not reject setup now.
-await load(true).catch((error) => console.error('[paprika] bootstrap reload failed', error))
+// are loaded.
+await loadForSetup(true)
 if (hasActiveTenant.value) {
   await refresh()
 }

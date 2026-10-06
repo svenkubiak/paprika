@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { api } from '@/lib/api'
 import PField from '@/components/PField.vue'
 import PSwitchField from '@/components/PSwitchField.vue'
@@ -9,7 +9,7 @@ import { useBootstrap } from '@/composables/useBootstrap'
 import type { ApiKey, TenantUser } from '@/types'
 
 const toast = useAppToast()
-const { load, bootstrap } = useBootstrap()
+const { loadForSetup, bootstrap } = useBootstrap()
 
 const keys = ref<ApiKey[]>([])
 const users = ref<TenantUser[]>([])
@@ -72,13 +72,6 @@ const columns = [
   { id: 'status', header: 'Status' },
   { id: 'actions', header: '' }
 ]
-
-onMounted(async () => {
-  await load(true)
-  if (hasActiveTenant.value) {
-    await refresh()
-  }
-})
 
 watch(hasActiveTenant, async (value) => {
   if (value) {
@@ -270,6 +263,13 @@ async function deleteKey() {
   } finally {
     deleting.value = false
   }
+}
+
+// Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
+// has its data instead of flashing the empty state first.
+await loadForSetup(true)
+if (hasActiveTenant.value) {
+  await refresh()
 }
 </script>
 
