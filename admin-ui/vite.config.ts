@@ -87,19 +87,36 @@ export default defineConfig({
             error: 'text-readable-error'
           }
         },
+        // Field borders use the shade of muted text: Nuxt UI's border shade is 1.5:1 against the
+        // background, and the border is what marks the field; a control needs 3:1.
         input: {
           slots: {
             root: 'w-full max-w-full'
+          },
+          variants: {
+            variant: {
+              outline: 'ring-(color:--ui-color-neutral-500) dark:ring-(color:--ui-color-neutral-400)'
+            }
           }
         },
         select: {
           slots: {
             base: 'w-full max-w-full'
+          },
+          variants: {
+            variant: {
+              outline: 'ring-(color:--ui-color-neutral-500) dark:ring-(color:--ui-color-neutral-400)'
+            }
           }
         },
         textarea: {
           slots: {
             root: 'w-full max-w-full'
+          },
+          variants: {
+            variant: {
+              outline: 'ring-(color:--ui-color-neutral-500) dark:ring-(color:--ui-color-neutral-400)'
+            }
           }
         },
         // Every tag is a soft badge in the default size.
@@ -125,9 +142,13 @@ export default defineConfig({
             }
           }
         },
-        // A disabled switch dims only the toggle: Nuxt UI fades the whole root, which takes the
-        // description down to 2.9:1, and it often says why the switch is locked.
+        // An unchecked switch shows only its track, 1.3:1 in Nuxt UI's shade; it takes the field
+        // border shade. A disabled switch dims only the toggle: Nuxt UI fades the whole root,
+        // which takes the description down to 2.9:1, and it often says why the switch is locked.
         switch: {
+          slots: {
+            base: 'data-[state=unchecked]:bg-(color:--ui-color-neutral-500) dark:data-[state=unchecked]:bg-(color:--ui-color-neutral-400)'
+          },
           variants: {
             disabled: {
               true: {
