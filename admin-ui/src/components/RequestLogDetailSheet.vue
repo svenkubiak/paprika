@@ -146,7 +146,7 @@ const statusMeaning = computed(() => {
           <div class="rounded-lg border border-default bg-muted/30 p-3">
             <p class="mb-1 text-xs font-medium uppercase tracking-wide text-muted">URL</p>
             <button
-              class="break-all text-left font-mono text-sm hover:text-primary"
+              class="break-all text-left font-mono text-sm hover:text-readable-primary"
               title="Click to copy"
               @click="emit('copy', entry.url)"
             >
@@ -169,7 +169,7 @@ const statusMeaning = computed(() => {
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">Request ID</dt>
               <dd class="mt-0.5">
                 <button
-                  class="break-all text-left font-mono text-sm hover:text-primary"
+                  class="break-all text-left font-mono text-sm hover:text-readable-primary"
                   title="Click to copy - shared with the async hook entries of this request"
                   @click="emit('copy', entry.requestId!)"
                 >
@@ -181,7 +181,7 @@ const statusMeaning = computed(() => {
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">Log ID</dt>
               <dd class="mt-0.5">
                 <button
-                  class="break-all text-left font-mono text-sm hover:text-primary"
+                  class="break-all text-left font-mono text-sm hover:text-readable-primary"
                   title="Click to copy"
                   @click="emit('copy', entry.id)"
                 >
@@ -212,7 +212,7 @@ const statusMeaning = computed(() => {
                 class="text-xs font-medium uppercase tracking-wide text-muted"
                 title="Time spent waiting for hook endpoints"
               >Hooks</dt>
-              <dd class="mt-0.5 font-mono text-sm" :class="hookTotalMs > 0 ? 'text-warning' : ''">
+              <dd class="mt-0.5 font-mono text-sm" :class="hookTotalMs > 0 ? 'text-readable-warning' : ''">
                 {{ entry.hookTotalMs != null ? `${entry.hookTotalMs} ms` : '—' }}
               </dd>
             </div>
@@ -229,7 +229,7 @@ const statusMeaning = computed(() => {
 
           <div v-if="hookTotalMs > 0" class="space-y-1">
             <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div class="h-full bg-warning" :style="{ width: `${hookShare}%` }" />
+              <div class="h-full bg-current text-readable-warning" :style="{ width: `${hookShare}%` }" />
             </div>
             <p class="text-xs text-muted">{{ hookShare }}% of the request was spent waiting for hooks</p>
           </div>
@@ -267,7 +267,7 @@ const statusMeaning = computed(() => {
               </p>
             </div>
 
-            <p v-if="entry.hookBlockedBy" class="text-sm text-warning">
+            <p v-if="entry.hookBlockedBy" class="text-sm text-readable-warning">
               Rejected by hook “{{ entry.hookBlockedBy }}”
             </p>
           </section>
@@ -303,7 +303,7 @@ const statusMeaning = computed(() => {
               <dd class="mt-0.5">
                 <button
                   v-if="entry.userId"
-                  class="break-all text-left font-mono text-sm hover:text-primary"
+                  class="break-all text-left font-mono text-sm hover:text-readable-primary"
                   title="Click to copy"
                   @click="emit('copy', entry.userId!)"
                 >
@@ -375,7 +375,7 @@ const statusMeaning = computed(() => {
             </div>
 
             <p class="text-xs font-medium uppercase tracking-wide text-muted">Message</p>
-            <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-error/30 bg-error/5 p-3 font-mono text-sm text-error">{{ entry.errorMessage }}</pre>
+            <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-error/30 bg-error/5 p-3 font-mono text-sm text-readable-error">{{ entry.errorMessage }}</pre>
           </section>
         </template>
       </div>

@@ -54,7 +54,7 @@ function exampleBlockClass(variant?: ApiExampleBlock['variant']) {
           >
             <div class="min-w-0">
               <p class="text-sm font-medium">{{ example.title }}</p>
-              <p v-if="example.description" class="text-xs text-muted">{{ example.description }}</p>
+              <p v-if="example.description" class="text-xs text-toned">{{ example.description }}</p>
             </div>
             <UButton
               size="xs"
@@ -112,7 +112,7 @@ function exampleBlockClass(variant?: ApiExampleBlock['variant']) {
                   Success
                 </UBadge>
               </div>
-              <p v-if="example.description" class="text-xs text-muted">{{ example.description }}</p>
+              <p v-if="example.description" class="text-xs text-toned">{{ example.description }}</p>
             </div>
             <UButton
               size="xs"

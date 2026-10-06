@@ -55,7 +55,7 @@ const fieldUi = computed(() => ({
   label: 'block text-sm font-medium text-default',
   hint: 'text-xs font-normal text-dimmed',
   help: hasHelpArea.value ? 'mt-1.5 space-y-1.5 text-xs text-muted' : 'hidden',
-  error: 'mt-1.5 space-y-1.5 text-xs font-medium text-error'
+  error: 'mt-1.5 space-y-1.5 text-xs font-medium text-readable-error'
 }))
 </script>
 
@@ -103,7 +103,7 @@ const fieldUi = computed(() => ({
       </p>
       <div v-if="hasFooter" class="flex items-center gap-2 text-[11px] text-dimmed">
         <span v-if="hint">{{ hint }}</span>
-        <span v-if="counter" class="ms-auto tabular-nums" :class="{ 'font-semibold text-error': counterExceeded }">
+        <span v-if="counter" class="ms-auto tabular-nums" :class="{ 'font-semibold text-readable-error': counterExceeded }">
           {{ counter }}
         </span>
       </div>
@@ -120,7 +120,7 @@ const fieldUi = computed(() => ({
       </p>
       <div v-if="hasFooter" class="flex items-center gap-2 text-[11px] font-normal text-dimmed">
         <span v-if="hint">{{ hint }}</span>
-        <span v-if="counter" class="ms-auto tabular-nums" :class="{ 'font-semibold text-error': counterExceeded }">
+        <span v-if="counter" class="ms-auto tabular-nums" :class="{ 'font-semibold text-readable-error': counterExceeded }">
           {{ counter }}
         </span>
       </div>

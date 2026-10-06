@@ -407,7 +407,7 @@ async function saveDefaultTenant() {
               href="https://getpaprika.dev"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-primary hover:underline"
+              class="text-readable-primary hover:underline"
             >getpaprika.dev</a>.
           </p>
 
@@ -428,7 +428,7 @@ async function saveDefaultTenant() {
               href="https://polyformproject.org/licenses/noncommercial/1.0.0"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-primary hover:underline"
+              class="text-readable-primary hover:underline"
             >PolyForm Noncommercial License 1.0.0</a>.
             It covers personal and hobby projects, education, research and qualifying nonprofits.
             Companies may also use Paprika for evaluation, development, testing and staging. Running
@@ -438,7 +438,7 @@ async function saveDefaultTenant() {
               href="https://getpaprika.dev"
               target="_blank"
               rel="noopener noreferrer"
-              class="text-primary hover:underline"
+              class="text-readable-primary hover:underline"
             >getpaprika.dev</a>.
           </p>
 

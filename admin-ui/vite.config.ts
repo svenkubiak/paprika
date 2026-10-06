@@ -6,25 +6,27 @@ import { fileURLToPath, URL } from 'node:url'
 const assetsOutDir = fileURLToPath(new URL('../src/main/resources/files/assets', import.meta.url))
 
 /**
- * Nuxt UI writes colored text in the 500 shade, which stays below 4.5:1 on white and on the
- * tinted soft background (yellow 1.8:1, green 2.1:1, blue and red 3.3:1). The 800 shade in light
- * and the 300 shade in dark mode reach at least 6:1. Spelled out per color, so Tailwind's scanner
- * finds the classes in this file.
+ * Nuxt UI writes colored text in the 500 shade; the text-readable utilities in main.css explain
+ * the replacement. Spelled out, because Tailwind only generates classes its scanner finds.
  */
 const readableText = {
-  primary: 'text-(color:--ui-color-primary-800) dark:text-(color:--ui-color-primary-300)',
-  secondary: 'text-(color:--ui-color-secondary-800) dark:text-(color:--ui-color-secondary-300)',
-  success: 'text-(color:--ui-color-success-800) dark:text-(color:--ui-color-success-300)',
-  info: 'text-(color:--ui-color-info-800) dark:text-(color:--ui-color-info-300)',
-  warning: 'text-(color:--ui-color-warning-800) dark:text-(color:--ui-color-warning-300)',
-  error: 'text-(color:--ui-color-error-800) dark:text-(color:--ui-color-error-300)'
+  primary: 'text-readable-primary',
+  secondary: 'text-readable-secondary',
+  success: 'text-readable-success',
+  info: 'text-readable-info',
+  warning: 'text-readable-warning',
+  error: 'text-readable-error'
 }
 
-/** `slot` is for components whose compound variants style a slot rather than the root class. */
-function readableTextFor(variants: string[], slot?: string) {
-  return Object.entries(readableText).flatMap(([color, className]) =>
-    variants.map((variant) => ({ color, variant, class: slot ? { [slot]: className } : className }))
-  )
+/**
+ * `slot` is for components whose compound variants style a slot rather than the root class;
+ * without `variants` the rule applies to every variant of the color.
+ */
+function readableTextFor(variants: string[] | null, slot?: string) {
+  return Object.entries(readableText).flatMap(([color, className]) => {
+    const value = slot ? { [slot]: className } : className
+    return variants ? variants.map((variant) => ({ color, variant, class: value })) : [{ color, class: value }]
+  })
 }
 
 /**
@@ -81,7 +83,8 @@ export default defineConfig({
         },
         formField: {
           slots: {
-            root: 'w-full max-w-full'
+            root: 'w-full max-w-full',
+            error: 'text-readable-error'
           }
         },
         input: {
@@ -105,6 +108,10 @@ export default defineConfig({
         },
         alert: {
           compoundVariants: readableTextFor(['soft', 'subtle', 'outline'], 'root')
+        },
+        // The status icon of a toast; green and yellow stay below 3:1 in the 500 shade.
+        toast: {
+          compoundVariants: readableTextFor(null, 'icon')
         },
         button: {
           compoundVariants: [

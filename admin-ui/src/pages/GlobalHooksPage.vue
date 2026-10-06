@@ -292,7 +292,7 @@ async function runTest(hook: HookDefinition) {
           <div v-else class="space-y-3 text-sm">
             <p><span class="text-muted">Status:</span> {{ testResult.statusCode || '—' }}</p>
             <p><span class="text-muted">Latency:</span> {{ testResult.latencyMs }} ms</p>
-            <p v-if="testResult.error" class="text-error">{{ testResult.error }}</p>
+            <p v-if="testResult.error" class="text-readable-error">{{ testResult.error }}</p>
             <pre v-if="testResult.responseBody" class="overflow-x-auto rounded-lg bg-muted/40 p-3 font-mono text-xs">{{
               testResult.responseBody
             }}</pre>

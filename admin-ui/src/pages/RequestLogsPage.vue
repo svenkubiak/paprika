@@ -336,13 +336,15 @@ function outcomeColor(outcome: string) {
   }
 }
 
+// The dots are filled with the readable text shade: the 500 shade of yellow and green stays
+// below the 3:1 a status graphic needs.
 function outcomeDotClass(outcome: string) {
   switch (outcome) {
-    case 'blocked': return 'bg-warning'
-    case 'failed': return 'bg-error'
-    case 'failedOpen': return 'bg-warning'
-    case 'issuedToken': return 'bg-primary'
-    default: return 'bg-success'
+    case 'blocked': return 'bg-current text-readable-warning'
+    case 'failed': return 'bg-current text-readable-error'
+    case 'failedOpen': return 'bg-current text-readable-warning'
+    case 'issuedToken': return 'bg-current text-readable-primary'
+    default: return 'bg-current text-readable-success'
   }
 }
 
@@ -535,7 +537,7 @@ function showRelated(requestId: string) {
                 <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm">
                   <span
                     v-if="isHookEntry(entry)"
-                    class="mr-1 text-primary"
+                    class="mr-1 text-readable-primary"
                     title="Async hook of an earlier request"
                   >↳</span>
                   {{ formatTimestamp(entry.timestamp) }}
@@ -562,7 +564,7 @@ function showRelated(requestId: string) {
                 <td class="px-3 py-2.5">
                   <div v-if="entry.userId" class="flex flex-wrap items-center gap-1.5">
                     <button
-                      class="max-w-[16rem] truncate font-mono text-sm hover:text-primary"
+                      class="max-w-[16rem] truncate font-mono text-sm hover:text-readable-primary"
                       :title="'Click to copy: ' + entry.userId"
                       @click.stop="copyValue(entry.userId!)"
                     >
@@ -606,7 +608,7 @@ function showRelated(requestId: string) {
                 </td>
                 <td
                   class="whitespace-nowrap px-3 py-2.5 font-mono text-sm"
-                  :class="entry.hookTotalMs ? 'text-warning' : 'text-muted'"
+                  :class="entry.hookTotalMs ? 'text-readable-warning' : 'text-muted'"
                 >
                   {{ formatMs(entry.hookTotalMs) }}
                 </td>

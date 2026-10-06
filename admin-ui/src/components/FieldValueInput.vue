@@ -89,7 +89,7 @@ function formatJson() {
     <div v-if="jsonStatus" class="flex items-center gap-2 text-xs">
       <span
         class="inline-flex items-center gap-1.5 font-medium"
-        :class="jsonStatus.ok ? 'text-success' : 'text-error'"
+        :class="jsonStatus.ok ? 'text-readable-success' : 'text-readable-error'"
       >
         <UIcon
           :name="jsonStatus.ok ? 'i-lucide-circle-check' : 'i-lucide-circle-x'"

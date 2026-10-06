@@ -146,9 +146,9 @@ const statCards = computed(() => [
           <div
             class="flex size-10 items-center justify-center rounded-lg"
             :class="{
-              'bg-success/10 text-success': card.color === 'success',
-              'bg-error/10 text-error': card.color === 'error',
-              'bg-primary/10 text-primary': card.color === 'primary'
+              'bg-success/10 text-readable-success': card.color === 'success',
+              'bg-error/10 text-readable-error': card.color === 'error',
+              'bg-primary/10 text-readable-primary': card.color === 'primary'
             }"
           >
             <UIcon :name="card.icon" class="size-5" />

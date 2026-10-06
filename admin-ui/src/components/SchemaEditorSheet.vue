@@ -396,7 +396,7 @@ const jsonMaxBytesHint = computed(() => {
                   <UIcon
                     :name="patternSampleMatches ? 'i-lucide-circle-check' : 'i-lucide-circle-x'"
                     class="size-4"
-                    :class="patternSampleMatches ? 'text-success' : 'text-error'"
+                    :class="patternSampleMatches ? 'text-readable-success' : 'text-readable-error'"
                   />
                 </template>
               </UInput>
