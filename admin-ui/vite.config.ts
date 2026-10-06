@@ -20,9 +20,10 @@ const readableText = {
   error: 'text-(color:--ui-color-error-800) dark:text-(color:--ui-color-error-300)'
 }
 
-function readableTextFor(variants: string[]) {
+/** `slot` is for components whose compound variants style a slot rather than the root class. */
+function readableTextFor(variants: string[], slot?: string) {
   return Object.entries(readableText).flatMap(([color, className]) =>
-    variants.map((variant) => ({ color, variant, class: className }))
+    variants.map((variant) => ({ color, variant, class: slot ? { [slot]: className } : className }))
   )
 }
 
@@ -101,6 +102,9 @@ export default defineConfig({
         // Every tag is a soft badge in the default size.
         badge: {
           compoundVariants: readableTextFor(['soft'])
+        },
+        alert: {
+          compoundVariants: readableTextFor(['soft', 'subtle', 'outline'], 'root')
         },
         button: {
           compoundVariants: [
