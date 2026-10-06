@@ -133,12 +133,12 @@ const statusMeaning = computed(() => {
           <h3 class="text-sm font-semibold uppercase tracking-wide text-muted">Request</h3>
 
           <div class="flex flex-wrap items-center gap-2">
-            <UBadge color="neutral" variant="soft" size="lg">{{ entry.method }}</UBadge>
-            <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="lg">
+            <UBadge color="neutral" variant="soft">{{ entry.method }}</UBadge>
+            <UBadge :color="statusColor(entry.statusCode)" variant="soft">
               {{ entry.statusCode }}
             </UBadge>
-            <UBadge :color="hookColor" variant="soft" size="lg">hooks: {{ hookLabel }}</UBadge>
-            <UBadge v-if="isHookEntry" color="primary" variant="outline" size="lg">
+            <UBadge :color="hookColor" variant="soft">hooks: {{ hookLabel }}</UBadge>
+            <UBadge v-if="isHookEntry" color="primary" variant="soft">
               async hook execution
             </UBadge>
           </div>
@@ -254,7 +254,7 @@ const statusMeaning = computed(() => {
                   {{ invocation.name }}
                 </span>
                 <div class="flex items-center gap-2">
-                  <UBadge :color="outcomeColor(invocation.outcome)" variant="soft" size="md">
+                  <UBadge :color="outcomeColor(invocation.outcome)" variant="soft">
                     {{ invocation.outcome }}
                   </UBadge>
                   <span class="font-mono text-sm text-muted">{{ invocation.durationMs }} ms</span>
@@ -318,8 +318,7 @@ const statusMeaning = computed(() => {
                 <UBadge
                   v-if="entry.userId"
                   :color="entry.userRole === 'superadmin' ? 'neutral' : 'primary'"
-                  :variant="entry.userRole === 'superadmin' ? 'outline' : 'subtle'"
-                  size="md"
+                  variant="soft"
                 >
                   {{ entry.userRole === 'superadmin' ? 'superadmin' : 'user' }}
                 </UBadge>
@@ -329,7 +328,7 @@ const statusMeaning = computed(() => {
             <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">API key</dt>
               <dd class="mt-1">
-                <UBadge v-if="entry.apiKeyId" color="warning" variant="subtle" size="md">
+                <UBadge v-if="entry.apiKeyId" color="warning" variant="soft">
                   {{ entry.apiKeyName || entry.apiKeyId }}
                 </UBadge>
                 <span v-else class="text-sm text-muted">—</span>
@@ -338,10 +337,10 @@ const statusMeaning = computed(() => {
             <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">Collection rules</dt>
               <dd class="mt-1">
-                <UBadge v-if="entry.rulesBypassed" color="error" variant="subtle" size="md">
+                <UBadge v-if="entry.rulesBypassed" color="error" variant="soft">
                   bypassed
                 </UBadge>
-                <UBadge v-else color="neutral" variant="subtle" size="md">applied</UBadge>
+                <UBadge v-else color="neutral" variant="soft">applied</UBadge>
               </dd>
             </div>
             <div>
@@ -350,13 +349,12 @@ const statusMeaning = computed(() => {
                 <UBadge
                   v-if="entry.hooksBypassed"
                   color="warning"
-                  variant="subtle"
-                  size="md"
+                  variant="soft"
                   title="This key runs no hooks — no hook entry above is expected"
                 >
                   bypassed
                 </UBadge>
-                <UBadge v-else color="neutral" variant="subtle" size="md">applied</UBadge>
+                <UBadge v-else color="neutral" variant="soft">applied</UBadge>
               </dd>
             </div>
           </dl>
@@ -370,7 +368,7 @@ const statusMeaning = computed(() => {
               Error <span class="normal-case text-dimmed">· from {{ errorSource }}</span>
             </h3>
             <div class="flex flex-wrap items-center gap-2">
-              <UBadge :color="statusColor(entry.statusCode)" variant="soft" size="lg">
+              <UBadge :color="statusColor(entry.statusCode)" variant="soft">
                 HTTP {{ entry.statusCode }}
               </UBadge>
               <span v-if="statusMeaning" class="text-sm text-muted">{{ statusMeaning }}</span>

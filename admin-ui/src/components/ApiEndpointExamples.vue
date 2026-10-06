@@ -101,7 +101,6 @@ function exampleBlockClass(variant?: ApiExampleBlock['variant']) {
                   v-if="example.variant === 'error'"
                   color="error"
                   variant="soft"
-                  size="xs"
                 >
                   Error
                 </UBadge>
@@ -109,7 +108,6 @@ function exampleBlockClass(variant?: ApiExampleBlock['variant']) {
                   v-else-if="example.variant === 'success'"
                   color="success"
                   variant="soft"
-                  size="xs"
                 >
                   Success
                 </UBadge>

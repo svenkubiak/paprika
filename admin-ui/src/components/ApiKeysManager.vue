@@ -304,7 +304,6 @@ async function deleteKey() {
               v-if="row.original.bypassRules"
               color="error"
               variant="soft"
-              size="xs"
               title="Requests with this key skip the collection rules of this tenant"
             >
               bypasses rules
@@ -313,7 +312,6 @@ async function deleteKey() {
               v-if="row.original.bypassHooks"
               color="warning"
               variant="soft"
-              size="xs"
               title="Requests with this key run no hooks of this tenant"
             >
               bypasses hooks
@@ -331,7 +329,6 @@ async function deleteKey() {
             v-if="row.original.allowedCidrs?.length"
             color="success"
             variant="soft"
-            size="xs"
             :title="row.original.allowedCidrs.join('\n')"
           >
             {{ row.original.allowedCidrs.length }}

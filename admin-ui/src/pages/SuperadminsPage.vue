@@ -170,7 +170,6 @@ async function deleteAdminAction() {
               v-if="row.original.id === currentAdminId"
               color="primary"
               variant="soft"
-              size="sm"
             >
               You
             </UBadge>

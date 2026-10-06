@@ -62,6 +62,19 @@ export default defineConfig({
             root: 'w-full max-w-full'
           }
         },
+        // Every tag is a soft badge in the default size. Nuxt UI writes soft badges in the 500
+        // shade, which stays below 4.5:1 on the tinted background (yellow 1.8:1, green 2.1:1);
+        // the 800 shade in light and the 300 shade in dark mode reach at least 6:1.
+        badge: {
+          compoundVariants: [
+            { color: 'primary', variant: 'soft', class: 'text-(color:--ui-color-primary-800) dark:text-(color:--ui-color-primary-300)' },
+            { color: 'secondary', variant: 'soft', class: 'text-(color:--ui-color-secondary-800) dark:text-(color:--ui-color-secondary-300)' },
+            { color: 'success', variant: 'soft', class: 'text-(color:--ui-color-success-800) dark:text-(color:--ui-color-success-300)' },
+            { color: 'info', variant: 'soft', class: 'text-(color:--ui-color-info-800) dark:text-(color:--ui-color-info-300)' },
+            { color: 'warning', variant: 'soft', class: 'text-(color:--ui-color-warning-800) dark:text-(color:--ui-color-warning-300)' },
+            { color: 'error', variant: 'soft', class: 'text-(color:--ui-color-error-800) dark:text-(color:--ui-color-error-300)' }
+          ]
+        },
         // Nuxt UI only highlights rows that have a select handler; rows open via their Edit
         // button now, so the hover is set for every data row (the empty-state row has no
         // data-selectable attribute).

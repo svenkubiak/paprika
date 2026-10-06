@@ -445,9 +445,9 @@ async function confirmDisable() {
         <div class="space-y-1">
           <div class="flex items-center gap-2">
             <h3 class="font-medium">Your address</h3>
-            <UBadge v-if="!hasEmail" color="neutral" variant="soft" size="sm">Not set</UBadge>
-            <UBadge v-else-if="emailVerified" color="success" variant="soft" size="sm">Confirmed</UBadge>
-            <UBadge v-else color="warning" variant="soft" size="sm">Unconfirmed</UBadge>
+            <UBadge v-if="!hasEmail" color="neutral" variant="soft">Not set</UBadge>
+            <UBadge v-else-if="emailVerified" color="success" variant="soft">Confirmed</UBadge>
+            <UBadge v-else color="warning" variant="soft">Unconfirmed</UBadge>
           </div>
           <p class="max-w-2xl text-sm text-muted">
             Paprika only uses this address for notifications about your own account. It has to be
@@ -625,7 +625,7 @@ async function confirmDisable() {
         <div class="space-y-1">
           <div class="flex items-center gap-2">
             <h3 class="font-medium">Two-factor authentication</h3>
-            <UBadge :color="twoFactorEnabled ? 'success' : 'neutral'" variant="soft" size="xs">
+            <UBadge :color="twoFactorEnabled ? 'success' : 'neutral'" variant="soft">
               {{ twoFactorEnabled ? 'Enabled' : 'Disabled' }}
             </UBadge>
           </div>

@@ -470,8 +470,7 @@ function showRelated(requestId: string) {
               <UBadge
                 v-if="live && newEntries > 0"
                 color="primary"
-                variant="subtle"
-                size="md"
+                variant="soft"
                 class="cursor-pointer"
                 title="Entries added since live mode was enabled - click to reset"
                 @click="clearNewEntries"
@@ -542,7 +541,7 @@ function showRelated(requestId: string) {
                   {{ formatTimestamp(entry.timestamp) }}
                 </td>
                 <td class="whitespace-nowrap px-3 py-2.5">
-                  <UBadge :color="isHookEntry(entry) ? 'primary' : 'neutral'" variant="soft" size="md">
+                  <UBadge :color="isHookEntry(entry) ? 'primary' : 'neutral'" variant="soft">
                     {{ entry.method }}
                   </UBadge>
                 </td>
@@ -553,7 +552,6 @@ function showRelated(requestId: string) {
                   <UBadge
                     :color="statusColor(entry.statusCode)"
                     variant="soft"
-                    size="md"
                     :title="entry.errorMessage
                       ? entry.errorMessage + ' - open the row for the full error'
                       : undefined"
@@ -572,16 +570,14 @@ function showRelated(requestId: string) {
                     </button>
                     <UBadge
                       :color="entry.userRole === 'superadmin' ? 'neutral' : 'primary'"
-                      :variant="entry.userRole === 'superadmin' ? 'outline' : 'subtle'"
-                      size="md"
+                      variant="soft"
                     >
                       {{ entry.userRole === 'superadmin' ? 'superadmin' : 'user' }}
                     </UBadge>
                     <UBadge
                       v-if="entry.apiKeyId"
                       color="warning"
-                      variant="subtle"
-                      size="md"
+                      variant="soft"
                       :title="'Authenticated with API key ' + (entry.apiKeyName || entry.apiKeyId)"
                     >
                       key: {{ entry.apiKeyName || entry.apiKeyId }}
@@ -589,8 +585,7 @@ function showRelated(requestId: string) {
                     <UBadge
                       v-if="entry.rulesBypassed"
                       color="error"
-                      variant="subtle"
-                      size="md"
+                      variant="soft"
                       title="This request skipped the collection rules (rule-bypassing API key)"
                     >
                       rules bypassed
@@ -598,8 +593,7 @@ function showRelated(requestId: string) {
                     <UBadge
                       v-if="entry.hooksBypassed"
                       color="warning"
-                      variant="subtle"
-                      size="md"
+                      variant="soft"
                       title="No hook ran for this request (hook-free API key) — the empty hook column is deliberate, not a failure"
                     >
                       hooks bypassed
@@ -621,7 +615,7 @@ function showRelated(requestId: string) {
                 </td>
                 <td class="whitespace-nowrap border-l border-default/60 px-3 py-2.5">
                   <div v-if="isHookEntry(entry)" class="flex flex-wrap items-center gap-1.5">
-                    <UBadge color="primary" variant="subtle" size="md" title="Written by an asynchronous after-hook">
+                    <UBadge color="primary" variant="soft" title="Written by an asynchronous after-hook">
                       async hook
                     </UBadge>
                     <UButton
@@ -654,8 +648,8 @@ function showRelated(requestId: string) {
                         :title="`${invocation.name}: ${invocation.outcome} (${invocation.durationMs} ms)`"
                       />
                     </span>
-                    <UBadge v-if="entry.hookBlocked" color="warning" variant="soft" size="md">blocked</UBadge>
-                    <UBadge v-else color="success" variant="soft" size="md">continued</UBadge>
+                    <UBadge v-if="entry.hookBlocked" color="warning" variant="soft">blocked</UBadge>
+                    <UBadge v-else color="success" variant="soft">continued</UBadge>
                   </div>
                   <span v-else class="text-muted">—</span>
                 </td>
@@ -686,7 +680,7 @@ function showRelated(requestId: string) {
                         <template v-if="invocation.target"> · {{ invocation.target }}</template>
                         <template v-if="invocation.status"> · HTTP {{ invocation.status }}</template>
                       </span>
-                      <UBadge :color="outcomeColor(invocation.outcome)" variant="soft" size="md">
+                      <UBadge :color="outcomeColor(invocation.outcome)" variant="soft">
                         {{ invocation.outcome }}
                       </UBadge>
                       <span class="ml-auto font-mono text-sm text-muted">{{ invocation.durationMs }}ms</span>
