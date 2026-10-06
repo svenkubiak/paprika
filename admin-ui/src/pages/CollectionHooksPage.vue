@@ -213,18 +213,31 @@ const testSucceeded = computed(() => testResult.value !== null && !testResult.va
         </div>
       </template>
 
-      <UTable :data="hooks" :columns="columns" :loading="loading">
+      <UTable
+        :data="hooks"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ right: ['actions'] }"
+      >
         <template #name-cell="{ row }">
           <div>
             <span class="font-medium">{{ row.original.name }}</span>
-            <p v-if="row.original.description" class="mt-0.5 text-xs text-muted">{{ row.original.description }}</p>
+            <p
+              v-if="row.original.description"
+              class="mt-0.5 max-w-64 truncate text-xs text-muted"
+              :title="row.original.description"
+            >
+              {{ row.original.description }}
+            </p>
           </div>
         </template>
         <template #event-cell="{ row }">
           <UBadge variant="soft" color="primary">{{ hookEventLabel(row.original.event) }}</UBadge>
         </template>
         <template #url-cell="{ row }">
-          <code class="text-xs">{{ row.original.url }}</code>
+          <code class="block max-w-64 truncate text-xs" :title="row.original.url">
+            {{ row.original.url }}
+          </code>
         </template>
         <template #enabled-cell="{ row }">
           <UBadge :color="row.original.enabled !== false ? 'success' : 'neutral'" variant="soft">
@@ -235,15 +248,10 @@ const testSucceeded = computed(() => testResult.value !== null && !testResult.va
           <span class="font-mono text-sm">{{ row.original.priority ?? 100 }}</span>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end gap-2" @click.stop>
-            <UButton
-              size="sm"
-              variant="soft"
-              icon="i-lucide-pencil"
-              @click="openEditHook(row.original)"
-            >
-              Edit
-            </UButton>
+          <RowActions
+            @edit="openEditHook(row.original)"
+            @delete="requestDeleteHook(row.original)"
+          >
             <UButton
               size="sm"
               variant="soft"
@@ -254,16 +262,7 @@ const testSucceeded = computed(() => testResult.value !== null && !testResult.va
             >
               Test
             </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              @click="requestDeleteHook(row.original)"
-            >
-              Delete
-            </UButton>
-          </div>
+          </RowActions>
         </template>
       </UTable>
     </UCard>

@@ -34,7 +34,7 @@ const columns = [
   { accessorKey: 'email', header: 'Email' },
   { accessorKey: 'status', header: 'Status' },
   { accessorKey: 'twoFactor', header: '2FA' },
-  { id: 'actions', header: 'Actions' }
+  { id: 'actions', header: '' }
 ]
 
 const rows = computed(() => superadmins.value)
@@ -157,7 +157,12 @@ async function deleteAdminAction() {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="rows" :columns="columns" :loading="loading">
+      <UTable
+        :data="rows"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ right: ['actions'] }"
+      >
         <template #username-cell="{ row }">
           <div class="flex items-center gap-2">
             <span class="font-medium">{{ row.original.username }}</span>
@@ -186,18 +191,11 @@ async function deleteAdminAction() {
           </UBadge>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end gap-2" @click.stop>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              :disabled="row.original.id === currentAdminId"
-              @click="confirmDelete(row.original)"
-            >
-              {{ row.original.pending ? 'Revoke' : 'Remove' }}
-            </UButton>
-          </div>
+          <RowActions
+            :delete-label="row.original.pending ? 'Revoke' : 'Remove'"
+            :delete-disabled="row.original.id === currentAdminId"
+            @delete="confirmDelete(row.original)"
+          />
         </template>
         <template #empty>
           <div class="py-10 text-center text-muted">No superadmins found.</div>

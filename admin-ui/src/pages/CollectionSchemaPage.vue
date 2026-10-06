@@ -423,7 +423,12 @@ function describeIndexFields(index: IndexDefinition): string {
     />
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="rows" :columns="columns" :loading="loading">
+      <UTable
+        :data="rows"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ right: ['actions'] }"
+      >
         <template #name-cell="{ row }">
           <div class="flex items-center gap-1.5">
             <code>{{ row.original.name }}</code>
@@ -479,24 +484,11 @@ function describeIndexFields(index: IndexDefinition): string {
           <span v-else class="text-muted">—</span>
         </template>
         <template #actions-cell="{ row }">
-          <div v-if="!row.original.locked" class="flex justify-end gap-2" @click.stop>
-            <UButton
-              size="sm"
-              variant="soft"
-              icon="i-lucide-pencil"
-              @click="openEditField(row.index)"
-            >
-              Edit
-            </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              aria-label="Delete field"
-              @click="requestDeleteFieldFromRow(row.index)"
-            />
-          </div>
+          <RowActions
+            v-if="!row.original.locked"
+            @edit="openEditField(row.index)"
+            @delete="requestDeleteFieldFromRow(row.index)"
+          />
         </template>
       </UTable>
     </UCard>
@@ -513,7 +505,12 @@ function describeIndexFields(index: IndexDefinition): string {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="indexes" :columns="indexColumns" :loading="loading">
+      <UTable
+        :data="indexes"
+        :columns="indexColumns"
+        :loading="loading"
+        :column-pinning="{ right: ['actions'] }"
+      >
         <template #name-cell="{ row }">
           <div class="flex items-center gap-1.5">
             <code>{{ row.original.name }}</code>
@@ -537,24 +534,11 @@ function describeIndexFields(index: IndexDefinition): string {
           </UBadge>
         </template>
         <template #actions-cell="{ row }">
-          <div v-if="!isManagedIndex(row.original)" class="flex justify-end gap-2" @click.stop>
-            <UButton
-              size="sm"
-              variant="soft"
-              icon="i-lucide-pencil"
-              @click="openEditIndex(row.original)"
-            >
-              Edit
-            </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              aria-label="Delete index"
-              @click="requestDeleteIndex(row.original)"
-            />
-          </div>
+          <RowActions
+            v-if="!isManagedIndex(row.original)"
+            @edit="openEditIndex(row.original)"
+            @delete="requestDeleteIndex(row.original)"
+          />
         </template>
         <template #empty>
           <p class="py-6 text-center text-sm text-muted">No indexes on this collection yet.</p>

@@ -61,6 +61,18 @@ export default defineConfig({
           slots: {
             root: 'w-full max-w-full'
           }
+        },
+        // Pinned columns are see-through by default, so scrolled cells would shine through them.
+        // The inset shadow is the divider: a border would stay behind with the collapsed table.
+        table: {
+          variants: {
+            pinned: {
+              true: {
+                th: 'sticky z-1 bg-default data-[pinned=left]:shadow-[inset_-1px_0_0_var(--ui-border)] data-[pinned=right]:shadow-[inset_1px_0_0_var(--ui-border)]',
+                td: 'sticky z-1 bg-default data-[pinned=left]:shadow-[inset_-1px_0_0_var(--ui-border)] data-[pinned=right]:shadow-[inset_1px_0_0_var(--ui-border)]'
+              }
+            }
+          }
         }
       },
       components: {

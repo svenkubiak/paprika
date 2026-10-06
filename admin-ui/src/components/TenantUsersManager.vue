@@ -8,7 +8,7 @@ import { api } from '@/lib/api'
 import { modalUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
-import { formatCellValue } from '@/lib/utils'
+import { formatCellValue, truncateCellText } from '@/lib/utils'
 import { validateRecordValues } from '@/lib/field-validation'
 import { buildRecordFormState, serializeRecordForm } from '@/lib/record-form'
 import type { FieldDefinition, TenantUser } from '@/types'
@@ -60,7 +60,7 @@ const columns = computed(() => [
   ...customFields.value.map((field) => ({ accessorKey: field.name, header: field.name })),
   { accessorKey: 'createdAt', header: 'Created' },
   { accessorKey: 'updatedAt', header: 'Updated' },
-  { id: 'actions', header: 'Actions' }
+  { id: 'actions', header: '' }
 ])
 
 const pageSizeOptions = [
@@ -80,7 +80,7 @@ const sortOptions = computed(() => [
 ])
 
 function cellText(user: TenantUser, field: FieldDefinition): string {
-  return formatCellValue(user[field.name], field.type)
+  return truncateCellText(formatCellValue(user[field.name], field.type))
 }
 
 // The users endpoint returns the full list, so search, sort and paging happen client-side.
@@ -422,7 +422,12 @@ async function bulkDelete() {
         </UButton>
       </div>
 
-      <UTable :data="pagedUsers" :columns="columns" :loading="loading">
+      <UTable
+        :data="pagedUsers"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ left: ['select'], right: ['actions'] }"
+      >
         <template #select-header>
           <UCheckbox
             :model-value="
@@ -449,7 +454,9 @@ async function bulkDelete() {
           :key="field.name"
           #[`${field.name}-cell`]="{ row }"
         >
-          <span class="text-sm">{{ cellText(row.original, field) }}</span>
+          <span class="block max-w-64 truncate text-sm" :title="cellText(row.original, field)">
+            {{ cellText(row.original, field) }}
+          </span>
         </template>
         <template #createdAt-cell="{ row }">
           <span class="font-mono text-sm text-muted">{{ row.original.createdAt || '—' }}</span>
@@ -458,25 +465,7 @@ async function bulkDelete() {
           <span class="font-mono text-sm text-muted">{{ row.original.updatedAt || '—' }}</span>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex gap-2" @click.stop>
-            <UButton
-              size="sm"
-              variant="soft"
-              icon="i-lucide-pencil"
-              @click="openEdit(row.original)"
-            >
-              Edit
-            </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              @click="confirmDelete(row.original)"
-            >
-              Delete
-            </UButton>
-          </div>
+          <RowActions @edit="openEdit(row.original)" @delete="confirmDelete(row.original)" />
         </template>
         <template #empty>
           <div class="py-10 text-center text-muted">

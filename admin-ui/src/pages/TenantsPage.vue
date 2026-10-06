@@ -43,7 +43,7 @@ const columns = [
   { accessorKey: 'slug', header: 'Slug' },
   { accessorKey: 'databaseName', header: 'Database' },
   { accessorKey: 'status', header: 'Status' },
-  { id: 'actions', header: 'Actions' }
+  { id: 'actions', header: '' }
 ]
 
 const rows = computed(() => tenants.value)
@@ -203,7 +203,12 @@ async function deleteTenantAction() {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="rows" :columns="columns" :loading="loading">
+      <UTable
+        :data="rows"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ right: ['actions'] }"
+      >
         <template #slug-cell="{ row }">
           <code class="text-sm">{{ row.original.slug }}</code>
         </template>
@@ -219,15 +224,7 @@ async function deleteTenantAction() {
           </UBadge>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex gap-2" @click.stop>
-            <UButton
-              size="sm"
-              variant="soft"
-              icon="i-lucide-pencil"
-              @click="openEdit(row.original)"
-            >
-              Edit
-            </UButton>
+          <RowActions @edit="openEdit(row.original)" @delete="confirmDelete(row.original)">
             <UButton
               size="sm"
               variant="soft"
@@ -236,16 +233,7 @@ async function deleteTenantAction() {
             >
               Select
             </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              @click="confirmDelete(row.original)"
-            >
-              Delete
-            </UButton>
-          </div>
+          </RowActions>
         </template>
         <template #empty>
           <div class="py-10 text-center text-muted">

@@ -209,18 +209,31 @@ async function runTest(hook: HookDefinition) {
     </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <UTable :data="hooks" :columns="columns" :loading="loading">
+      <UTable
+        :data="hooks"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ right: ['actions'] }"
+      >
         <template #name-cell="{ row }">
           <div>
             <span class="font-medium">{{ row.original.name }}</span>
-            <p v-if="row.original.description" class="mt-0.5 text-xs text-muted">{{ row.original.description }}</p>
+            <p
+              v-if="row.original.description"
+              class="mt-0.5 max-w-64 truncate text-xs text-muted"
+              :title="row.original.description"
+            >
+              {{ row.original.description }}
+            </p>
           </div>
         </template>
         <template #scope-cell="{ row }">
           <span class="text-sm">{{ scopeLabel(row.original) }}</span>
         </template>
         <template #url-cell="{ row }">
-          <code class="text-xs">{{ row.original.url }}</code>
+          <code class="block max-w-64 truncate text-xs" :title="row.original.url">
+            {{ row.original.url }}
+          </code>
         </template>
         <template #enabled-cell="{ row }">
           <UBadge :color="row.original.enabled !== false ? 'success' : 'neutral'" variant="soft">
@@ -231,15 +244,7 @@ async function runTest(hook: HookDefinition) {
           <span class="font-mono text-sm">{{ row.original.priority ?? 100 }}</span>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end gap-2" @click.stop>
-            <UButton
-              size="sm"
-              variant="soft"
-              icon="i-lucide-pencil"
-              @click="openEdit(row.original)"
-            >
-              Edit
-            </UButton>
+          <RowActions @edit="openEdit(row.original)" @delete="requestDelete(row.original)">
             <UButton
               size="sm"
               variant="soft"
@@ -250,14 +255,7 @@ async function runTest(hook: HookDefinition) {
             >
               Test
             </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              @click="requestDelete(row.original)"
-            />
-          </div>
+          </RowActions>
         </template>
         <template #empty>
           <div class="py-10 text-center text-muted">No global hooks configured yet.</div>

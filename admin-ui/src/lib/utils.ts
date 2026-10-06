@@ -118,6 +118,14 @@ export function formatCellValue(value: unknown, type?: string): string {
   return String(value)
 }
 
+/**
+ * Caps a cell text so a large value does not end up in the DOM in full; the cell clips it
+ * visually anyway, the cap only bounds what is rendered and shown on hover.
+ */
+export function truncateCellText(text: string, maxLength = 200): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
+}
+
 export function copyToClipboard(text: string): Promise<void> {
   return navigator.clipboard.writeText(text)
 }

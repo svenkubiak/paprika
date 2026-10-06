@@ -70,7 +70,7 @@ const columns = [
   { accessorKey: 'lastUsedAt', header: 'Last used' },
   { accessorKey: 'expiresAt', header: 'Expires' },
   { id: 'status', header: 'Status' },
-  { id: 'actions', header: 'Actions' }
+  { id: 'actions', header: '' }
 ]
 
 onMounted(async () => {
@@ -291,7 +291,12 @@ async function deleteKey() {
     </div>
 
     <div class="mt-4 -mx-4 sm:-mx-4">
-      <UTable :data="keys" :columns="columns" :loading="loading">
+      <UTable
+        :data="keys"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ right: ['actions'] }"
+      >
         <template #name-cell="{ row }">
           <div class="flex items-center gap-2">
             <span>{{ row.original.name }}</span>
@@ -348,36 +353,28 @@ async function deleteKey() {
           </UBadge>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex justify-end gap-2" @click.stop>
+          <RowActions @delete="confirmDelete(row.original)">
             <UButton
               size="sm"
               color="neutral"
               variant="soft"
               icon="i-lucide-network"
-              :aria-label="'Edit source ranges of ' + row.original.name"
               title="Restrict this key to source address ranges"
               @click="editSource(row.original)"
-            />
+            >
+              Source
+            </UButton>
             <UButton
               v-if="!row.original.revokedAt"
               size="sm"
-              color="error"
+              color="warning"
               variant="soft"
               icon="i-lucide-ban"
               @click="confirmRevoke(row.original)"
             >
               Revoke
             </UButton>
-            <UButton
-              size="sm"
-              color="neutral"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              :aria-label="'Delete ' + row.original.name"
-              title="Remove this key and its record entirely"
-              @click="confirmDelete(row.original)"
-            />
-          </div>
+          </RowActions>
         </template>
         <template #empty>
           <div class="py-8 text-center text-sm text-muted">

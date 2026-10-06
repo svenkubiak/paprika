@@ -2,13 +2,13 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/lib/api'
-import { formatCellValue } from '@/lib/utils'
+import { formatCellValue, truncateCellText } from '@/lib/utils'
 import { modalUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
 import { applyDefaultsToRecord, booleanToFormValue, BOOLEAN_UNSET } from '@/lib/field-validation'
 import TenantUsersManager from '@/components/TenantUsersManager.vue'
 import type { RecordSavePayload } from '@/components/RecordEditorSheet.vue'
-import type { CollectionDefinition } from '@/types'
+import type { CollectionDefinition, FieldDefinition } from '@/types'
 
 const route = useRoute()
 const toast = useAppToast()
@@ -65,9 +65,13 @@ const columns = computed(() => {
     ...fields.map((field) => ({ accessorKey: field.name, header: field.name })),
     { accessorKey: 'createdAt', header: 'createdAt' },
     { accessorKey: 'updatedAt', header: 'updatedAt' },
-    { id: 'actions', header: 'Actions' }
+    { id: 'actions', header: '' }
   ]
 })
+
+function cellText(record: Record<string, unknown>, field: FieldDefinition): string {
+  return truncateCellText(formatCellValue(record[field.name], field.type))
+}
 
 // Sorting happens on the server; sorting here would only reorder the current page.
 const filteredRecords = computed(() => {
@@ -393,7 +397,12 @@ async function bulkDelete() {
         </UButton>
       </div>
 
-      <UTable :data="filteredRecords" :columns="columns" :loading="loading">
+      <UTable
+        :data="filteredRecords"
+        :columns="columns"
+        :loading="loading"
+        :column-pinning="{ left: ['select'], right: ['actions'] }"
+      >
         <template #select-header>
           <UCheckbox
             :model-value="
@@ -418,7 +427,12 @@ async function bulkDelete() {
           :key="field.name"
           #[`${field.name}-cell`]="{ row }"
         >
-          <span class="text-sm">{{ formatCellValue(row.original[field.name], field.type) }}</span>
+          <span
+            class="block max-w-64 truncate text-sm"
+            :title="cellText(row.original, field)"
+          >
+            {{ cellText(row.original, field) }}
+          </span>
         </template>
         <template #createdAt-cell="{ row }">
           <span class="font-mono text-sm text-muted">{{ row.original.createdAt }}</span>
@@ -427,25 +441,10 @@ async function bulkDelete() {
           <span class="font-mono text-sm text-muted">{{ row.original.updatedAt }}</span>
         </template>
         <template #actions-cell="{ row }">
-          <div class="flex gap-2" @click.stop>
-            <UButton
-              size="sm"
-              variant="soft"
-              icon="i-lucide-pencil"
-              @click="openEditRecord(row.original)"
-            >
-              Edit
-            </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="soft"
-              icon="i-lucide-trash-2"
-              @click="confirmDeleteRecord(row.original)"
-            >
-              Delete
-            </UButton>
-          </div>
+          <RowActions
+            @edit="openEditRecord(row.original)"
+            @delete="confirmDeleteRecord(row.original)"
+          />
         </template>
         <template #empty>
           <div class="py-10 text-center text-muted">No records found.</div>
