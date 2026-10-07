@@ -59,9 +59,6 @@ const columns = [
   { accessorKey: 'name', header: 'Field' },
   { accessorKey: 'type', header: 'Type' },
   { accessorKey: 'required', header: 'Required' },
-  { accessorKey: 'indexEnabled', header: 'Indexed' },
-  { accessorKey: 'indexDirection', header: 'Direction' },
-  { accessorKey: 'indexUnique', header: 'Unique' },
   { id: 'actions', header: '' }
 ]
 
@@ -440,6 +437,15 @@ await loadDefinition()
               class="size-3.5 text-muted"
               aria-label="Managed field"
             />
+            <!-- Only a marker: the Indexes table below is the one place that lists every index. -->
+            <UBadge
+              v-if="row.original.indexEnabled"
+              color="neutral"
+              variant="soft"
+              :title="`${row.original.indexUnique ? 'Unique index' : 'Index'}, ${row.original.indexDirection}`"
+            >
+              {{ row.original.indexUnique ? 'unique' : 'indexed' }}
+            </UBadge>
           </div>
         </template>
         <template #type-cell="{ row }">
@@ -463,27 +469,6 @@ await loadDefinition()
           <UBadge :color="row.original.required ? 'success' : 'neutral'" variant="soft">
             {{ row.original.required ? 'yes' : 'no' }}
           </UBadge>
-        </template>
-        <template #indexEnabled-cell="{ row }">
-          <UBadge :color="row.original.indexEnabled ? 'success' : 'neutral'" variant="soft">
-            {{ row.original.indexEnabled ? 'yes' : 'no' }}
-          </UBadge>
-        </template>
-        <template #indexDirection-cell="{ row }">
-          <span v-if="row.original.indexEnabled" class="font-mono text-sm">
-            {{ row.original.indexDirection }}
-          </span>
-          <span v-else class="text-muted">—</span>
-        </template>
-        <template #indexUnique-cell="{ row }">
-          <UBadge
-            v-if="row.original.indexEnabled"
-            :color="row.original.indexUnique ? 'success' : 'neutral'"
-            variant="soft"
-          >
-            {{ row.original.indexUnique ? 'yes' : 'no' }}
-          </UBadge>
-          <span v-else class="text-muted">—</span>
         </template>
         <template #actions-cell="{ row }">
           <RowActions

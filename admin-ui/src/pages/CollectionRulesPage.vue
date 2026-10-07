@@ -393,17 +393,12 @@ await loadDefinition()
       Create rule does not affect it.
     </p>
 
-    <div
+    <UnsavedChangesBar
       v-if="dirty"
-      class="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default bg-default px-4 py-3 shadow-lg"
-    >
-      <p class="text-sm font-medium text-default">Unsaved changes</p>
-      <div class="flex gap-2">
-        <UButton variant="ghost" color="neutral" :disabled="saving" @click="discardChanges">
-          Discard
-        </UButton>
-        <UButton :loading="saving" icon="i-lucide-save" @click="saveRules">Save rules</UButton>
-      </div>
-    </div>
+      :saving="saving"
+      save-label="Save rules"
+      @save="saveRules"
+      @discard="discardChanges"
+    />
   </div>
 </template>

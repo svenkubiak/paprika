@@ -72,7 +72,8 @@ const tenantNavItems = computed(() => {
 
   if (bootstrap.value?.isSuperAdmin) {
     items.push({
-      label: 'Schema',
+      // Not "Schema": every collection has a Schema tab of its own.
+      label: 'Import & export',
       icon: 'i-lucide-file-json',
       to: '/admin/tenant-settings',
       active: route.name === 'tenant-settings'

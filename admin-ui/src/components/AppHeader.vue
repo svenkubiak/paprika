@@ -26,7 +26,7 @@ const pageTitle = computed(() => {
   if (route.name === 'request-logs') return 'Logs'
   if (route.name === 'user-settings') return 'Auth'
   if (route.name === 'superadmins') return 'Superadmins'
-  if (route.name === 'tenant-settings') return 'Schema import & export'
+  if (route.name === 'tenant-settings') return 'Import & export'
   if (collectionName.value) return collectionName.value
   return 'Paprika'
 })

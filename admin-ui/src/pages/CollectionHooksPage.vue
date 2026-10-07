@@ -195,25 +195,17 @@ await loadHooks()
 </script>
 
 <template>
-  <div class="space-y-6">
-    <UAlert
-      color="info"
-      variant="soft"
-      icon="i-lucide-webhook"
-      title="HTTP hooks"
-      description="Configure tenant-specific HTTP endpoints for CRUD lifecycle events. 'before' hooks run synchronously and can mutate the request body; 'after' hooks run asynchronously once the operation has already succeeded."
-    />
+  <div class="space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="max-w-2xl text-sm text-muted">
+        Hooks call your HTTP endpoint when records of <code>{{ collection }}</code> are listed, read
+        or changed. <code>before</code> hooks run first and can change or reject the request;
+        <code>after</code> hooks run once it has succeeded.
+      </p>
+      <UButton icon="i-lucide-plus" @click="openAddHook">Add hook</UButton>
+    </div>
 
     <UCard :ui="{ body: 'p-0 sm:p-0' }">
-      <template #header>
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-webhook" class="size-5 text-primary" />
-            <h2 class="font-semibold">Hooks for {{ collection }}</h2>
-          </div>
-          <UButton icon="i-lucide-plus" @click="openAddHook">Add hook</UButton>
-        </div>
-      </template>
 
       <UTable
         :data="hooks"

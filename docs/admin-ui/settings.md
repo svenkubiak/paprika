@@ -2,6 +2,8 @@
 
 `/admin/settings` covers instance-wide settings: the default tenant, what the request log keeps, and the license. Most controls here are disabled unless you're signed in as a superadmin.
 
+Changes to the tenant and request log settings are saved together: as soon as one differs from what is stored, a bar with **Discard** and **Save** appears at the bottom of the page. The license key is the exception — it is stored on its own with **Store key**, because it is checked when you paste it.
+
 Everything that belongs to **your own account** — password, two-factor authentication, email address, profile picture, sign-in alerts — lives on [Profile](/admin-ui/profile) instead, reachable through the avatar in the top right corner. To add or remove superadmins, see [Superadmins](/admin-ui/superadmins).
 
 ## Tenants

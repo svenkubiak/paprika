@@ -94,7 +94,7 @@ const router = createRouter({
       path: '/admin/tenant-settings',
       name: 'tenant-settings',
       component: () => import('@/pages/TenantSettingsPage.vue'),
-      meta: { title: 'Schema', requiresTenant: true, requiresSuperAdmin: true }
+      meta: { title: 'Import & export', requiresTenant: true, requiresSuperAdmin: true }
     },
     {
       path: '/admin/backup',

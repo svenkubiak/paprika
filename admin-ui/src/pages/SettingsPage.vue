@@ -11,16 +11,21 @@ import type { AppLicense } from '@/types'
 const toast = useAppToast()
 const { loadForSetup, bootstrap } = useBootstrap()
 
+interface SettingsForm {
+  defaultTenantId: string
+  requestLogRetentionDays: number
+  /** Off by default: admin UI traffic is Paprika's own, not the tenant's API traffic. */
+  requestLogAdminUi: boolean
+  requestLogClientInfo: boolean
+  requestLogClientIp: 'off' | 'truncated' | 'full'
+}
+
 const loading = ref(true)
-const savingLogs = ref(false)
-const savingDefaultTenant = ref(false)
-const requestLogRetentionDays = ref(7)
-const requestLogClientInfo = ref(false)
-const requestLogClientIp = ref<'off' | 'truncated' | 'full'>('off')
-const savingClientInfo = ref(false)
-/** Off by default: admin UI traffic is Paprika's own, not the tenant's API traffic. */
-const requestLogAdminUi = ref(false)
-const savingAdminUi = ref(false)
+const saving = ref(false)
+const form = ref<SettingsForm>(emptyForm())
+/** The settings as stored; the save bar shows while the form differs from them. */
+const savedForm = ref<SettingsForm>(emptyForm())
+const dirty = computed(() => JSON.stringify(form.value) !== JSON.stringify(savedForm.value))
 const license = ref<AppLicense>({ status: 'none' })
 const licenseKey = ref('')
 const savingLicense = ref(false)
@@ -31,7 +36,6 @@ const clientIpOptions = [
   { label: 'Truncated (IPv4 /24, IPv6 /48)', value: 'truncated' },
   { label: 'Full address', value: 'full' }
 ]
-const defaultTenantId = ref(SELECT_EMPTY)
 
 const tenantItems = computed(() =>
   (bootstrap.value?.tenants || []).map((tenant) => ({
@@ -40,18 +44,33 @@ const tenantItems = computed(() =>
   }))
 )
 
+function emptyForm(): SettingsForm {
+  return {
+    defaultTenantId: SELECT_EMPTY,
+    requestLogRetentionDays: 7,
+    requestLogAdminUi: false,
+    requestLogClientInfo: false,
+    requestLogClientIp: 'off'
+  }
+}
+
+function formFromSettings(settings: Awaited<ReturnType<typeof api.getSettings>>): SettingsForm {
+  return {
+    defaultTenantId: settings.defaultTenantId || SELECT_EMPTY,
+    requestLogRetentionDays:
+      typeof settings.requestLogRetentionDays === 'number' ? settings.requestLogRetentionDays : 7,
+    requestLogAdminUi: !!settings.requestLogAdminUi,
+    requestLogClientInfo: !!settings.requestLogClientInfo,
+    requestLogClientIp: settings.requestLogClientIp || 'off'
+  }
+}
+
 async function refreshSettings() {
   loading.value = true
   try {
     const settings = await api.getSettings()
-    requestLogRetentionDays.value =
-      typeof settings.requestLogRetentionDays === 'number'
-        ? settings.requestLogRetentionDays
-        : 7
-    defaultTenantId.value = settings.defaultTenantId || SELECT_EMPTY
-    requestLogClientInfo.value = !!settings.requestLogClientInfo
-    requestLogClientIp.value = settings.requestLogClientIp || 'off'
-    requestLogAdminUi.value = !!settings.requestLogAdminUi
+    form.value = formFromSettings(settings)
+    savedForm.value = { ...form.value }
     license.value = settings.license || { status: 'none' }
   } catch (error) {
     toast.add({
@@ -64,73 +83,33 @@ async function refreshSettings() {
   }
 }
 
-async function saveRequestLogRetention() {
-  savingLogs.value = true
+// One request for every setting on the page; the server answers with what it stored.
+async function saveSettings() {
+  saving.value = true
   try {
     const settings = await api.updateSettings({
-      requestLogRetentionDays: requestLogRetentionDays.value
+      defaultTenantId: form.value.defaultTenantId === SELECT_EMPTY ? '' : form.value.defaultTenantId,
+      requestLogRetentionDays: form.value.requestLogRetentionDays,
+      requestLogAdminUi: form.value.requestLogAdminUi,
+      requestLogClientInfo: form.value.requestLogClientInfo,
+      requestLogClientIp: form.value.requestLogClientIp
     })
-    requestLogRetentionDays.value = settings.requestLogRetentionDays
-    toast.add({
-      title: 'Request log retention updated',
-      color: 'success',
-      icon: 'i-lucide-circle-check'
-    })
+    form.value = formFromSettings(settings)
+    savedForm.value = { ...form.value }
+    toast.add({ title: 'Settings saved', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (error) {
     toast.add({
-      title: error instanceof Error ? error.message : 'Failed to update log retention',
+      title: error instanceof Error ? error.message : 'Failed to save settings',
       color: 'error',
       icon: 'i-lucide-circle-x'
     })
   } finally {
-    savingLogs.value = false
+    saving.value = false
   }
 }
 
-async function saveClientInfo() {
-  savingClientInfo.value = true
-  try {
-    const settings = await api.updateSettings({
-      requestLogClientInfo: requestLogClientInfo.value,
-      requestLogClientIp: requestLogClientIp.value
-    })
-    requestLogClientInfo.value = !!settings.requestLogClientInfo
-    requestLogClientIp.value = settings.requestLogClientIp || 'off'
-    toast.add({
-      title: 'Client information settings updated',
-      color: 'success',
-      icon: 'i-lucide-circle-check'
-    })
-  } catch (error) {
-    toast.add({
-      title: error instanceof Error ? error.message : 'Failed to update client information settings',
-      color: 'error',
-      icon: 'i-lucide-circle-x'
-    })
-  } finally {
-    savingClientInfo.value = false
-  }
-}
-
-async function saveAdminUiLogging() {
-  savingAdminUi.value = true
-  try {
-    const settings = await api.updateSettings({ requestLogAdminUi: requestLogAdminUi.value })
-    requestLogAdminUi.value = !!settings.requestLogAdminUi
-    toast.add({
-      title: 'Admin UI logging updated',
-      color: 'success',
-      icon: 'i-lucide-circle-check'
-    })
-  } catch (error) {
-    toast.add({
-      title: error instanceof Error ? error.message : 'Failed to update admin UI logging',
-      color: 'error',
-      icon: 'i-lucide-circle-x'
-    })
-  } finally {
-    savingAdminUi.value = false
-  }
+function discardChanges() {
+  form.value = { ...savedForm.value }
 }
 
 async function saveLicense() {
@@ -176,31 +155,6 @@ async function removeLicense() {
   }
 }
 
-async function saveDefaultTenant() {
-  savingDefaultTenant.value = true
-  try {
-    const settings = await api.updateSettings({
-      defaultTenantId: defaultTenantId.value === SELECT_EMPTY ? '' : defaultTenantId.value
-    })
-    defaultTenantId.value = settings.defaultTenantId || SELECT_EMPTY
-    requestLogClientInfo.value = !!settings.requestLogClientInfo
-    requestLogClientIp.value = settings.requestLogClientIp || 'off'
-    toast.add({
-      title: 'Default tenant updated',
-      color: 'success',
-      icon: 'i-lucide-circle-check'
-    })
-  } catch (error) {
-    toast.add({
-      title: error instanceof Error ? error.message : 'Failed to update default tenant',
-      color: 'error',
-      icon: 'i-lucide-circle-x'
-    })
-  } finally {
-    savingDefaultTenant.value = false
-  }
-}
-
 // Awaited in setup, so the <Suspense> in App.vue keeps the previous page on screen until this one
 // has its data instead of flashing the empty state first.
 await loadForSetup()
@@ -228,10 +182,10 @@ await refreshSettings()
           </p>
         </div>
 
-        <form class="flex max-w-xl flex-col gap-4 sm:flex-row sm:items-end" @submit.prevent="saveDefaultTenant">
-          <PField label="Tenant" icon="i-lucide-building-2" class="flex-1">
+        <div class="max-w-xl">
+          <PField label="Tenant" icon="i-lucide-building-2">
             <USelect
-              v-model="defaultTenantId"
+              v-model="form.defaultTenantId"
               :items="[{ label: 'Use config fallback', value: SELECT_EMPTY }, ...tenantItems]"
               placeholder="Select default tenant"
               icon="i-lucide-building-2"
@@ -241,15 +195,7 @@ await refreshSettings()
               :disabled="!bootstrap?.isSuperAdmin"
             />
           </PField>
-          <UButton
-            type="submit"
-            :loading="savingDefaultTenant"
-            icon="i-lucide-save"
-            :disabled="!bootstrap?.isSuperAdmin"
-          >
-            Save
-          </UButton>
-        </form>
+        </div>
       </div>
     </UCard>
 
@@ -272,10 +218,10 @@ await refreshSettings()
           </p>
         </div>
 
-        <form class="flex max-w-md flex-col gap-4 sm:flex-row sm:items-end" @submit.prevent="saveRequestLogRetention">
-          <PField label="Retention" icon="i-lucide-calendar-clock" class="flex-1">
+        <div class="max-w-md">
+          <PField label="Retention" icon="i-lucide-calendar-clock">
             <UInput
-              v-model.number="requestLogRetentionDays"
+              v-model.number="form.requestLogRetentionDays"
               type="number"
               min="0"
               max="3650"
@@ -288,15 +234,7 @@ await refreshSettings()
               </template>
             </UInput>
           </PField>
-          <UButton
-            type="submit"
-            :loading="savingLogs"
-            icon="i-lucide-save"
-            :disabled="!bootstrap?.isSuperAdmin"
-          >
-            Save
-          </UButton>
-        </form>
+        </div>
 
         <USeparator />
 
@@ -312,24 +250,11 @@ await refreshSettings()
           </p>
         </div>
 
-        <form class="flex max-w-2xl flex-col gap-4" @submit.prevent="saveAdminUiLogging">
-          <USwitch
-            v-model="requestLogAdminUi"
-            label="Log admin UI requests"
-            :disabled="!bootstrap?.isSuperAdmin"
-          />
-
-          <div>
-            <UButton
-              type="submit"
-              :loading="savingAdminUi"
-              icon="i-lucide-save"
-              :disabled="!bootstrap?.isSuperAdmin"
-            >
-              Save
-            </UButton>
-          </div>
-        </form>
+        <USwitch
+          v-model="form.requestLogAdminUi"
+          label="Log admin UI requests"
+          :disabled="!bootstrap?.isSuperAdmin"
+        />
 
         <USeparator />
 
@@ -345,9 +270,9 @@ await refreshSettings()
           </p>
         </div>
 
-        <form class="flex max-w-2xl flex-col gap-4" @submit.prevent="saveClientInfo">
+        <div class="flex max-w-2xl flex-col gap-4">
           <USwitch
-            v-model="requestLogClientInfo"
+            v-model="form.requestLogClientInfo"
             label="Log user agent"
             :disabled="!bootstrap?.isSuperAdmin"
           />
@@ -359,25 +284,14 @@ await refreshSettings()
             help="What is written to the request log for the caller's address."
           >
             <USelect
-              v-model="requestLogClientIp"
+              v-model="form.requestLogClientIp"
               :items="clientIpOptions"
               value-key="value"
               label-key="label"
               :disabled="!bootstrap?.isSuperAdmin"
             />
           </PField>
-
-          <div>
-            <UButton
-              type="submit"
-              :loading="savingClientInfo"
-              icon="i-lucide-save"
-              :disabled="!bootstrap?.isSuperAdmin"
-            >
-              Save
-            </UButton>
-          </div>
-        </form>
+        </div>
       </div>
     </UCard>
 
@@ -480,10 +394,10 @@ await refreshSettings()
             <UButton
               type="submit"
               :loading="savingLicense"
-              icon="i-lucide-save"
+              icon="i-lucide-key-round"
               :disabled="!bootstrap?.isSuperAdmin || !licenseKey.trim()"
             >
-              Save
+              Store key
             </UButton>
             <UButton
               v-if="license.status !== 'none'"
@@ -500,5 +414,7 @@ await refreshSettings()
         </form>
       </div>
     </UCard>
+
+    <UnsavedChangesBar v-if="dirty" :saving="saving" @save="saveSettings" @discard="discardChanges" />
   </div>
 </template>

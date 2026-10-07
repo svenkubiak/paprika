@@ -63,7 +63,7 @@ Once a field exists, its name can't be changed from this UI — only its other o
 
 ## Indexing a field
 
-Each field row shows whether it's indexed, in which direction (ascending/descending), and whether it's unique. Enable indexing in the field editor to speed up filtering/sorting on that field, or to enforce that no two records share the same value.
+An indexed field carries an **indexed** or **unique** tag next to its name; hover it for the direction (ascending/descending). The **Indexes** table below lists every index of the collection, compound ones included. Enable indexing in the field editor to speed up filtering/sorting on that field, or to enforce that no two records share the same value.
 
 ::: tip Index what you sort by
 The list endpoint's [`sort` parameter](/admin-ui/collection-api#listing-paging-filtering-and-sorting) works on any sortable field, indexed or not. Without an index MongoDB sorts in memory, and that sort fails once it exceeds 32 MB — so for a collection that grows, index the field your clients sort by.
