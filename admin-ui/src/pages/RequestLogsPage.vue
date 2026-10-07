@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '@/lib/api'
 import { useAppToast } from '@/composables/useAppToast'
-import { formatLocalTimestamp, formatTimeZone, formatUtcTimestamp } from '@/lib/utils'
 import { useBootstrap } from '@/composables/useBootstrap'
 import { usePageSize } from '@/composables/usePageSize'
 import RequestLogDetailSheet from '@/components/RequestLogDetailSheet.vue'
@@ -536,15 +535,15 @@ if (hasActiveTenant.value) {
                 }"
                 @click="openDetail(entry)"
               >
-                <td class="whitespace-nowrap px-3 py-2.5 font-mono text-sm">
-                  <span
-                    v-if="isHookEntry(entry)"
-                    class="mr-1 text-readable-primary"
-                    title="Async hook of an earlier request"
-                  >↳</span>
-                  <span :title="`${formatTimeZone(entry.timestamp)}, ${formatUtcTimestamp(entry.timestamp)}`">
-                    {{ formatLocalTimestamp(entry.timestamp) }}
-                  </span>
+                <td class="whitespace-nowrap px-3 py-2.5">
+                  <div class="flex items-start gap-1">
+                    <span
+                      v-if="isHookEntry(entry)"
+                      class="font-mono text-sm text-readable-primary"
+                      title="Async hook of an earlier request"
+                    >↳</span>
+                    <FormattedDate :value="entry.timestamp" milliseconds />
+                  </div>
                 </td>
                 <td class="whitespace-nowrap px-3 py-2.5">
                   <UBadge :color="isHookEntry(entry) ? 'primary' : 'neutral'" variant="soft">

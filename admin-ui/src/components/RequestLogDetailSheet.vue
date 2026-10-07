@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import type { RequestLogEntry } from '@/types'
 import { slideoverUi } from '@/lib/overlay-ui'
-import { formatLocalTimestamp, formatTimeZone, formatUtcTimestamp } from '@/lib/utils'
 
 const props = defineProps<{
   open: boolean
@@ -20,10 +19,6 @@ const description = computed(() => {
   if (!entry.value) return ''
   return `${entry.value.method} ${entry.value.url}`
 })
-
-function formatTimestamp(value?: string | null) {
-  return value ? formatLocalTimestamp(value) : '—'
-}
 
 function statusColor(code: number) {
   if (code >= 500) return 'error'
@@ -149,11 +144,8 @@ const statusMeaning = computed(() => {
           <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">Timestamp</dt>
-              <dd
-                class="mt-0.5 font-mono text-sm"
-                :title="`${formatTimeZone(entry.timestamp)}, ${formatUtcTimestamp(entry.timestamp)}`"
-              >
-                {{ formatTimestamp(entry.timestamp) }}
+              <dd class="mt-0.5">
+                <FormattedDate :value="entry.timestamp" milliseconds />
               </dd>
             </div>
             <div>

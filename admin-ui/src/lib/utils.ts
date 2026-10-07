@@ -163,15 +163,6 @@ export function formatTimeZone(value: string): string {
   return offset ? `${offset} · ${zone}` : zone
 }
 
-/** A timestamp in UTC to the millisecond, as the API returns it: "2026-10-07 06:00:42.221 UTC". */
-export function formatUtcTimestamp(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return `${date.toISOString().replace('T', ' ').replace('Z', '')} UTC`
-}
-
 /**
  * Caps a cell text so a large value does not end up in the DOM in full; the cell clips it
  * visually anyway, the cap only bounds what is rendered and shown on hover.
