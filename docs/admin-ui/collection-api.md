@@ -17,18 +17,24 @@ Every response includes the three [system fields](/concepts/collections#system-f
 
 ## Listing: paging, filtering and sorting
 
-`GET /api/collections/{collection}` takes four optional query parameters:
+`GET /api/collections/{collection}` takes five optional query parameters:
 
 ```
-GET /api/collections/{collection}?offset=0&limit=25&filter=<field>:eq:<value>&sort=<field>:asc|desc
+GET /api/collections/{collection}?offset=0&limit=25&filter=<field>:eq:<value>&search=<text>&sort=<field>:asc|desc
 ```
 
 - **`offset`** — number of records to skip; negative values count as `0`.
 - **`limit`** — page size. Omitted or `<= 0` means the default of **25**; anything above the
   maximum of **100** is **clamped to 100**. A request for `limit=500` therefore answers with 100
   records, not with a silently shorter page.
-- **`filter`** — exactly one field, exactly one operator (`eq`). It can only narrow what the
-  collection's [rules](/admin-ui/collection-rules) already allow, never widen it.
+- **`filter`** — exactly one field and one operator. `eq` compares exactly; `contains` matches
+  part of a text value (`STRING`, `EMAIL`, `URL`, `SELECT`, `RELATION`), ignoring case. The value
+  is taken literally, so characters like `.` or `(` have no special meaning. It can only narrow
+  what the collection's [rules](/admin-ui/collection-rules) already allow, never widen it.
+- **`search`** — free text matched like `contains` against the `id` and every text field at
+  once; a record matches if any of them contains the text. This is what the search box of the
+  data view uses. Like `filter` it only narrows, and the two can be combined. `total` counts the
+  matching records.
 - **`sort`** — exactly one field and one direction (`asc` or `desc`). Allowed are the collection's
   schema fields plus the system fields `id`, `createdAt` and `updatedAt`. `JSON` and `FILE` fields
   cannot be sorted. An unknown field, an unknown direction or a malformed value answers `400` —

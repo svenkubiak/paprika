@@ -98,9 +98,9 @@ public class TenantController {
         return Response.notFound();
     }
 
-    public Response listUsers(String tenantId) {
+    public Response listUsers(String tenantId, String search) {
         return tenantService.findById(tenantId)
-                .map(tenant -> Response.ok().bodyJson(tenantUserService.listUsers(tenant)))
+                .map(tenant -> Response.ok().bodyJson(tenantUserService.listUsers(tenant, search)))
                 .orElseGet(Response::notFound);
     }
 

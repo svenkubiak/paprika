@@ -66,10 +66,12 @@ Until then, file download and delete remain authenticated API operations without
 `GET /api/collections/{collection}` accepts an optional `filter` query parameter:
 
 ```
-GET /api/collections/{collection}?filter=<field>:eq:<value>&offset=0&limit=25
+GET /api/collections/{collection}?filter=<field>:<eq|contains>:<value>&offset=0&limit=25
 ```
 
-- Exactly one field, one operator, and the operator is always `eq`.
+- Exactly one field and one operator: `eq`, or `contains` for text types (`STRING`, `EMAIL`,
+  `URL`, `SELECT`, `RELATION`) — a case-insensitive substring match. The value is regex-escaped,
+  so it always matches literally; an empty `contains` value or a non-text field is a `400`.
 - Parsing splits on the **first two colons only**, so the value may itself contain colons.
 - The value is URL-encoded on the wire (Undertow decodes it before binding).
 - An absent or empty `filter` behaves exactly as before — no filter is applied.
@@ -92,7 +94,14 @@ Parsing and type conversion live in `rules/ListFilterParser`:
 
 An index is **not** required. Without one the filter costs a collection scan, but the rule
 filter already bounds the candidate set — this is an operational tuning question, not a reason
-to reject the request.
+to reject the request. `contains` is an unanchored regex and never uses an index.
+
+A separate `search=<text>` parameter backs the search box of the admin data views
+(`ListFilterParser.search`): `contains` against `id` and every text field, ORed together. The
+OR is built on the server and not exposed in the filter grammar, which stays at one condition.
+`search` is ANDed with the rule filter and the client filter like any other narrowing. The
+tenant users list (`GET /api/meta/tenants/{id}/users?search=`) uses the same matcher over the
+users schema, so both admin views find the same records.
 
 The list also accepts an optional `sort` parameter of the same shape, parsed by
 `rules/ListSortParser`:
@@ -102,7 +111,7 @@ GET /api/collections/{collection}?sort=<field>:asc|desc
 ```
 
 - Exactly one field and one direction; no multi-field sort and no `-field` shorthand, for the
-  same reason the filter only knows `eq`.
+  same reason the filter has no composition.
 - Allowed fields are the schema fields plus the indexable system fields; `JSON` and `FILE` are
   not sortable. An unknown field, an unknown direction, or a malformed value is a `400` — an
   invalid sort is never answered with an arbitrarily ordered page.
@@ -128,10 +137,9 @@ The following are intentionally out of scope for now and would be the natural fo
 - **Bulk mutations** — `DELETE`/`PATCH` with a filter. `beforeUpdate`/`beforeDelete` hooks and
   the field guards run per record, so a bulk mutation has to clarify how those apply before it
   can exist.
-- **More operators and composition** — anything beyond `eq`, plus `and`/`or`, bracketing,
-  ordering comparisons, full-text search, multi-field sorting, and relation traversal.
-- **Admin UI search** — the data view could grow a search box on top of this parameter
-  (`admin-ui/src/lib/api.ts` currently builds only `?offset=&limit=`).
+- **More operators and composition** — anything beyond `eq` and `contains`, plus `and`/`or`,
+  bracketing, ordering comparisons, full-text search with a text index, multi-field sorting, and
+  relation traversal.
 
 ## Image variants for file fields
 

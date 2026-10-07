@@ -32,9 +32,9 @@ public class CollectionController {
     }
 
     @FilterWith({TenantContextFilter.class, ApiAuthFilter.class, ApiHookFilter.class})
-    public Response list(String collection, Request request, int offset, int limit, String filter, String sort) {
+    public Response list(String collection, Request request, int offset, int limit, String filter, String search, String sort) {
         return CollectionRecordResponseHelper.toResponse(
-                collectionRecordService.list(TenantContextHolder.require(request), collection, request, offset, limit, filter, sort));
+                collectionRecordService.list(TenantContextHolder.require(request), collection, request, offset, limit, filter, search, sort));
     }
 
     @FilterWith({TenantContextFilter.class, ApiAuthFilter.class, ApiHookFilter.class})

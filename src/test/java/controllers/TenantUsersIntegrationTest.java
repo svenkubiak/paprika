@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import services.TenantService;
 import services.UserService;
 import utils.AdminTestUtils;
+import utils.DbUtils;
 import utils.TenantTestUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -59,6 +60,24 @@ class TenantUsersIntegrationTest {
                 "/api/meta/tenants/" + tenant.id() + "/users/" + userId,
                 cookies);
         assertThat(delete.getStatusCode(), equalTo(StatusCodes.NO_CONTENT));
+    }
+
+    @Test
+    void searchNarrowsTheUserList() {
+        TenantDefinition tenant = TenantTestUtils.defaultTenant();
+        UserService userService = Application.getInstance(UserService.class);
+        userService.createUser("search-match-" + DbUtils.id(), null, "secret-password-123");
+        String other = "search-other-" + DbUtils.id();
+        userService.createUser(other, null, "secret-password-123");
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+        TestResponse list = AdminTestUtils.getWithAdminCookies(
+                "/api/meta/tenants/" + tenant.id() + "/users?search=SEARCH-MATCH",
+                cookies);
+
+        assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(list.getContent(), containsString("search-match-"));
+        assertThat(list.getContent(), not(containsString(other)));
     }
 
     @Test

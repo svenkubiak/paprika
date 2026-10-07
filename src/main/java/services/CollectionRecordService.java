@@ -165,6 +165,7 @@ public class CollectionRecordService {
             int offset,
             int limit,
             String filter,
+            String search,
             String sort) {
         // The auth filter is the only place a list rule is evaluated; without its scoping query,
         // refuse rather than fall back to listing everything
@@ -186,10 +187,18 @@ public class CollectionRecordService {
         } catch (ListFilterParser.InvalidFilterException | ListSortParser.InvalidSortException e) {
             return RecordResult.badRequest(e.getMessage());
         }
+        Bson searchFilter = ListFilterParser.search(search, definition);
 
-        // The client filter can only narrow the rule filter; page and count share it, so total
+        // Filter and search can only narrow the rule filter; page and count share it, so total
         // never reveals the unfiltered count
-        Bson effectiveFilter = clientFilter == null ? ruleFilter : Filters.and(ruleFilter, clientFilter);
+        List<Bson> conditions = new ArrayList<>(List.of(ruleFilter));
+        if (clientFilter != null) {
+            conditions.add(clientFilter);
+        }
+        if (searchFilter != null) {
+            conditions.add(searchFilter);
+        }
+        Bson effectiveFilter = conditions.size() == 1 ? ruleFilter : Filters.and(conditions);
 
         int effectiveOffset = Math.max(offset, 0);
         // An oversized limit is clamped, not reset to the default, which would silently drop records

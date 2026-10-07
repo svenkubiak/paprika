@@ -23,7 +23,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import results.TenantLoginResult;
+import rules.ListFilterParser;
 import results.TokenIssueResult;
 import utils.*;
 import validation.ValidationResult;
@@ -403,8 +405,15 @@ public class TenantUserService {
     }
 
     public List<Map<String, Object>> listUsers(TenantDefinition tenant) {
+        return listUsers(tenant, null);
+    }
+
+    /** {@code search} matches like the data plane's list search, so both admin views find the same. */
+    public List<Map<String, Object>> listUsers(TenantDefinition tenant, String search) {
+        // The plain list must not depend on the users schema, so it is only read for a search
+        Bson filter = StringUtils.isBlank(search) ? null : ListFilterParser.search(search, usersDefinition(tenant));
         List<Document> documents = new ArrayList<>();
-        usersCollection(tenant).find().into(documents);
+        usersCollection(tenant).find(filter == null ? new Document() : filter).into(documents);
         return documents.stream().map(this::toPublicMap).toList();
     }
 

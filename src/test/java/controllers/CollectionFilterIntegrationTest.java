@@ -314,6 +314,110 @@ class CollectionFilterIntegrationTest {
         assertThat(response.getContent(), not(containsString("drop")));
     }
 
+    @Test
+    void containsMatchesSubstringIgnoringCase() {
+        String collection = "items_filter_contains_" + DbUtils.id();
+        seedPublicCollection(collection);
+        TenantTestUtils.seedRecord(collection, "Quarterly Report");
+        TenantTestUtils.seedRecord(collection, "Invoice");
+
+        TestResponse response = TestRequest.get(
+                        "/api/collections/" + collection + "?offset=0&limit=25&filter=title:contains:REPORT")
+                .execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(response.getContent(), containsString("\"total\":1"));
+        assertThat(response.getContent(), containsString("Quarterly Report"));
+        assertThat(response.getContent(), not(containsString("Invoice")));
+    }
+
+    // "a.c" must not act as a pattern that also matches "abc", and "(" must not fail as one.
+    @Test
+    void containsMatchesRegexCharactersLiterally() {
+        String collection = "items_filter_literal_" + DbUtils.id();
+        seedPublicCollection(collection);
+        TenantTestUtils.seedRecord(collection, "a.c (draft)");
+        TenantTestUtils.seedRecord(collection, "abc");
+
+        TestResponse dot = TestRequest.get("/api/collections/" + collection + "?offset=0&limit=25&filter="
+                        + URLEncoder.encode("title:contains:a.c", StandardCharsets.UTF_8))
+                .execute();
+        TestResponse bracket = TestRequest.get("/api/collections/" + collection + "?offset=0&limit=25&filter="
+                        + URLEncoder.encode("title:contains:(draft", StandardCharsets.UTF_8))
+                .execute();
+
+        assertThat(dot.getContent(), containsString("\"total\":1"));
+        assertThat(dot.getContent(), not(containsString("\"abc\"")));
+        assertThat(bracket.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(bracket.getContent(), containsString("\"total\":1"));
+    }
+
+    @Test
+    void containsOnNumberFieldReturnsBadRequest() {
+        String collection = "items_contains_number_" + DbUtils.id();
+        TenantTestUtils.seedCollection(
+                collection,
+                new CollectionRules("*", "*", "*", "*", "*", "owner"),
+                List.of(
+                        new FieldDefinition("title", FieldType.STRING, true, false, null),
+                        new FieldDefinition("price", FieldType.NUMBER, false, true, null)));
+
+        TestResponse response = TestRequest.get(
+                        "/api/collections/" + collection + "?offset=0&limit=25&filter=price:contains:1")
+                .execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+    }
+
+    @Test
+    void searchMatchesAnyTextFieldAndCountsMatchesOnly() {
+        String collection = "items_search_" + DbUtils.id();
+        TenantTestUtils.seedCollection(
+                collection,
+                new CollectionRules("*", "*", "*", "*", "*", "owner"),
+                List.of(
+                        new FieldDefinition("title", FieldType.STRING, true, false, null),
+                        new FieldDefinition("contact", FieldType.EMAIL, false, true, null)));
+
+        insert(collection, new Document().append("id", DbUtils.id()).append("title", "Lunch order").append("contact", "x@example.com"));
+        insert(collection, new Document().append("id", DbUtils.id()).append("title", "Other").append("contact", "LUNCH@example.com"));
+        insert(collection, new Document().append("id", DbUtils.id()).append("title", "Unrelated").append("contact", "y@example.com"));
+
+        TestResponse response = TestRequest.get(
+                        "/api/collections/" + collection + "?offset=0&limit=25&search=lunch")
+                .execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(response.getContent(), containsString("\"total\":2"));
+        assertThat(response.getContent(), not(containsString("Unrelated")));
+    }
+
+    // Like the filter, the search is anded onto the rule filter: it never reaches B's records.
+    @Test
+    void searchNeverEscapesOwnerScope() {
+        UserService userService = Application.getInstance(UserService.class);
+        userService.createUser("search-owner-a", null, "secret-password-123");
+        userService.createUser("search-owner-b", null, "secret-password-456");
+
+        String tokenA = loginToken("search-owner-a", "secret-password-123");
+        String tokenB = loginToken("search-owner-b", "secret-password-456");
+
+        String collection = "notes_search_scope_" + DbUtils.id();
+        seedOwnerCollection(collection);
+
+        createNote(collection, tokenA, "SHARED-WORD of A");
+        createNote(collection, tokenB, "SHARED-WORD of B");
+
+        TestResponse response = TestRequest.get(
+                        "/api/collections/" + collection + "?offset=0&limit=25&search=shared-word")
+                .withHeader("Authorization", "Bearer " + tokenA)
+                .execute();
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(response.getContent(), containsString("\"total\":1"));
+        assertThat(response.getContent(), not(containsString("of B")));
+    }
+
     private void insert(String collection, Document document) {
         Application.getInstance(TenantCollectionService.class)
                 .dataCollection(TenantTestUtils.defaultTenantContext(), collection)

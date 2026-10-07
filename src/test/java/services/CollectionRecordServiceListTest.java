@@ -40,7 +40,7 @@ class CollectionRecordServiceListTest {
 
         // A request that skipped ApiAuthFilter has no decision; listing unfiltered would return every record.
         CollectionRecordService.RecordResult result = Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, new Request(), 0, 25, null, null);
+                .list(ctx, collection, new Request(), 0, 25, null, null, null);
 
         assertThat(result.status(), is(CollectionRecordService.RecordResult.Status.FORBIDDEN));
         assertThat(result.body(), is((Object) null));
@@ -64,7 +64,7 @@ class CollectionRecordServiceListTest {
         AuthorizationDecision.granted(RuleOperation.VIEW).storeIn(request);
 
         CollectionRecordService.RecordResult result = Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, request, 0, 25, null, null);
+                .list(ctx, collection, request, 0, 25, null, null, null);
 
         assertThat(result.status(), is(CollectionRecordService.RecordResult.Status.FORBIDDEN));
     }
@@ -304,7 +304,7 @@ class CollectionRecordServiceListTest {
         Request request = new Request();
         AuthorizationDecision.listGranted(new Document()).storeIn(request);
         return Application.getInstance(CollectionRecordService.class)
-                .list(ctx, collection, request, offset, limit, filter, sort);
+                .list(ctx, collection, request, offset, limit, filter, null, sort);
     }
 
     @SuppressWarnings("unchecked")
