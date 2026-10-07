@@ -511,7 +511,8 @@ if (hasActiveTenant.value) {
                 </td>
               </tr>
               <template v-for="entry in logs" :key="entry.id">
-              <tr :class="{ 'bg-primary/5': isHookEntry(entry) }">
+              <!-- Same hover as the UTable rows elsewhere, see the table theme in vite.config.ts. -->
+              <tr class="hover:bg-elevated/50" :class="{ 'bg-primary/5': isHookEntry(entry) }">
                 <td class="whitespace-nowrap px-3 py-2.5">
                   <div class="flex items-start gap-1">
                     <span
