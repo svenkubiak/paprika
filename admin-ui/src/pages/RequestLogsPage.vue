@@ -14,9 +14,9 @@ const logs = ref<RequestLogEntry[]>([])
 const total = ref(0)
 const loading = ref(false)
 const search = ref('')
-const statusFilter = ref<'all' | 'success' | 'error'>('all')
-const hookFilter = ref<'any' | 'continued' | 'blocked'>('any')
-const typeFilter = ref<'all' | 'request' | 'hook'>('all')
+const statusFilter = ref<StatusFilter>('all')
+const hookFilter = ref<HookFilter>('any')
+const typeFilter = ref<TypeFilter>('all')
 const page = ref(1)
 const detailOpen = ref(false)
 const selectedEntry = ref<RequestLogEntry | null>(null)
@@ -36,6 +36,35 @@ const pageSizeOptions = [
   { label: '100', value: 100 }
 ]
 const pageSize = usePageSize('logs', 50, pageSizeOptions)
+
+type StatusFilter = 'all' | 'success' | 'error'
+type HookFilter = 'any' | 'continued' | 'blocked'
+type TypeFilter = 'all' | 'request' | 'hook'
+
+// The labels name their dimension, so a closed select reads without a caption next to it.
+const statusFilterOptions: { label: string; value: StatusFilter; description?: string }[] = [
+  { label: 'All statuses', value: 'all' },
+  { label: 'Successful', value: 'success', description: 'Status below 400' },
+  { label: 'Errors', value: 'error', description: 'Status 400 and above' }
+]
+const hookFilterOptions: { label: string; value: HookFilter; description?: string }[] = [
+  { label: 'Any hook outcome', value: 'any', description: 'Including requests no hook ran for' },
+  { label: 'Hook continued', value: 'continued', description: 'A hook ran and let the request through' },
+  { label: 'Hook blocked', value: 'blocked', description: 'A hook ran and rejected the request' }
+]
+const typeFilterOptions: { label: string; value: TypeFilter; description?: string }[] = [
+  { label: 'All entries', value: 'all' },
+  { label: 'Requests only', value: 'request', description: 'The API calls themselves' },
+  {
+    label: 'Async hooks only',
+    value: 'hook',
+    description: 'Written by after-hooks once the response is out'
+  }
+]
+
+const filtersActive = computed(
+  () => statusFilter.value !== 'all' || hookFilter.value !== 'any' || typeFilter.value !== 'all'
+)
 
 const columnGroups = [
   { key: 'request', label: 'Request', span: 5, title: 'The incoming API call' },
@@ -242,18 +271,25 @@ function clearNewEntries() {
   newEntries.value = 0
 }
 
-function setStatusFilter(value: 'all' | 'success' | 'error') {
+function setStatusFilter(value: StatusFilter) {
   statusFilter.value = value
   page.value = 1
 }
 
-function setHookFilter(value: 'any' | 'continued' | 'blocked') {
+function setHookFilter(value: HookFilter) {
   hookFilter.value = value
   page.value = 1
 }
 
-function setTypeFilter(value: 'all' | 'request' | 'hook') {
+function setTypeFilter(value: TypeFilter) {
   typeFilter.value = value
+  page.value = 1
+}
+
+function resetFilters() {
+  statusFilter.value = 'all'
+  hookFilter.value = 'any'
+  typeFilter.value = 'all'
   page.value = 1
 }
 
@@ -360,114 +396,63 @@ if (hasActiveTenant.value) {
 
     <UCard>
       <template v-if="hasActiveTenant">
-        <div class="mb-4 flex flex-col gap-3">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <UInput
-              v-model="search"
-              class="w-full sm:max-w-md"
-              icon="i-lucide-search"
-              placeholder="Search URL, method, error, or request ID…"
-            />
+        <!-- A changed filter is tinted so a filtered list is never mistaken for the whole log. -->
+        <div class="mb-4 flex flex-wrap items-center gap-2">
+          <UInput
+            v-model="search"
+            class="w-full sm:w-80"
+            icon="i-lucide-search"
+            placeholder="Search URL, method, error, or request ID…"
+          />
 
-            <div class="flex items-center gap-1 rounded-lg border border-default p-1">
-              <UButton
-                size="sm"
-                :color="statusFilter === 'all' ? 'primary' : 'neutral'"
-                :variant="statusFilter === 'all' ? 'soft' : 'ghost'"
-                :aria-pressed="statusFilter === 'all'"
-                @click="setStatusFilter('all')"
-              >
-                All
-              </UButton>
-              <UButton
-                size="sm"
-                :color="statusFilter === 'success' ? 'success' : 'neutral'"
-                :variant="statusFilter === 'success' ? 'soft' : 'ghost'"
-                :aria-pressed="statusFilter === 'success'"
-                @click="setStatusFilter('success')"
-              >
-                Success
-              </UButton>
-              <UButton
-                size="sm"
-                :color="statusFilter === 'error' ? 'error' : 'neutral'"
-                :variant="statusFilter === 'error' ? 'soft' : 'ghost'"
-                :aria-pressed="statusFilter === 'error'"
-                @click="setStatusFilter('error')"
-              >
-                Errors
-              </UButton>
-            </div>
+          <USelect
+            :model-value="statusFilter"
+            :items="statusFilterOptions"
+            icon="i-lucide-activity"
+            aria-label="Filter by status"
+            :color="statusFilter !== 'all' ? 'primary' : 'neutral'"
+            :variant="statusFilter !== 'all' ? 'soft' : 'outline'"
+            :ui="{ content: 'min-w-60' }"
+            class="w-38"
+            @update:model-value="setStatusFilter($event as StatusFilter)"
+          />
+          <USelect
+            :model-value="hookFilter"
+            :items="hookFilterOptions"
+            icon="i-lucide-webhook"
+            aria-label="Filter by hook outcome"
+            :color="hookFilter !== 'any' ? 'primary' : 'neutral'"
+            :variant="hookFilter !== 'any' ? 'soft' : 'outline'"
+            :ui="{ content: 'min-w-72' }"
+            class="w-48"
+            @update:model-value="setHookFilter($event as HookFilter)"
+          />
+          <USelect
+            :model-value="typeFilter"
+            :items="typeFilterOptions"
+            icon="i-lucide-layers"
+            aria-label="Filter by entry type"
+            :color="typeFilter !== 'all' ? 'primary' : 'neutral'"
+            :variant="typeFilter !== 'all' ? 'soft' : 'outline'"
+            :ui="{ content: 'min-w-72' }"
+            class="w-44"
+            @update:model-value="setTypeFilter($event as TypeFilter)"
+          />
+          <UButton
+            v-if="filtersActive"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-x"
+            @click="resetFilters"
+          >
+            Reset
+          </UButton>
 
-            <div class="flex items-center gap-1 rounded-lg border border-default p-1">
-              <UButton
-                size="sm"
-                :color="hookFilter === 'any' ? 'primary' : 'neutral'"
-                :variant="hookFilter === 'any' ? 'soft' : 'ghost'"
-                :aria-pressed="hookFilter === 'any'"
-                @click="setHookFilter('any')"
-              >
-                Any hook
-              </UButton>
-              <UButton
-                size="sm"
-                :color="hookFilter === 'continued' ? 'primary' : 'neutral'"
-                :variant="hookFilter === 'continued' ? 'soft' : 'ghost'"
-                :aria-pressed="hookFilter === 'continued'"
-                title="A hook ran and let the request through"
-                @click="setHookFilter('continued')"
-              >
-                Hook continued
-              </UButton>
-              <UButton
-                size="sm"
-                :color="hookFilter === 'blocked' ? 'warning' : 'neutral'"
-                :variant="hookFilter === 'blocked' ? 'soft' : 'ghost'"
-                :aria-pressed="hookFilter === 'blocked'"
-                title="A hook ran and rejected the request"
-                @click="setHookFilter('blocked')"
-              >
-                Hook blocked
-              </UButton>
-            </div>
-
-            <div class="flex items-center gap-1 rounded-lg border border-default p-1">
-              <UButton
-                size="sm"
-                :color="typeFilter === 'all' ? 'primary' : 'neutral'"
-                :variant="typeFilter === 'all' ? 'soft' : 'ghost'"
-                :aria-pressed="typeFilter === 'all'"
-                @click="setTypeFilter('all')"
-              >
-                All entries
-              </UButton>
-              <UButton
-                size="sm"
-                :color="typeFilter === 'request' ? 'primary' : 'neutral'"
-                :variant="typeFilter === 'request' ? 'soft' : 'ghost'"
-                :aria-pressed="typeFilter === 'request'"
-                @click="setTypeFilter('request')"
-              >
-                Requests
-              </UButton>
-              <UButton
-                size="sm"
-                :color="typeFilter === 'hook' ? 'primary' : 'neutral'"
-                :variant="typeFilter === 'hook' ? 'soft' : 'ghost'"
-                :aria-pressed="typeFilter === 'hook'"
-                @click="setTypeFilter('hook')"
-                title="Entries written by asynchronous after-hooks, which run once the response is out"
-              >
-                Async hooks
-              </UButton>
-            </div>
-
+          <div class="ml-auto flex items-center gap-3">
             <div class="flex items-center gap-2">
               <USwitch
                 v-model="live"
                 label="Live"
-                :disabled="!hasActiveTenant"
                 title="Poll for new entries every few seconds and add them on top"
               />
               <UBadge
@@ -481,8 +466,7 @@ if (hasActiveTenant.value) {
                 +{{ newEntries }} new
               </UBadge>
             </div>
-          </div>
-            <p class="shrink-0 text-sm text-muted">{{ summary }}</p>
+            <p class="text-sm text-muted">{{ summary }}</p>
           </div>
         </div>
 
@@ -527,14 +511,7 @@ if (hasActiveTenant.value) {
                 </td>
               </tr>
               <template v-for="entry in logs" :key="entry.id">
-              <tr
-                class="cursor-pointer hover:bg-muted/20"
-                :class="{
-                  'bg-muted/30': selectedEntry?.id === entry.id && detailOpen,
-                  'bg-primary/5': isHookEntry(entry)
-                }"
-                @click="openDetail(entry)"
-              >
+              <tr :class="{ 'bg-primary/5': isHookEntry(entry) }">
                 <td class="whitespace-nowrap px-3 py-2.5">
                   <div class="flex items-start gap-1">
                     <span
@@ -569,7 +546,7 @@ if (hasActiveTenant.value) {
                     <button
                       class="max-w-[16rem] truncate font-mono text-sm hover:text-readable-primary"
                       :title="'Click to copy: ' + entry.userId"
-                      @click.stop="copyValue(entry.userId!)"
+                      @click="copyValue(entry.userId!)"
                     >
                       {{ entry.userId }}
                     </button>
@@ -630,7 +607,7 @@ if (hasActiveTenant.value) {
                       variant="ghost"
                       icon="i-lucide-link"
                       title="Show every entry of this request"
-                      @click.stop="showRelated(entry.requestId!)"
+                      @click="showRelated(entry.requestId!)"
                     />
                   </div>
                   <div v-else-if="hookCount(entry) > 0" class="flex flex-wrap items-center gap-1.5">
@@ -640,7 +617,7 @@ if (hasActiveTenant.value) {
                       variant="soft"
                       :icon="isExpanded(entry.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
                       :title="isExpanded(entry.id) ? 'Hide hook executions' : 'Show the ' + hookCount(entry) + ' hook execution(s) of this request'"
-                      @click.stop="toggleExpanded(entry.id)"
+                      @click="toggleExpanded(entry.id)"
                     >
                       {{ hookCount(entry) }} {{ hookCount(entry) === 1 ? 'hook' : 'hooks' }}
                     </UButton>
@@ -665,7 +642,7 @@ if (hasActiveTenant.value) {
                     variant="ghost"
                     icon="i-lucide-panel-right-open"
                     title="Show details"
-                    @click.stop="openDetail(entry)"
+                    @click="openDetail(entry)"
                   />
                 </td>
               </tr>
