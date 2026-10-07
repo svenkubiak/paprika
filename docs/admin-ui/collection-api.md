@@ -1,15 +1,17 @@
 # Collection: API Reference
 
-`/admin/collections/:collection/api` — auto-generated, always-up-to-date REST and realtime documentation for this specific collection, built directly from its schema. There's nothing to configure here; it's a reference view.
+`/admin/collections/:collection/api` — auto-generated, always-up-to-date REST documentation for this specific collection, built directly from its schema. There's nothing to configure here; it's a reference view.
+
+A box at the top gives what every call needs: the **base URL**, the `Authorization: Bearer <token>` header, and a line on the system fields. Realtime is not documented on the page itself; the box links to [Realtime (SSE)](#realtime-sse) below.
 
 ## Endpoints
 
-Expandable cards for each operation (`GET` list, `POST` create, `GET` by id, `PATCH` update, `DELETE`), each showing:
+One row per operation (`GET` list, `POST` create, `GET` by id, `PATCH` update, `DELETE`). Each row shows its method and path, a copy button, and a badge with the rule that guards it — **Public**, **Signed in**, **Own records** and so on, linking to the [Rules](/admin-ui/collection-rules) tab. That badge answers whether a call needs a token at all. Expanding a row shows:
 
 - The exact request shape — JSON body for scalar fields, plus a separate multipart example whenever the collection has `FILE` fields (since files can't be sent as JSON).
 - A realistic example response, generated from the collection's actual field names and types.
-- The error responses that operation can return (401/403/404/400/502), including validation errors shaped like `[{ "field": "...", "message": "..." }]` and hook-rejection errors (see [Hooks](/admin-ui/collection-hooks)).
-- A copy-to-clipboard button for the endpoint path.
+
+The error responses are listed once, in an **Errors** table at the end of the page, instead of under every endpoint: 401/403/404/400/502, including validation errors shaped like `[{ "field": "...", "message": "..." }]` and hook-rejection errors (see [Hooks](/admin-ui/collection-hooks)).
 
 If the collection has `FILE` fields, dedicated download/delete endpoints are listed too, one pair per file field.
 
@@ -109,7 +111,7 @@ configuration therefore only affects **new** uploads; existing files keep fallin
 
 ## Authentication
 
-A separate card documents `/api/auth/register`, `/api/auth/login`, `/api/auth/refresh` and `/api/auth/logout` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).
+On the [`users` collection](/admin-ui/tenant-users) only, an **Authentication** card documents `/api/auth/register`, `/api/auth/login`, `/api/auth/refresh` and `/api/auth/logout` — the tenant-user auth flow that produces the `Authorization: Bearer <accessToken>` this collection's endpoints expect (unless its [Rules](/admin-ui/collection-rules) allow public access). The login/refresh response also carries `tokenType` (always `"Bearer"`) and `expiresIn` (seconds until the access token expires).
 
 The same card documents `GET /api/auth/me`, which returns the calling tenant user's own record from just the bearer token — no id or call to `/api/collections/users` needed. It bypasses collection rules and never returns `passwordHash`, `passwordSalt`, or `role`.
 
@@ -122,10 +124,10 @@ The same card also lists the optional recovery endpoints: `/api/auth/password/fo
 
 ## Realtime (SSE)
 
-A third card documents the Server-Sent Events flow: connect to `GET /api/realtime` to receive a `clientId` from the `connect` event, then `POST /api/realtime/subscribe` with that `clientId` and the collections/records to watch. Once subscribed, record changes arrive as events named after the collection, carrying an `action` (`create`, `update`, or `delete`) and the record. A subscriber only receives events for records their `viewRule` would let them see — the same [rules](/admin-ui/collection-rules) that gate the regular REST API also gate realtime delivery.
+The API tab links here rather than documenting the Server-Sent Events flow itself: connect to `GET /api/realtime` to receive a `clientId` from the `connect` event, then `POST /api/realtime/subscribe` with that `clientId` and the collections/records to watch. Once subscribed, record changes arrive as events named after the collection, carrying an `action` (`create`, `update`, or `delete`) and the record. A subscriber only receives events for records their `viewRule` would let them see — the same [rules](/admin-ui/collection-rules) that gate the regular REST API also gate realtime delivery.
 
 Subscribing fixes the identity of a stream. The `viewRule` is evaluated again for every single event, but always for the user that subscribed: the access token is checked once, at `subscribe`, and not again for the life of the connection. A stream therefore lives only as long as the token it was subscribed with: once that token expires, Paprika closes the stream within 30 seconds. To keep a stream, call `POST /api/realtime/subscribe` again with the same `clientId` and the refreshed token whenever you refresh it; that renews the stream to the new token's expiry. A stream subscribed with an API key lives until the key's `expiresAt`, or for as long as the connection stays open if the key has none, and is closed as soon as the key is revoked or deleted or its allowed source ranges change; subscribe again to have the new ranges checked. Paprika also closes a user's open streams by itself when the user is deleted, whether through the admin UI or `DELETE /api/collections/users/{id}`, when a superadmin is removed, and whenever their tokens are revoked: on a password reset, a password or email change, and on logout (see [Sessions and token lifetime](/concepts/tenants#sessions-and-token-lifetime)).
 
 ## The users collection is a special case
 
-For the tenant [`users` collection](/admin-ui/tenant-users), the reference drops the realtime card. You can't subscribe to `users` and Paprika never broadcasts account changes, so there's nothing live to document. Its REST endpoints also never return `passwordHash` or `passwordSalt`, and passwords are only ever written through the virtual `password` field, so they never show up in an example response either.
+For the tenant [`users` collection](/admin-ui/tenant-users), the reference shows the **Authentication** card and no realtime link. You can't subscribe to `users` and Paprika never broadcasts account changes, so there's nothing live to document. Its REST endpoints also never return `passwordHash` or `passwordSalt`, and passwords are only ever written through the virtual `password` field, so they never show up in an example response either.

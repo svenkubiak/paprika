@@ -345,18 +345,29 @@ export function buildCollectionApiDocs(collection: string, fields: FieldDefiniti
       id: 'list',
       method: 'GET',
       path: base,
-      summary: 'List records with pagination and optional rule-based filtering.',
+      summary: 'List the records the list rule allows, with paging, search, filter and sort.',
       examples: [
         {
           title: 'Request',
-          description: 'Query parameters',
+          description: 'Paging: limit is 25 by default and at most 100.',
           code: `GET ${base}?offset=0&limit=25`
         },
         {
           title: 'Request',
           description:
-            'Optional single-field equality filter: filter=<field>:eq:<value>. The value is URL-encoded and may contain colons; only the first two colons separate field, operator and value. The filter only narrows the rule-scoped result, never widens it. Unknown fields and non-filterable types (JSON, FILE) return 400. Filtering without an index triggers a collection scan, but the rule filter already bounds the set.',
-          code: `GET ${base}?filter=<field>:eq:<value>&offset=0&limit=25`
+            'Search: part of the id or any text field, ignoring case, across all pages.',
+          code: `GET ${base}?search=<text>`
+        },
+        {
+          title: 'Request',
+          description:
+            'Filter on one field: eq compares exactly, contains matches part of a text field. The value is URL-encoded.',
+          code: `GET ${base}?filter=<field>:eq:<value>\nGET ${base}?filter=<field>:contains:<value>`
+        },
+        {
+          title: 'Request',
+          description: 'Sort by one field; without sort the order is the order of creation.',
+          code: `GET ${base}?sort=<field>:asc|desc`
         },
         {
           title: 'Response',
@@ -687,83 +698,6 @@ Authorization: Bearer <accessToken>`
         'Token invalid, expired, already used, or feature disabled',
         '{\n  "error": "Verification token is invalid or expired"\n}'
       )
-    ]
-  }
-]
-
-export const realtimeEndpointDocs: ApiEndpointDoc[] = [
-  {
-    id: 'realtime-connect',
-    method: 'GET',
-    path: '/api/realtime',
-    summary:
-      'Open a Server-Sent Events stream. The first event is named connect and carries the clientId needed for subscribe. Listen with addEventListener("connect"), not onmessage.',
-    examples: [
-      {
-        title: 'Request',
-        description: 'No Authorization header on the EventSource request',
-        code: 'GET /api/realtime'
-      },
-      successBlock(
-        'Event',
-        'event: connect',
-        `{
-  "clientId": "7c2f0e1a-9b4d-4c8e-a1f2-3d5e6f7a8b9c"
-}`
-      )
-    ]
-  },
-  {
-    id: 'realtime-subscribe',
-    method: 'POST',
-    path: '/api/realtime/subscribe',
-    summary:
-      'Authenticate the SSE client and register collection or record subscriptions. Until this succeeds, record events are not delivered. Events are also skipped when viewRule denies the subscriber. The token is checked here and not again: the stream keeps the identity it was subscribed with and is closed once that token expires, so subscribe again with the same clientId after refreshing the token to renew it. A password reset, a credential change, a logout or deleting the user closes the user\'s open streams.',
-    examples: [
-      {
-        title: 'Request',
-        description: 'Bearer JWT from POST /api/auth/login',
-        code: `POST /api/realtime/subscribe
-Authorization: Bearer <accessToken>
-
-{
-  "clientId": "7c2f0e1a-9b4d-4c8e-a1f2-3d5e6f7a8b9c",
-  "subscriptions": ["trips", "trips/${EXAMPLE_ID}"]
-}`
-      },
-      successBlock('Response', '204 No Content', '(no response body)'),
-      {
-        title: 'SSE event',
-        description: 'event: subscribed — confirms auth and subscriptions on the open stream',
-        code: `{
-  "clientId": "7c2f0e1a-9b4d-4c8e-a1f2-3d5e6f7a8b9c",
-  "subscriptions": ["trips"]
-}`
-      },
-      commonErrors.unauthorized,
-      errorBlock(
-        '404 Not Found',
-        'Unknown clientId — connect to GET /api/realtime first and use the clientId from the connect event',
-        '{\n  "error": "Unknown clientId"\n}'
-      )
-    ]
-  },
-  {
-    id: 'realtime-event',
-    method: 'GET',
-    path: '/api/realtime',
-    summary:
-      'After subscribe, collection changes arrive as named SSE events. The event name is the collection (e.g. trips). Data is JSON with action and the record.',
-    examples: [
-      {
-        title: 'Create',
-        description: 'event: trips — same shape for update and delete (action: update | delete)',
-        code: `{
-  "action": "create",
-  "collection": "trips",
-  "record": ${recordJson([])}
-}`
-      }
     ]
   }
 ]
