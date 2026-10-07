@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import { useColorMode } from '@vueuse/core'
 import { useBootstrap } from '@/composables/useBootstrap'
@@ -47,6 +47,17 @@ const collectionTabs = computed(() => {
     { label: 'Hooks', icon: 'i-lucide-webhook', to: `/admin/collections/${name}/hooks` },
     { label: 'API', icon: 'i-lucide-code', to: `/admin/collections/${name}/api` }
   ]
+})
+
+// Several admin tabs open at once stay tell-apart: "articles · Data · Paprika".
+const initialDocumentTitle = document.title
+watchEffect(() => {
+  const tab = collectionTabs.value.find((item) => item.to === route.path)?.label
+  // A Set, because the fallback page title is "Paprika" itself
+  document.title = [...new Set([pageTitle.value, tab, 'Paprika'].filter(Boolean))].join(' · ')
+})
+onUnmounted(() => {
+  document.title = initialDocumentTitle
 })
 
 function toggleColorMode() {

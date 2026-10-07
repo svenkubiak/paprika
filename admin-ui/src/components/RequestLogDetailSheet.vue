@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { RequestLogEntry } from '@/types'
 import { slideoverUi } from '@/lib/overlay-ui'
+import { formatLocalTimestamp } from '@/lib/utils'
 
 const props = defineProps<{
   open: boolean
@@ -21,16 +22,7 @@ const description = computed(() => {
 })
 
 function formatTimestamp(value?: string | null) {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleString(undefined, {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    fractionalSecondDigits: 3
-  })
+  return value ? formatLocalTimestamp(value) : '—'
 }
 
 function statusColor(code: number) {

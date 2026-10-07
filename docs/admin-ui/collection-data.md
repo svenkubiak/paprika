@@ -4,15 +4,16 @@
 
 ## Browsing records
 
-Records are shown in a table with one column per schema field plus `id`, `createdAt`, and `updatedAt`. Use the search box to filter across all visible fields, and the sort dropdown/direction toggle to order by any field. Pagination controls (10/25/50/100 per page) sit below the table.
+Records are shown in a table with one column per schema field plus `id`, `createdAt`, and `updatedAt`. Pagination controls (10/25/50/100 per page) sit below the table; the page size you pick is remembered in the browser and also applies to the [users](/admin-ui/tenant-users) table.
 
-::: warning Search and sort only apply to the currently loaded page
-Paprika's list API only supports `offset`/`limit` — it has no server-side search or sort. So on this page, search and sort run entirely in the browser, against whatever page of records is currently loaded (25 by default), **not the whole collection**. Searching for a value that exists on page 3 while viewing page 1 won't find it; you'd need to increase the page size or page through manually. This is different from [Request Logs](/admin-ui/request-logs), where search and filtering genuinely happen server-side.
-:::
+- **Search** runs on the server across the **whole collection**, not just the page on screen: a record matches when its `id` or any text field (`STRING`, `EMAIL`, `URL`, `SELECT`, `RELATION`) contains what you type, ignoring case. It applies after a short pause in typing, starts again on the first page, and the record count shows the matches. It uses the list API's [`search` parameter](/admin-ui/collection-api#listing-paging-filtering-and-sorting), so it never shows more than the collection's rules allow.
+- **Sort** by any field with the sort dropdown and the direction toggle; it also runs on the server.
+- **Timestamps** — `createdAt`, `updatedAt` and `DATETIME` fields — show the UTC date above the UTC time, so a column reads the same for everyone. Hover one for your local time.
+- The **copy** button next to each `id` puts it on the clipboard, for API calls or relation fields.
 
 ## Creating and editing records
 
-**New record** opens an empty record editor built from the collection's schema — one input per field, using the appropriate control for its type (text, number, toggle, date/time picker, select, relation picker, file upload). Clicking a row (or its id), or the **Edit** button in the row's Actions column, opens the same editor pre-filled for editing.
+**New record** opens an empty record editor built from the collection's schema — one input per field, using the appropriate control for its type (text, number, toggle, date/time picker, select, relation picker, file upload). The **Edit** button in the row's Actions column opens the same editor pre-filled for editing.
 
 - Fields with a configured **default value** are pre-filled on the new-record form.
 - **FILE** fields upload via `multipart/form-data` behind the scenes automatically when the form is submitted — no separate action needed.
@@ -28,6 +29,8 @@ Paprika's list API only supports `offset`/`limit` — it has no server-side sear
 ## Deleting records
 
 Delete a single record with the **Delete** button in its row's Actions column or from inside its editor, or select multiple rows with the checkboxes and use **Delete selected** for a bulk delete. Each asks for confirmation first, and all of them are permanent — there's no trash/undo.
+
+A bulk delete sends one request per record. If some of them fail — a [hook](/admin-ui/collection-hooks) blocks one, say — the others still go through: the message says how many were deleted (for example "2 of 3 records deleted") with the first reason, and the records that failed stay selected so you can retry them.
 
 ## Note on rules while editing here
 

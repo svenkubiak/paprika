@@ -119,6 +119,35 @@ export function formatCellValue(value: unknown, type?: string): string {
 }
 
 /**
+ * The outcome of a bulk action that sent one request per id: which ids failed, how many went
+ * through, and the first failure's message for the toast.
+ */
+export function bulkOutcome<T>(ids: T[], results: PromiseSettledResult<unknown>[]) {
+  const failedIds = ids.filter((_, index) => results[index]?.status === 'rejected')
+  const firstFailure = results.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected'
+  )
+  return {
+    failedIds,
+    succeeded: ids.length - failedIds.length,
+    message: firstFailure?.reason instanceof Error ? firstFailure.reason.message : undefined
+  }
+}
+
+/** A timestamp in the viewer's zone and locale, to the millisecond; an unparsable value as it is. */
+export function formatLocalTimestamp(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString(undefined, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    fractionalSecondDigits: 3
+  })
+}
+
+/**
  * Caps a cell text so a large value does not end up in the DOM in full; the cell clips it
  * visually anyway, the cap only bounds what is rendered and shown on hover.
  */

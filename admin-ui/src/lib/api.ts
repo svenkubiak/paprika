@@ -274,8 +274,10 @@ export const api = {
     })
   },
 
-  listTenantUsers(tenantId: string): Promise<TenantUser[]> {
-    return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/users`)
+  /** `search` matches like the record list search: part of the id or any text field, ignoring case. */
+  listTenantUsers(tenantId: string, search = ''): Promise<TenantUser[]> {
+    const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''
+    return request(`/api/meta/tenants/${encodeURIComponent(tenantId)}/users${query}`)
   },
 
   /** Everything but username, email and password is validated against the tenant's users schema. */
@@ -500,14 +502,17 @@ export const api = {
     })
   },
 
+  /** `search` matches part of the id or any text field, ignoring case, across all pages. */
   listRecords(
     collection: string,
     offset: number,
     limit: number,
-    sort: string
+    sort: string,
+    search = ''
   ): Promise<PaginatedRecords> {
+    const searchParam = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''
     return request(
-      `/api/collections/${encodeURIComponent(collection)}?offset=${offset}&limit=${limit}&sort=${encodeURIComponent(sort)}`
+      `/api/collections/${encodeURIComponent(collection)}?offset=${offset}&limit=${limit}&sort=${encodeURIComponent(sort)}${searchParam}`
     )
   },
 

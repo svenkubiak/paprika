@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRouteCollection } from '@/composables/useRouteCollection'
 import { api } from '@/lib/api'
 import {
   authEndpointDocs,
@@ -14,10 +14,9 @@ import { useAppToast } from '@/composables/useAppToast'
 import ApiEndpointExamples from '@/components/ApiEndpointExamples.vue'
 import type { CollectionDefinition } from '@/types'
 
-const route = useRoute()
 const toast = useAppToast()
 
-const collection = computed(() => String(route.params.collection))
+const collection = useRouteCollection()
 const isUsers = computed(() => collection.value === 'users')
 const definition = ref<CollectionDefinition | null>(null)
 const loading = ref(true)

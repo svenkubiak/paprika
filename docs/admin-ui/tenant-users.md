@@ -17,7 +17,7 @@ Now `users` is a normal collection with a few guardrails baked in. You can add c
 The Data tab keeps its user-focused layout instead of the generic record grid.
 
 - **Self-registration** is configured under [Auth settings](/admin-ui/auth-settings), not on this tab.
-- **User table.** Each row shows id, username, email, and role. **New user** opens an editor for username, password, and email. A password is required when creating and optional when editing, so leaving it blank keeps the current one. Passwords must be at least **16 characters** (the same floor as the superadmin password) and are hashed with Argon2 before storage. Password hashes are never shown and never returned by the API. A password shorter than the minimum is only rejected once you submit, with the error coming straight from the API.
+- **User table.** Each row shows id, username, email, and role. The search box matches the same way as on any other Data tab — part of the id, username, email or a text field, ignoring case — and runs on the server. **New user** opens an editor for username, password, and email. A password is required when creating and optional when editing, so leaving it blank keeps the current one. Passwords must be at least **16 characters** (the same floor as the superadmin password) and are hashed with Argon2 before storage. Password hashes are never shown and never returned by the API. A password shorter than the minimum is only rejected once you submit, with the error coming straight from the API.
 
 Deleting a user is immediate and permanent, there's no soft-delete.
 

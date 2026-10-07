@@ -258,7 +258,17 @@ await loadHooks()
           </RowActions>
         </template>
         <template #empty>
-          <div class="py-10 text-center text-muted">No global hooks configured yet.</div>
+          <div class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">No global hooks configured yet.</p>
+            <UButton
+              variant="soft"
+              icon="i-lucide-plus"
+              :disabled="!bootstrap?.hasActiveTenant"
+              @click="openAdd"
+            >
+              Add global hook
+            </UButton>
+          </div>
         </template>
       </UTable>
     </UCard>

@@ -4,7 +4,7 @@
 
 ## The tenants table
 
-Lists every tenant with its name, slug, database name, and status. Clicking a row (or its **Edit** button) opens the tenant editor; each row also has **Select** (switch the admin session into that tenant) and **Delete**.
+Lists every tenant with its name, slug, database name, and status. Each row's **Edit** button opens the tenant editor; each row also has **Select** (switch the admin session into that tenant) and **Delete**.
 
 ## Creating a tenant
 
@@ -32,7 +32,7 @@ Clicking **Select** on a tenant makes it the active tenant for the current admin
 ## Deleting a tenant
 
 ::: danger Irreversible
-Deleting a tenant permanently removes its **entire database** in one operation — every collection, every record, every tenant user, every rule and hook definition — and also deletes its uploaded files on disk (see [Concepts → Tenants](/concepts/tenants#isolation-one-database-per-tenant)). There is no undo, and no confirmation beyond the one dialog shown.
+Deleting a tenant permanently removes its **entire database** in one operation — every collection, every record, every tenant user, every rule and hook definition — and also deletes its uploaded files on disk (see [Concepts → Tenants](/concepts/tenants#isolation-one-database-per-tenant)). There is no undo. To keep a misplaced click from doing this, the delete dialog only enables its button once you have typed the tenant's **slug**.
 :::
 
 There's no protection against deleting the tenant currently configured as the [default tenant](/concepts/tenants#the-default-tenant) — including the auto-created **Default** tenant — or against deleting the last remaining tenant. If the tenant you're deleting is the configured default, the delete dialog shows an extra warning, and Paprika automatically clears the default tenant setting so it doesn't keep pointing at a deleted tenant; pick a new default under [Settings](/admin-ui/settings#tenants) afterward if you still want one.

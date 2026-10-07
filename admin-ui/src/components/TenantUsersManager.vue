@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import UserEditorSheet, {
   type UserEditorForm,
   type UserEditorMode
@@ -8,7 +8,8 @@ import { api } from '@/lib/api'
 import { modalUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
 import { useBootstrap } from '@/composables/useBootstrap'
-import { formatCellValue, truncateCellText } from '@/lib/utils'
+import { usePageSize } from '@/composables/usePageSize'
+import { bulkOutcome, formatCellValue, truncateCellText } from '@/lib/utils'
 import { validateRecordValues } from '@/lib/field-validation'
 import { buildRecordFormState, serializeRecordForm } from '@/lib/record-form'
 import type { FieldDefinition, TenantUser } from '@/types'
@@ -35,7 +36,6 @@ const search = ref('')
 const sortField = ref<string>('updatedAt')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 const page = ref(1)
-const pageSize = ref(25)
 const selectedIds = ref<Set<string>>(new Set())
 
 function emptyCustomState() {
@@ -69,6 +69,7 @@ const pageSizeOptions = [
   { label: '50', value: 50 },
   { label: '100', value: 100 }
 ]
+const pageSize = usePageSize('records', 25, pageSizeOptions)
 
 const sortOptions = computed(() => [
   { label: 'Updated', value: 'updatedAt' },
@@ -83,13 +84,10 @@ function cellText(user: TenantUser, field: FieldDefinition): string {
   return truncateCellText(formatCellValue(user[field.name], field.type))
 }
 
-// The users endpoint returns the full list, so search, sort and paging happen client-side.
+// The users endpoint returns every match, so the search runs on the server like in the record
+// view, while sort and paging happen client-side.
 const filteredUsers = computed(() => {
-  const query = search.value.trim().toLowerCase()
-  // Searching the serialized record covers custom fields without knowing their types.
-  const items = query
-    ? users.value.filter((user) => JSON.stringify(user).toLowerCase().includes(query))
-    : [...users.value]
+  const items = [...users.value]
 
   items.sort((a, b) => {
     const left = a[sortField.value]
@@ -126,9 +124,21 @@ watch([pageCount, pageSize], () => {
   }
 })
 
-watch(search, () => {
-  page.value = 1
+/** The search the users on screen were loaded with; typing applies it after a short pause. */
+const appliedSearch = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(search, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(async () => {
+    if (value.trim() === appliedSearch.value) return
+    appliedSearch.value = value.trim()
+    page.value = 1
+    await loadUsers()
+  }, 300)
 })
+
+onUnmounted(() => clearTimeout(searchTimer))
 
 watch(hasActiveTenant, async (value) => {
   if (value) {
@@ -158,10 +168,22 @@ async function refresh() {
     return
   }
 
+  await loadCustomFields()
+  await loadUsers()
+}
+
+/** Identifies the newest users request so an overtaken search cannot write its result. */
+let latestUsersRequest = 0
+
+async function loadUsers() {
+  const tenant = activeTenant.value
+  if (!tenant) return
+  const request = ++latestUsersRequest
   loading.value = true
   try {
-    await loadCustomFields()
-    users.value = await api.listTenantUsers(tenant.id)
+    const result = await api.listTenantUsers(tenant.id, appliedSearch.value)
+    if (request !== latestUsersRequest) return
+    users.value = result
     selectedIds.value = new Set()
   } catch (error) {
     toast.add({
@@ -170,7 +192,9 @@ async function refresh() {
       icon: 'i-lucide-circle-x'
     })
   } finally {
-    loading.value = false
+    if (request === latestUsersRequest) {
+      loading.value = false
+    }
   }
 }
 
@@ -338,23 +362,30 @@ async function bulkDelete() {
   const tenant = activeTenant.value
   if (!tenant) return
 
+  // Each user is its own request; one failing must not hide the ones that went through.
   const ids = Array.from(selectedIds.value)
   deleting.value = true
   try {
-    await Promise.all(ids.map((id) => api.deleteTenantUser(tenant.id, id)))
+    const results = await Promise.allSettled(ids.map((id) => api.deleteTenantUser(tenant.id, id)))
+    const { failedIds, succeeded, message } = bulkOutcome(ids, results)
     bulkDeleteOpen.value = false
-    toast.add({
-      title: ids.length === 1 ? 'User deleted' : `${ids.length} users deleted`,
-      color: 'success',
-      icon: 'i-lucide-circle-check'
-    })
-    await refresh()
-  } catch (error) {
-    toast.add({
-      title: error instanceof Error ? error.message : 'Failed to delete users',
-      color: 'error',
-      icon: 'i-lucide-circle-x'
-    })
+    if (failedIds.length === 0) {
+      toast.add({
+        title: ids.length === 1 ? 'User deleted' : `${ids.length} users deleted`,
+        color: 'success',
+        icon: 'i-lucide-circle-check'
+      })
+    } else {
+      toast.add({
+        title: `${succeeded} of ${ids.length} users deleted`,
+        description: message,
+        color: 'error',
+        icon: 'i-lucide-circle-x'
+      })
+    }
+    await loadUsers()
+    // The ones that failed stay selected, ready for another attempt.
+    selectedIds.value = new Set(failedIds.filter((id) => users.value.some((user) => user.id === id)))
   } finally {
     deleting.value = false
   }
@@ -444,7 +475,10 @@ if (hasActiveTenant.value) {
           />
         </template>
         <template #userId-cell="{ row }">
-          <code class="text-sm">{{ row.original.id }}</code>
+          <div class="flex items-center gap-1">
+            <code class="text-sm">{{ row.original.id }}</code>
+            <CopyButton :value="row.original.id" label="Copy ID" size="xs" />
+          </div>
         </template>
         <template #email-cell="{ row }">
           {{ row.original.email || '—' }}
@@ -454,26 +488,36 @@ if (hasActiveTenant.value) {
           :key="field.name"
           #[`${field.name}-cell`]="{ row }"
         >
-          <span class="block max-w-64 truncate text-sm" :title="cellText(row.original, field)">
+          <FormattedDate
+            v-if="field.type === 'DATETIME'"
+            :value="row.original[field.name] as string | null"
+          />
+          <span v-else class="block max-w-64 truncate text-sm" :title="cellText(row.original, field)">
             {{ cellText(row.original, field) }}
           </span>
         </template>
         <template #createdAt-cell="{ row }">
-          <span class="font-mono text-sm text-muted">{{ row.original.createdAt || '—' }}</span>
+          <FormattedDate :value="row.original.createdAt" />
         </template>
         <template #updatedAt-cell="{ row }">
-          <span class="font-mono text-sm text-muted">{{ row.original.updatedAt || '—' }}</span>
+          <FormattedDate :value="row.original.updatedAt" />
         </template>
         <template #actions-cell="{ row }">
           <RowActions @edit="openEdit(row.original)" @delete="confirmDelete(row.original)" />
         </template>
         <template #empty>
-          <div class="py-10 text-center text-muted">
-            {{
-              search.trim()
-                ? 'No users match your search.'
-                : 'No users yet. Create one manually, or enable self-registration under User settings.'
-            }}
+          <p v-if="loading" class="py-10 text-center text-sm text-muted">Loading users…</p>
+          <div v-else-if="appliedSearch" class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">No users match “{{ appliedSearch }}”.</p>
+            <UButton variant="soft" color="neutral" icon="i-lucide-x" @click="search = ''">
+              Clear search
+            </UButton>
+          </div>
+          <div v-else class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">
+              No users yet. Create one manually, or enable self-registration under Auth.
+            </p>
+            <UButton variant="soft" icon="i-lucide-user-plus" @click="openCreate">New user</UButton>
           </div>
         </template>
       </UTable>

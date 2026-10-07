@@ -339,10 +339,10 @@ if (hasActiveTenant.value) {
           </span>
         </template>
         <template #lastUsedAt-cell="{ row }">
-          <span class="font-mono text-sm text-muted">{{ row.original.lastUsedAt || 'never' }}</span>
+          <FormattedDate :value="row.original.lastUsedAt" empty="never" />
         </template>
         <template #expiresAt-cell="{ row }">
-          <span class="font-mono text-sm text-muted">{{ row.original.expiresAt || '—' }}</span>
+          <FormattedDate :value="row.original.expiresAt" />
         </template>
         <template #status-cell="{ row }">
           <UBadge :color="statusOf(row.original).color" variant="soft">
@@ -374,8 +374,9 @@ if (hasActiveTenant.value) {
           </RowActions>
         </template>
         <template #empty>
-          <div class="py-8 text-center text-sm text-muted">
-            No API keys for this tenant yet.
+          <div class="flex flex-col items-center gap-3 py-8 text-center">
+            <p class="text-sm text-muted">No API keys for this tenant yet.</p>
+            <UButton variant="soft" icon="i-lucide-key-round" @click="openCreate">New API key</UButton>
           </div>
         </template>
       </UTable>

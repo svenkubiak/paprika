@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRouteCollection } from '@/composables/useRouteCollection'
 import { type SchemaRow } from '@/components/SchemaEditorSheet.vue'
 import { api } from '@/lib/api'
 import { useSchemaEditorSheet, emptyRow } from '@/composables/useSchemaEditorSheet'
@@ -22,12 +22,11 @@ import {
 } from '@/lib/system-collections'
 import type { CollectionDefinition, IndexDefinition } from '@/types'
 
-const route = useRoute()
 const toast = useAppToast()
 const { editorRow, editorMode, editorIndex, saving, openEditor: openSchemaEditor, closeEditor, setSaving } = useSchemaEditorSheet()
 
 const rows = ref<SchemaRow[]>([])
-const collection = computed(() => String(route.params.collection))
+const collection = useRouteCollection()
 const isSystem = computed(() => isSystemCollection(collection.value))
 const definition = ref<CollectionDefinition | null>(null)
 const loading = ref(true)
@@ -492,6 +491,12 @@ await loadDefinition()
             @edit="openEditField(row.index)"
             @delete="requestDeleteFieldFromRow(row.index)"
           />
+        </template>
+        <template #empty>
+          <div class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">No fields yet.</p>
+            <UButton variant="soft" icon="i-lucide-plus" @click="openAddField">Add field</UButton>
+          </div>
         </template>
       </UTable>
     </UCard>

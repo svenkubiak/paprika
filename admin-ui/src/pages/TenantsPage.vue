@@ -24,6 +24,7 @@ const editingTenant = ref<TenantDefinition | null>(null)
 const saving = ref(false)
 const deleteOpen = ref(false)
 const deletingTenant = ref<TenantDefinition | null>(null)
+const confirmPhrase = ref('')
 const deleting = ref(false)
 const defaultTenantId = ref<string | null>(null)
 
@@ -164,11 +165,12 @@ async function selectTenant(id: string) {
 
 function confirmDelete(tenant: TenantDefinition) {
   deletingTenant.value = tenant
+  confirmPhrase.value = ''
   deleteOpen.value = true
 }
 
 async function deleteTenantAction() {
-  if (!deletingTenant.value) return
+  if (!deletingTenant.value || confirmPhrase.value !== deletingTenant.value.slug) return
   deleting.value = true
   try {
     await api.deleteTenant(deletingTenant.value.id)
@@ -236,8 +238,9 @@ await loadDefaultTenantId()
           </RowActions>
         </template>
         <template #empty>
-          <div class="py-10 text-center text-muted">
-            No tenants yet. Create your first tenant to get started.
+          <div class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">No tenants yet. Create your first tenant to get started.</p>
+            <UButton variant="soft" icon="i-lucide-plus" @click="openCreate">New tenant</UButton>
           </div>
         </template>
       </UTable>
@@ -268,6 +271,13 @@ await loadDefaultTenantId()
             collections, and data will be permanently removed.
           </p>
 
+          <ConfirmPhraseInput
+            v-if="deletingTenant"
+            v-model="confirmPhrase"
+            :expected="deletingTenant.slug"
+            @confirm="deleteTenantAction"
+          />
+
           <UAlert
             v-if="isDeletingDefaultTenant"
             class="mt-3"
@@ -284,6 +294,7 @@ await loadDefaultTenantId()
               <UButton
                 color="error"
                 :loading="deleting"
+                :disabled="confirmPhrase !== deletingTenant?.slug"
                 icon="i-lucide-trash-2"
                 @click="deleteTenantAction"
               >

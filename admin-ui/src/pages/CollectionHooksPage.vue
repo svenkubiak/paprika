@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRouteCollection } from '@/composables/useRouteCollection'
 import { api } from '@/lib/api'
 import { useHookEditorSheet, emptyHookForm } from '@/composables/useHookEditorSheet'
 import { useAppToast } from '@/composables/useAppToast'
@@ -9,11 +9,10 @@ import { hookEventLabel } from '@/lib/hook-events'
 import { parseForwardHeaders } from '@/lib/utils'
 import type { HookDefinition, HookTestResult } from '@/types'
 
-const route = useRoute()
 const toast = useAppToast()
 const { editorForm, editorId, saving, openEditor: openHookEditor, closeEditor, setSaving } = useHookEditorSheet()
 
-const collection = computed(() => String(route.params.collection))
+const collection = useRouteCollection()
 const hooks = ref<HookDefinition[]>([])
 const loading = ref(true)
 const hookDeleteOpen = ref(false)
@@ -266,6 +265,12 @@ await loadHooks()
               Test
             </UButton>
           </RowActions>
+        </template>
+        <template #empty>
+          <div class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">No hooks for this collection yet.</p>
+            <UButton variant="soft" icon="i-lucide-plus" @click="openAddHook">Add hook</UButton>
+          </div>
         </template>
       </UTable>
     </UCard>

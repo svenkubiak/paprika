@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRouteCollection } from '@/composables/useRouteCollection'
 import { api } from '@/lib/api'
-import { formatCellValue, truncateCellText } from '@/lib/utils'
+import { bulkOutcome, formatCellValue, truncateCellText } from '@/lib/utils'
 import { modalUi } from '@/lib/overlay-ui'
 import { useAppToast } from '@/composables/useAppToast'
+import { usePageSize } from '@/composables/usePageSize'
 import { applyDefaultsToRecord, booleanToFormValue, BOOLEAN_UNSET } from '@/lib/field-validation'
 import TenantUsersManager from '@/components/TenantUsersManager.vue'
 import type { RecordSavePayload } from '@/components/RecordEditorSheet.vue'
 import type { CollectionDefinition, FieldDefinition } from '@/types'
 
-const route = useRoute()
 const toast = useAppToast()
 
-const collection = computed(() => String(route.params.collection))
+const collection = useRouteCollection()
 const isUsers = computed(() => collection.value === 'users')
 const definition = ref<CollectionDefinition | null>(null)
 const records = ref<Record<string, unknown>[]>([])
@@ -23,7 +23,6 @@ const search = ref('')
 const sortField = ref('createdAt')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 const page = ref(1)
-const pageSize = ref(25)
 const selectedIds = ref<Set<string>>(new Set())
 const editorOpen = ref(false)
 const editorMode = ref<'new' | 'edit'>('new')
@@ -37,12 +36,17 @@ const deletingRecord = ref<Record<string, unknown> | null>(null)
 /** Identifies the newest record request so an overtaken one cannot write its result. */
 let latestRecordsRequest = 0
 
+/** The search the records on screen were loaded with; typing applies it after a short pause. */
+const appliedSearch = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
 const pageSizeOptions = [
   { label: '10', value: 10 },
   { label: '25', value: 25 },
   { label: '50', value: 50 },
   { label: '100', value: 100 }
 ]
+const pageSize = usePageSize('records', 25, pageSizeOptions)
 
 const sortOptions = computed(() => {
   // The server rejects sorting on JSON and FILE fields, they have no meaningful order
@@ -73,13 +77,6 @@ function cellText(record: Record<string, unknown>, field: FieldDefinition): stri
   return truncateCellText(formatCellValue(record[field.name], field.type))
 }
 
-// Sorting happens on the server; sorting here would only reorder the current page.
-const filteredRecords = computed(() => {
-  const query = search.value.trim().toLowerCase()
-  if (!query) return records.value
-  return records.value.filter((record) => JSON.stringify(record).toLowerCase().includes(query))
-})
-
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const summary = computed(() => {
@@ -100,12 +97,28 @@ watch(collection, async () => {
   total.value = 0
   // A sort field that does not exist in the new collection would silently sort on nothing.
   search.value = ''
+  appliedSearch.value = ''
+  clearTimeout(searchTimer)
   sortField.value = 'createdAt'
   sortDirection.value = 'desc'
   page.value = 1
 
   await loadDefinition()
   await refreshRecords()
+})
+
+// Search runs on the server across all pages; a new search starts again on the first page.
+watch(search, (value) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    if (value.trim() === appliedSearch.value) return
+    appliedSearch.value = value.trim()
+    if (page.value !== 1) {
+      page.value = 1
+      return
+    }
+    refreshRecords()
+  }, 300)
 })
 
 watch([page, pageSize], () => {
@@ -128,6 +141,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearTimeout(searchTimer)
   window.removeEventListener('paprika:new-collection', onNewCollectionShortcut as EventListener)
 })
 
@@ -157,7 +171,8 @@ async function refreshRecords() {
       collection.value,
       offset,
       pageSize.value,
-      `${sortField.value}:${sortDirection.value}`
+      `${sortField.value}:${sortDirection.value}`,
+      appliedSearch.value
     )
     // Collection switches and quick paging can overlap requests; only the newest may write.
     if (request !== latestRecordsRequest) return
@@ -178,7 +193,7 @@ async function refreshRecords() {
 
 function toggleAll(checked: boolean) {
   const next = new Set(selectedIds.value)
-  for (const record of filteredRecords.value) {
+  for (const record of records.value) {
     const id = String(record.id || '')
     if (!id) continue
     if (checked) next.add(id)
@@ -320,28 +335,31 @@ function confirmDeleteRecord(record: Record<string, unknown>) {
   recordDeleteOpen.value = true
 }
 
+// Each record is its own request; one failing must not hide the ones that went through.
 async function bulkDelete() {
+  const ids = Array.from(selectedIds.value)
   saving.value = true
   try {
-    await Promise.all(
-      Array.from(selectedIds.value).map((id) => api.deleteRecord(collection.value, id))
-    )
+    const results = await Promise.allSettled(ids.map((id) => api.deleteRecord(collection.value, id)))
+    const { failedIds, succeeded, message } = bulkOutcome(ids, results)
     bulkDeleteOpen.value = false
-    toast.add({
-      title:
-        selectedIds.value.size === 1
-          ? 'Record deleted'
-          : `${selectedIds.value.size} records deleted`,
-      color: 'success',
-      icon: 'i-lucide-circle-check'
-    })
+    if (failedIds.length === 0) {
+      toast.add({
+        title: ids.length === 1 ? 'Record deleted' : `${ids.length} records deleted`,
+        color: 'success',
+        icon: 'i-lucide-circle-check'
+      })
+    } else {
+      toast.add({
+        title: `${succeeded} of ${ids.length} records deleted`,
+        description: message,
+        color: 'error',
+        icon: 'i-lucide-circle-x'
+      })
+    }
     await refreshRecords()
-  } catch (error) {
-    toast.add({
-      title: error instanceof Error ? error.message : 'Failed to delete records',
-      color: 'error',
-      icon: 'i-lucide-circle-x'
-    })
+    // The ones that failed stay selected, ready for another attempt.
+    selectedIds.value = new Set(failedIds.filter((id) => records.value.some((r) => String(r.id) === id)))
   } finally {
     saving.value = false
   }
@@ -402,7 +420,7 @@ if (!isUsers.value) {
       </div>
 
       <UTable
-        :data="filteredRecords"
+        :data="records"
         :columns="columns"
         :loading="loading"
         :column-pinning="{ left: ['select'], right: ['actions'] }"
@@ -410,8 +428,8 @@ if (!isUsers.value) {
         <template #select-header>
           <UCheckbox
             :model-value="
-              filteredRecords.length > 0 &&
-              filteredRecords.every((record) => selectedIds.has(String(record.id)))
+              records.length > 0 &&
+              records.every((record) => selectedIds.has(String(record.id)))
             "
             @update:model-value="toggleAll(!!$event)"
           />
@@ -424,14 +442,22 @@ if (!isUsers.value) {
           />
         </template>
         <template #id-cell="{ row }">
-          <code class="text-sm">{{ row.original.id }}</code>
+          <div class="flex items-center gap-1">
+            <code class="text-sm">{{ row.original.id }}</code>
+            <CopyButton :value="String(row.original.id)" label="Copy ID" size="xs" />
+          </div>
         </template>
         <template
           v-for="field in definition?.fields || []"
           :key="field.name"
           #[`${field.name}-cell`]="{ row }"
         >
+          <FormattedDate
+            v-if="field.type === 'DATETIME'"
+            :value="row.original[field.name] as string | null"
+          />
           <span
+            v-else
             class="block max-w-64 truncate text-sm"
             :title="cellText(row.original, field)"
           >
@@ -439,10 +465,10 @@ if (!isUsers.value) {
           </span>
         </template>
         <template #createdAt-cell="{ row }">
-          <span class="font-mono text-sm text-muted">{{ row.original.createdAt }}</span>
+          <FormattedDate :value="row.original.createdAt as string | null" />
         </template>
         <template #updatedAt-cell="{ row }">
-          <span class="font-mono text-sm text-muted">{{ row.original.updatedAt }}</span>
+          <FormattedDate :value="row.original.updatedAt as string | null" />
         </template>
         <template #actions-cell="{ row }">
           <RowActions
@@ -451,7 +477,17 @@ if (!isUsers.value) {
           />
         </template>
         <template #empty>
-          <div class="py-10 text-center text-muted">No records found.</div>
+          <p v-if="loading" class="py-10 text-center text-sm text-muted">Loading records…</p>
+          <div v-else-if="appliedSearch" class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">No records match “{{ appliedSearch }}”.</p>
+            <UButton variant="soft" color="neutral" icon="i-lucide-x" @click="search = ''">
+              Clear search
+            </UButton>
+          </div>
+          <div v-else class="flex flex-col items-center gap-3 py-10 text-center">
+            <p class="text-sm text-muted">No records yet.</p>
+            <UButton variant="soft" icon="i-lucide-plus" @click="openNewRecord">New record</UButton>
+          </div>
         </template>
       </UTable>
 

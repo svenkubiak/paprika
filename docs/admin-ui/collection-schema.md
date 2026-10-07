@@ -79,4 +79,4 @@ The tenant [`users` collection](/admin-ui/tenant-users) is a real collection you
 
 ## Deleting the whole collection
 
-**Delete collection** removes the collection definition and drops its underlying MongoDB collection — all records in it are gone, not just their schema. This is separate from, and more destructive than, deleting individual records on the [Data tab](/admin-ui/collection-data). Built-in system collections (like the tenant's internal `users` collection) can't be deleted this way.
+**Delete collection** removes the collection definition and drops its underlying MongoDB collection — all records in it are gone, not just their schema. The dialog only enables its button once you have typed the collection's name. This is separate from, and more destructive than, deleting individual records on the [Data tab](/admin-ui/collection-data). Built-in system collections (like the tenant's internal `users` collection) can't be deleted this way.

@@ -2,7 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '@/lib/api'
 import { useAppToast } from '@/composables/useAppToast'
+import { formatLocalTimestamp } from '@/lib/utils'
 import { useBootstrap } from '@/composables/useBootstrap'
+import { usePageSize } from '@/composables/usePageSize'
 import RequestLogDetailSheet from '@/components/RequestLogDetailSheet.vue'
 import type { RequestLogEntry } from '@/types'
 
@@ -17,7 +19,6 @@ const statusFilter = ref<'all' | 'success' | 'error'>('all')
 const hookFilter = ref<'any' | 'continued' | 'blocked'>('any')
 const typeFilter = ref<'all' | 'request' | 'hook'>('all')
 const page = ref(1)
-const pageSize = ref(50)
 const detailOpen = ref(false)
 const selectedEntry = ref<RequestLogEntry | null>(null)
 const live = ref(false)
@@ -35,6 +36,7 @@ const pageSizeOptions = [
   { label: '50', value: 50 },
   { label: '100', value: 100 }
 ]
+const pageSize = usePageSize('logs', 50, pageSizeOptions)
 
 const columnGroups = [
   { key: 'request', label: 'Request', span: 5, title: 'The incoming API call' },
@@ -254,18 +256,6 @@ function setHookFilter(value: 'any' | 'continued' | 'blocked') {
 function setTypeFilter(value: 'all' | 'request' | 'hook') {
   typeFilter.value = value
   page.value = 1
-}
-
-function formatTimestamp(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleString(undefined, {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    fractionalSecondDigits: 3
-  })
 }
 
 function copyValue(value: string) {
@@ -552,7 +542,7 @@ if (hasActiveTenant.value) {
                     class="mr-1 text-readable-primary"
                     title="Async hook of an earlier request"
                   >↳</span>
-                  {{ formatTimestamp(entry.timestamp) }}
+                  {{ formatLocalTimestamp(entry.timestamp) }}
                 </td>
                 <td class="whitespace-nowrap px-3 py-2.5">
                   <UBadge :color="isHookEntry(entry) ? 'primary' : 'neutral'" variant="soft">

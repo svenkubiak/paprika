@@ -12,6 +12,7 @@ const { load } = useBootstrap()
 
 const open = ref(false)
 const collection = ref('')
+const confirmPhrase = ref('')
 const deleting = ref(false)
 
 function onOpen(event: Event) {
@@ -19,11 +20,12 @@ function onOpen(event: Event) {
   const name = detail?.collection?.trim()
   if (!name) return
   collection.value = name
+  confirmPhrase.value = ''
   open.value = true
 }
 
 async function deleteCollection() {
-  if (!collection.value) return
+  if (!collection.value || confirmPhrase.value !== collection.value) return
   deleting.value = true
   try {
     const definition = await api.getCollectionDefinition(collection.value)
@@ -75,10 +77,18 @@ onUnmounted(() => {
           Delete collection "{{ collection }}" and all its data? This cannot be undone.
         </p>
 
+        <ConfirmPhraseInput v-model="confirmPhrase" :expected="collection" @confirm="deleteCollection" />
+
         <template #footer>
           <div class="flex justify-end gap-2">
             <UButton variant="ghost" color="neutral" @click="open = false">Cancel</UButton>
-            <UButton color="error" :loading="deleting" icon="i-lucide-trash-2" @click="deleteCollection">
+            <UButton
+              color="error"
+              :loading="deleting"
+              :disabled="confirmPhrase !== collection"
+              icon="i-lucide-trash-2"
+              @click="deleteCollection"
+            >
               Delete collection
             </UButton>
           </div>
