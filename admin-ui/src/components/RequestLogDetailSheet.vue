@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { RequestLogEntry } from '@/types'
 import { slideoverUi } from '@/lib/overlay-ui'
-import { formatLocalTimestamp } from '@/lib/utils'
+import { formatLocalTimestamp, formatTimeZone, formatUtcTimestamp } from '@/lib/utils'
 
 const props = defineProps<{
   open: boolean
@@ -149,7 +149,12 @@ const statusMeaning = computed(() => {
           <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">Timestamp</dt>
-              <dd class="mt-0.5 font-mono text-sm">{{ formatTimestamp(entry.timestamp) }}</dd>
+              <dd
+                class="mt-0.5 font-mono text-sm"
+                :title="`${formatTimeZone(entry.timestamp)}, ${formatUtcTimestamp(entry.timestamp)}`"
+              >
+                {{ formatTimestamp(entry.timestamp) }}
+              </dd>
             </div>
             <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-muted">Total time</dt>

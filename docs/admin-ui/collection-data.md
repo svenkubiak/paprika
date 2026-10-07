@@ -8,7 +8,7 @@ Records are shown in a table with one column per schema field plus `id`, `create
 
 - **Search** runs on the server across the **whole collection**, not just the page on screen: a record matches when its `id` or any text field (`STRING`, `EMAIL`, `URL`, `SELECT`, `RELATION`) contains what you type, ignoring case. It applies after a short pause in typing, starts again on the first page, and the record count shows the matches. It uses the list API's [`search` parameter](/admin-ui/collection-api#listing-paging-filtering-and-sorting), so it never shows more than the collection's rules allow.
 - **Sort** by any field with the sort dropdown and the direction toggle; it also runs on the server.
-- **Timestamps** — `createdAt`, `updatedAt` and `DATETIME` fields — show the UTC date above the UTC time, so a column reads the same for everyone. Hover one for your local time.
+- **Timestamps** — `createdAt`, `updatedAt` and `DATETIME` fields — show the UTC date above the UTC time, so a column reads the same for everyone. Hover one for your local time with its zone, e.g. `GMT+2 · Europe/Berlin`; the offset is the one in force on that date, so summer and winter times are told apart. Local means the time zone of your browser, i.e. of your operating system.
 - The **copy** button next to each `id` puts it on the clipboard, for API calls or relation fields.
 
 ## Creating and editing records

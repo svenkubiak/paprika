@@ -4,7 +4,7 @@
 
 ## What's recorded
 
-Every route of your API is logged, not just the collection API: auth endpoints included. Each entry has a timestamp, HTTP method, path, status code, execution time, and error message (if any). Requests without a tenant scope (the login flow, for example) are kept with the [default tenant](/admin-ui/settings).
+Every route of your API is logged, not just the collection API: auth endpoints included. Each entry has a timestamp, HTTP method, path, status code, execution time, and error message (if any). Timestamps show in your browser's time zone; hover one for that zone (e.g. `GMT+2 · Europe/Berlin`) and the UTC time the API returns. Requests without a tenant scope (the login flow, for example) are kept with the [default tenant](/admin-ui/settings).
 
 **Admin UI traffic is not logged by default.** Clicking through the admin UI produces a constant stream of `/admin/…`, `/api/admin/…` and `/api/meta/…` calls that would bury the traffic of the API you actually want to look at, so Paprika drops them. Turn **Log admin UI requests** on under [Settings → Request logs](/admin-ui/settings#request-logs) when you want an audit trail of admin activity instead. Failed admin requests (status ≥ 400) are logged regardless of the setting, because a rejected superadmin login is a security event and not UI noise.
 
