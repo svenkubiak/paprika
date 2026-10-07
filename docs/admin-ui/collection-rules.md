@@ -2,9 +2,9 @@
 
 `/admin/collections/:collection/rules` — configure who can perform each API operation on this collection. This page is the control surface for the concept explained in [Roles & Permissions → The rule engine](/concepts/roles-and-permissions#the-rule-engine-how-tenant-user-data-access-actually-works); read that first if the terms below (public/auth/owner/locked) are unfamiliar.
 
-## Operation rules
+## Who can do what
 
-Five independent rules, each shown with the exact HTTP endpoint it governs:
+The page is one table: five independent rules, each shown with the exact HTTP endpoint it governs:
 
 | Rule | Endpoint |
 |---|---|
@@ -14,7 +14,7 @@ Five independent rules, each shown with the exact HTTP endpoint it governs:
 | Update | `PATCH /api/collections/{collection}/{id}` |
 | Delete | `DELETE /api/collections/{collection}/{id}` |
 
-Each has a dropdown with these levels:
+Each has a dropdown with these levels; every option carries a one-line description of whom it lets in:
 
 - **No access** — locked, nobody can call it.
 - **Public** — anyone, no authentication.
@@ -23,9 +23,15 @@ Each has a dropdown with these levels:
 - **Group members** — only users who are members of the group the record belongs to. Offered on every collection except `users`.
 - **Group peers** — only users who share a group with the caller, plus the caller's own record. Offered on `users` only.
 
-## Presets
+Below the table, the rules are summed up in plain sentences — "Anyone can list and view. Only the owner can update and delete." — so you can check at a glance that the table says what you meant.
 
-The **Presets** card applies all five rules at once for a common pattern (e.g. "Public" makes everything public; "Own records" makes everything owner-scoped). Apply a preset first, then fine-tune individual rules if one operation needs a different level than the rest.
+## Set all to…
+
+The **Set all to…** dropdown above the table fills all five rules at once with a common pattern (e.g. "Public" makes everything public; "Own records" makes everything owner-scoped). Pick a pattern first, then fine-tune individual rules if one operation needs a different level than the rest.
+
+## Saving
+
+Nothing changes until you save. As soon as the table differs from the stored rules, a bar with **Discard** and **Save rules** appears at the bottom of the page; **Discard** puts back the stored rules.
 
 ## No custom expressions
 
@@ -33,13 +39,13 @@ Unlike PocketBase, Paprika deliberately does not expose a custom rule expression
 
 ## Owner field
 
-When any rule is set to **Own records**, an **Owner field** selector appears. It must be a `RELATION → users` field on this collection (see [Collections → Relations](/concepts/collections#relations)); Paprika sets it automatically to the creating user's id when a record is made. If the collection has no such relation field yet, add one on the [Schema tab](/admin-ui/collection-schema) first — the dropdown here falls back to a placeholder `owner` value until you do.
+When any rule is set to **Own records**, an **Owner** card with the **Owner field** selector appears below the table. It must be a `RELATION → users` field on this collection (see [Collections → Relations](/concepts/collections#relations)); Paprika sets it automatically to the creating user's id when a record is made. If the collection has no such relation field yet, add one on the [Schema tab](/admin-ui/collection-schema) first — the dropdown here falls back to a placeholder `owner` value until you do.
 
 **Except on the `users` collection**, where no owner field is involved at all — see below. The selector is not shown there.
 
 ## Group configuration
 
-As soon as one rule is set to **Group members** or **Group peers**, four more selectors appear.
+As soon as one rule is set to **Group members** or **Group peers**, a **Groups** card with four more selectors appears.
 They say where the memberships live; the concept behind them is
 [Group membership](/concepts/roles-and-permissions#group-membership-group-and-peers).
 
@@ -106,9 +112,9 @@ locked or **Group members** are the usual choices.
 
 ## The users collection
 
-Rules on the [`users` collection](/admin-ui/tenant-users) gate `/api/collections/users` exactly like any other collection, but two things behave differently and there's a warning on the tab to match:
+Rules on the [`users` collection](/admin-ui/tenant-users) gate `/api/collections/users` exactly like any other collection, but a few things behave differently:
 
-- **Self-registration ignores these rules.** The registration toggle on the Users Data tab drives `/api/auth/register` and doesn't touch `createRule`. Leaving create locked is the safe default and won't stop people from signing up. Don't loosen the create rule expecting it to control registration; it controls `POST /api/collections/users` instead.
+- **Self-registration ignores these rules.** The registration toggle under [Auth settings](/admin-ui/auth-settings) drives `/api/auth/register` and doesn't touch `createRule`; a note below the table says so. Leaving create locked is the safe default and won't stop people from signing up. Don't loosen the create rule expecting it to control registration; it controls `POST /api/collections/users` instead.
 - **`role` can't be set through the data plane.** Even with an owner update rule, the API pins `role` to `user` and ignores any value in the body, so a user can't promote themselves. Roles only change via the superadmin path.
 - **Own records means "my own account" here.** On every other collection the preset compares an owner field against the caller (`record.<ownerField> = auth.id`). A user record has no relation pointing at itself, so on `users` the preset resolves to `record.id = auth.id` instead: each user reaches exactly their own record. You therefore need **no** `RELATION → users` field on `users`, the owner field selector is hidden, and a value that happens to be stored there is ignored (and never written into a user record). This is what makes the common setup work — View and Update on **Own records**, everything else locked, and every user can read and edit their own profile and nobody else's.
 - **Own records never grants Create on `users`.** At create time there is no record yet whose id could equal the caller's, so the rule cannot be satisfied — including when a client sends its own id in the body. Sign-up goes through `POST /api/auth/register`; if you really want authenticated users to create user records through the data plane, set the create rule to **Signed in**.

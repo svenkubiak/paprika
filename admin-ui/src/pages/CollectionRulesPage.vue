@@ -10,18 +10,24 @@ import {
   RULE_PRESETS,
   ruleLevelForSelect,
   ruleLevelFromSelect,
-  ruleValueFromLevel,
-  SELECT_EMPTY
+  ruleValueFromLevel
 } from '@/lib/utils'
-import type {
-  CollectionDefinition,
-  FieldDefinition,
-  IndexDefinition,
-  RuleLevel,
-  RulePreset
-} from '@/types'
+import {
+  RULE_OPERATIONS,
+  ruleLevelChoices,
+  summarizeRules,
+  type RuleKey,
+  type RuleSelectLevel
+} from '@/lib/rule-levels'
+import type { CollectionDefinition, FieldDefinition, IndexDefinition, RulePreset } from '@/types'
 
-type RuleSelectLevel = RuleLevel | typeof SELECT_EMPTY
+type RulesForm = Record<RuleKey, RuleSelectLevel> & {
+  ownerField: string
+  groupCollection: string
+  groupMemberField: string
+  groupField: string
+  groupRecordField: string
+}
 
 const toast = useAppToast()
 const { bootstrap } = useBootstrap()
@@ -29,21 +35,12 @@ const { bootstrap } = useBootstrap()
 const collection = useRouteCollection()
 const isUsers = computed(() => collection.value === 'users')
 const definition = ref<CollectionDefinition | null>(null)
-const loading = ref(true)
 const saving = ref(false)
 
-const form = ref({
-  listRule: SELECT_EMPTY as RuleSelectLevel,
-  viewRule: SELECT_EMPTY as RuleSelectLevel,
-  createRule: SELECT_EMPTY as RuleSelectLevel,
-  updateRule: SELECT_EMPTY as RuleSelectLevel,
-  deleteRule: SELECT_EMPTY as RuleSelectLevel,
-  ownerField: 'owner',
-  groupCollection: '',
-  groupMemberField: '',
-  groupField: '',
-  groupRecordField: ''
-})
+const form = ref<RulesForm>(formFromDefinition(null))
+/** The rules as stored; the save bar shows while the form differs from it. */
+const savedForm = ref<RulesForm>(formFromDefinition(null))
+const dirty = computed(() => JSON.stringify(form.value) !== JSON.stringify(savedForm.value))
 
 const membershipFields = ref<FieldDefinition[]>([])
 const membershipIndexes = ref<IndexDefinition[]>([])
@@ -51,99 +48,53 @@ const membershipIndexes = ref<IndexDefinition[]>([])
 /** Kept out of the template because the sentence quotes the literal field 'id'. */
 const groupRecordFieldDetails =
   "Choose 'id' if the records of this collection are the groups themselves - then create needs " +
-  'another preset, because nobody can be a member of a group that does not exist yet.'
+  'another level, because nobody can be a member of a group that does not exist yet.'
 
-const ruleFields = computed(() => [
-  {
-    key: 'listRule' as const,
-    label: 'List rule',
-    icon: 'i-lucide-list',
-    hint: `GET /api/collections/${collection.value}`
-  },
-  {
-    key: 'viewRule' as const,
-    label: 'View rule',
-    icon: 'i-lucide-eye',
-    hint: `GET /api/collections/${collection.value}/{id}`
-  },
-  {
-    key: 'createRule' as const,
-    label: 'Create rule',
-    icon: 'i-lucide-plus',
-    hint: `POST /api/collections/${collection.value}`
-  },
-  {
-    key: 'updateRule' as const,
-    label: 'Update rule',
-    icon: 'i-lucide-pencil',
-    hint: `PATCH /api/collections/${collection.value}/{id}`
-  },
-  {
-    key: 'deleteRule' as const,
-    label: 'Delete rule',
-    icon: 'i-lucide-trash-2',
-    hint: `DELETE /api/collections/${collection.value}/{id}`
-  }
-])
-
-const ruleLevelChoices = [
-  { label: 'No access', value: SELECT_EMPTY, icon: 'i-lucide-lock', preset: 'locked' as RulePreset },
-  { label: 'Public', value: '*', icon: 'i-lucide-globe', preset: 'public' as RulePreset },
-  { label: 'Signed in', value: 'auth', icon: 'i-lucide-user-check', preset: 'auth' as RulePreset },
-  { label: 'Own records', value: 'owner', icon: 'i-lucide-user-cog', preset: 'owner' as RulePreset },
-  // "Group members" needs a group field, which user records lack; "Group peers" only makes sense
-  // where the records are the users. The backend rejects the other combination on save.
-  { label: 'Group members', value: 'group', icon: 'i-lucide-users', preset: 'group' as RulePreset },
-  { label: 'Group peers', value: 'peers', icon: 'i-lucide-users-round', preset: 'peers' as RulePreset }
-]
-
-const availableChoices = computed(() =>
-  ruleLevelChoices.filter((choice) =>
-    choice.value === 'peers' ? isUsers.value : choice.value === 'group' ? !isUsers.value : true
-  )
-)
-
+const choices = computed(() => ruleLevelChoices(isUsers.value))
 const levelOptions = computed(() =>
-  availableChoices.value.map(({ label, value, icon }) => ({ label, value, icon }))
+  choices.value.map(({ label, value, icon, description }) => ({ label, value, icon, description }))
+)
+const presetOptions = computed(() =>
+  choices.value.map(({ label, preset, icon }) => ({ label, value: preset, icon }))
 )
 
-const presets = computed(() =>
-  availableChoices.value.map(({ preset, label, icon }) => ({ key: preset, label, icon }))
+const operations = computed(() =>
+  RULE_OPERATIONS.map((op) => ({
+    ...op,
+    endpoint: `${op.method} /api/collections/${collection.value}${op.path}`,
+    // The one rule whose effect is easy to miss: it also narrows what a list returns.
+    hint: op.key === 'listRule' ? 'Also decides which records a list returns.' : ''
+  }))
 )
+
+const summary = computed(() => summarizeRules(form.value, isUsers.value))
 
 function iconForLevel(level: RuleSelectLevel) {
-  return ruleLevelChoices.find((choice) => choice.value === level)?.icon ?? 'i-lucide-shield'
+  return choices.value.find((choice) => choice.value === level)?.icon ?? 'i-lucide-shield'
 }
 
 const ownerFieldOptions = computed(() => {
   const fields = definition.value?.fields ?? []
-  const relationUsers = fields.filter(isUsersRelationField)
-  const options = relationUsers.map((field) => ({
+  const options = fields.filter(isUsersRelationField).map((field) => ({
     label: `${field.name} → users (${bootstrap.value?.activeTenant?.name ?? 'current tenant'})`,
     value: field.name
   }))
-
   if (options.length === 0) {
     return [{ label: 'owner (add a RELATION → users field in Schema)', value: 'owner' }]
   }
-
   return options
 })
 
-const usesOwnerRules = computed(() =>
-  [form.value.listRule, form.value.viewRule, form.value.updateRule, form.value.deleteRule].some(
-    (rule) => rule === 'owner'
-  )
+// On users, Own records means the caller's own account, so no owner field is involved.
+const usesOwnerRules = computed(
+  () =>
+    !isUsers.value &&
+    [form.value.listRule, form.value.viewRule, form.value.updateRule, form.value.deleteRule].some(
+      (rule) => rule === 'owner'
+    )
 )
 
-const allLevels = computed(() => [
-  form.value.listRule,
-  form.value.viewRule,
-  form.value.createRule,
-  form.value.updateRule,
-  form.value.deleteRule
-])
-
+const allLevels = computed(() => RULE_OPERATIONS.map((op) => form.value[op.key]))
 const usesMembershipRules = computed(() => allLevels.value.some(isMembershipLevel))
 const usesGroupRules = computed(() => allLevels.value.some((level) => level === 'group'))
 const usesPeersRules = computed(() => allLevels.value.some((level) => level === 'peers'))
@@ -218,51 +169,54 @@ function defaultOwnerField(fields: FieldDefinition[]) {
   return match?.name ?? 'owner'
 }
 
+function formFromDefinition(source: CollectionDefinition | null): RulesForm {
+  const rules = source?.rules
+  return {
+    listRule: ruleLevelForSelect(rules?.listRule),
+    viewRule: ruleLevelForSelect(rules?.viewRule),
+    createRule: ruleLevelForSelect(rules?.createRule),
+    updateRule: ruleLevelForSelect(rules?.updateRule),
+    deleteRule: ruleLevelForSelect(rules?.deleteRule),
+    ownerField: rules?.ownerField || defaultOwnerField(source?.fields ?? []),
+    groupCollection: rules?.groupCollection ?? '',
+    groupMemberField: rules?.groupMemberField ?? '',
+    groupField: rules?.groupField ?? '',
+    groupRecordField: rules?.groupRecordField ?? ''
+  }
+}
+
 async function loadDefinition() {
-  loading.value = true
   try {
     definition.value = await api.getCollectionDefinition(collection.value)
-    const rules = definition.value.rules
-    form.value = {
-      listRule: ruleLevelForSelect(rules?.listRule),
-      viewRule: ruleLevelForSelect(rules?.viewRule),
-      createRule: ruleLevelForSelect(rules?.createRule),
-      updateRule: ruleLevelForSelect(rules?.updateRule),
-      deleteRule: ruleLevelForSelect(rules?.deleteRule),
-      ownerField: rules?.ownerField || defaultOwnerField(definition.value.fields),
-      groupCollection: rules?.groupCollection ?? '',
-      groupMemberField: rules?.groupMemberField ?? '',
-      groupField: rules?.groupField ?? '',
-      groupRecordField: rules?.groupRecordField ?? ''
-    }
+    form.value = formFromDefinition(definition.value)
+    savedForm.value = { ...form.value }
   } catch (error) {
     toast.add({
       title: error instanceof Error ? error.message : 'Failed to load rules',
       color: 'error',
       icon: 'i-lucide-circle-x'
     })
-  } finally {
-    loading.value = false
   }
 }
 
-function applyPreset(preset: RulePreset) {
+// Fills all five operations at once; like any other edit it only takes effect on save.
+function applyPreset(preset: RulePreset | undefined) {
+  if (!preset) return
   const values = RULE_PRESETS[preset]
   form.value = {
+    ...form.value,
     listRule: ruleLevelForSelect(values.listRule),
     viewRule: ruleLevelForSelect(values.viewRule),
     createRule: ruleLevelForSelect(values.createRule),
     updateRule: ruleLevelForSelect(values.updateRule),
     deleteRule: ruleLevelForSelect(values.deleteRule),
     ownerField:
-      preset === 'owner'
-        ? defaultOwnerField(definition.value?.fields ?? [])
-        : form.value.ownerField,
-    groupCollection: form.value.groupCollection,
-    groupMemberField: form.value.groupMemberField,
-    groupField: form.value.groupField,
-    groupRecordField: form.value.groupRecordField
+      preset === 'owner' ? defaultOwnerField(definition.value?.fields ?? []) : form.value.ownerField
   }
+}
+
+function discardChanges() {
+  form.value = { ...savedForm.value }
 }
 
 async function saveRules() {
@@ -286,6 +240,7 @@ async function saveRules() {
     }
     await api.updateCollectionDefinition(collection.value, definition.value.id, next)
     definition.value = next
+    savedForm.value = { ...form.value }
     toast.add({ title: 'Rules saved', color: 'success', icon: 'i-lucide-circle-check' })
   } catch (error) {
     toast.add({
@@ -305,193 +260,150 @@ await loadDefinition()
 
 <template>
   <div class="space-y-6">
-    <UAlert
-      color="info"
-      variant="soft"
-      icon="i-lucide-shield"
-      title="API access rules"
-      description="Use presets to set all rules at once, or pick an access level for each operation. API clients authenticate with Authorization: Bearer …"
-    />
-
-    <UAlert
-      v-if="isUsers"
-      color="info"
-      variant="soft"
-      icon="i-lucide-user-plus"
-      title="Self-registration is separate from these rules"
-      description="These rules only govern the REST API for user records (/api/collections/users). Self-registration uses POST /api/auth/register and is controlled by the Self-registration toggle on the Data tab — it is not affected by the Create rule. Set the View/Update rules to Own records to let each user read and edit exactly their own profile."
-    />
-
-    <UCard>
+    <UCard :ui="{ body: 'p-0 sm:p-0' }">
       <template #header>
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-sliders-horizontal" class="size-5 text-primary" />
-          <h2 class="font-semibold">Presets</h2>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="font-semibold">Who can do what</h2>
+            <p class="mt-1 text-sm text-muted">
+              Access to this collection through the API. Superadmins always have full access.
+            </p>
+          </div>
+          <USelect
+            :model-value="undefined"
+            :items="presetOptions"
+            placeholder="Set all to…"
+            icon="i-lucide-sliders-horizontal"
+            class="w-full sm:w-48"
+            @update:model-value="applyPreset($event as RulePreset)"
+          />
         </div>
       </template>
-      <div class="flex flex-wrap gap-2">
-        <UButton
-          v-for="preset in presets"
-          :key="preset.key"
-          variant="soft"
-          color="neutral"
-          :icon="preset.icon"
-          @click="applyPreset(preset.key)"
-        >
-          {{ preset.label }}
-        </UButton>
+
+      <table class="w-full text-sm">
+        <tbody class="divide-y divide-default">
+          <tr v-for="op in operations" :key="op.key">
+            <td class="px-4 py-3 align-top sm:px-6">
+              <div class="font-medium text-default">{{ op.label }}</div>
+              <code class="text-xs text-muted">{{ op.endpoint }}</code>
+              <p v-if="op.hint" class="mt-0.5 text-xs text-muted">{{ op.hint }}</p>
+            </td>
+            <td class="w-full px-4 py-3 align-top sm:w-72 sm:pr-6">
+              <USelect
+                v-model="form[op.key]"
+                :items="levelOptions"
+                :icon="iconForLevel(form[op.key])"
+                :aria-label="`${op.label} rule`"
+                class="w-full"
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="space-y-1 border-t border-default bg-muted/15 px-4 py-3 text-sm sm:px-6">
+        <p v-for="sentence in summary" :key="sentence" class="text-toned">{{ sentence }}</p>
       </div>
     </UCard>
 
-    <UCard>
+    <UCard v-if="usesOwnerRules">
       <template #header>
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-list-checks" class="size-5 text-primary" />
-            <h2 class="font-semibold">Operation rules</h2>
-          </div>
-          <UButton :loading="saving" icon="i-lucide-save" @click="saveRules">Save rules</UButton>
-        </div>
+        <h2 class="font-semibold">Owner</h2>
+        <p class="mt-1 text-sm text-muted">
+          Own records compares this field with the signed-in user. Paprika fills it in on create.
+        </p>
+      </template>
+      <PField
+        label="Owner field"
+        icon="i-lucide-user-cog"
+        orientation="horizontal"
+        help="A RELATION → users field, added on the Schema tab."
+      >
+        <USelect v-model="form.ownerField" :items="ownerFieldOptions" icon="i-lucide-user-cog" />
+      </PField>
+    </UCard>
+
+    <UCard v-if="usesMembershipRules">
+      <template #header>
+        <h2 class="font-semibold">Groups</h2>
+        <p class="mt-1 text-sm text-muted">
+          <template v-if="isUsers">
+            Group peers lets users reach the users they share a group with, plus their own account.
+          </template>
+          <template v-else>
+            Group members compares the record's group with the groups of the signed-in user. Without
+            a membership a user sees nothing, and cannot put a record into a group they are not in.
+          </template>
+        </p>
       </template>
 
-      <div v-if="loading" class="py-8 text-center text-muted">Loading rules…</div>
-      <div v-else class="space-y-4">
+      <div class="space-y-4">
         <UAlert
-          v-if="isUsers && usesOwnerRules"
-          color="primary"
+          v-if="unindexedMembershipFields.length > 0"
+          color="warning"
           variant="soft"
-          icon="i-lucide-user-cog"
-          title="Own records means the user's own account here"
-          description="On the users collection, Own records resolves to record.id = auth.id: each user reaches exactly their own record. No RELATION → users field and no owner field are needed - a stored owner field is ignored. Create is never granted by Own records; sign-up goes through POST /api/auth/register."
+          icon="i-lucide-gauge"
+          title="Index the membership collection"
+          :description="`Every request resolves the caller's groups by querying ${form.groupCollection}. Add an index on ${unindexedMembershipFields.join(' and one on ')} in that collection's Schema tab - a compound index counts only for its first field. Otherwise each call costs a full collection scan.`"
         />
-
-        <PField
-          v-if="usesOwnerRules && !isUsers"
-          label="Owner field"
-          icon="i-lucide-user-cog"
-          orientation="horizontal"
-          help="Schema field that stores the tenant user id."
-          details="Use a RELATION → users field, added on the Schema tab."
-        >
-          <USelect v-model="form.ownerField" :items="ownerFieldOptions" icon="i-lucide-user-cog" />
-        </PField>
-
-        <template v-if="usesMembershipRules">
-          <UAlert
-            v-if="unindexedMembershipFields.length > 0"
-            color="warning"
-            variant="soft"
-            icon="i-lucide-gauge"
-            title="Index the membership collection"
-            :description="`Every request resolves the caller's groups by querying ${form.groupCollection}. Add an index on ${unindexedMembershipFields.join(' and one on ')} in that collection's Schema tab - a compound index counts only for its first field. Otherwise each call costs a full collection scan.`"
-          />
-
-          <div class="grid gap-4 md:grid-cols-2">
-            <PField
-              label="Membership collection"
-              icon="i-lucide-users"
-              help="Holds one record per membership, e.g. team_members."
-              details="Pick this collection itself to let the members of a group see their group's membership records - the member list."
-            >
-              <USelect
-                v-model="form.groupCollection"
-                :items="collectionOptions"
-                icon="i-lucide-users"
-              />
-            </PField>
-
-            <PField
-              label="Member field"
-              icon="i-lucide-user"
-              help="Field of the membership collection pointing at the user."
-              details="A RELATION → users field or a STRING holding the user id."
-            >
-              <USelect
-                v-model="form.groupMemberField"
-                :items="membershipFieldOptions"
-                icon="i-lucide-user"
-              />
-            </PField>
-
-            <PField
-              label="Group field"
-              icon="i-lucide-users-round"
-              help="Field of the membership collection pointing at the group."
-              details="A RELATION or a STRING holding the group id."
-            >
-              <USelect
-                v-model="form.groupField"
-                :items="membershipFieldOptions"
-                icon="i-lucide-users-round"
-              />
-            </PField>
-
-            <PField
-              v-if="usesGroupRules"
-              label="Group field on this collection"
-              icon="i-lucide-folder-tree"
-              help="Field of this collection carrying the group. Clients set it on create; Paprika never fills it in."
-              :details="groupRecordFieldDetails"
-            >
-              <USelect
-                v-model="form.groupRecordField"
-                :items="recordFieldOptions"
-                icon="i-lucide-folder-tree"
-              />
-            </PField>
-          </div>
-        </template>
 
         <div class="grid gap-4 md:grid-cols-2">
           <PField
-            v-for="field in ruleFields"
-            :key="field.key"
-            :label="field.label"
-            :icon="field.icon"
-            :help="field.hint"
+            label="Membership collection"
+            icon="i-lucide-users"
+            help="Holds one record per membership, e.g. team_members."
+            details="Pick this collection itself to let the members of a group see their group's membership records - the member list."
           >
-            <USelect
-              v-model="form[field.key]"
-              :items="levelOptions"
-              :icon="iconForLevel(form[field.key])"
-            />
+            <USelect v-model="form.groupCollection" :items="collectionOptions" icon="i-lucide-users" />
+          </PField>
+
+          <PField
+            label="Member field"
+            icon="i-lucide-user"
+            help="Field of the membership collection pointing at the user."
+            details="A RELATION → users field or a STRING holding the user id."
+          >
+            <USelect v-model="form.groupMemberField" :items="membershipFieldOptions" icon="i-lucide-user" />
+          </PField>
+
+          <PField
+            label="Group field"
+            icon="i-lucide-users-round"
+            help="Field of the membership collection pointing at the group."
+            details="A RELATION or a STRING holding the group id."
+          >
+            <USelect v-model="form.groupField" :items="membershipFieldOptions" icon="i-lucide-users-round" />
+          </PField>
+
+          <PField
+            v-if="usesGroupRules"
+            label="Group field on this collection"
+            icon="i-lucide-folder-tree"
+            help="Field of this collection carrying the group. Clients set it on create; Paprika never fills it in."
+            :details="groupRecordFieldDetails"
+          >
+            <USelect v-model="form.groupRecordField" :items="recordFieldOptions" icon="i-lucide-folder-tree" />
           </PField>
         </div>
       </div>
     </UCard>
 
-    <UCard>
-      <template #header>
-        <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-info" class="size-5 text-primary" />
-          <h2 class="font-semibold">Notes</h2>
-        </div>
-      </template>
-      <ul class="list-disc space-y-2 pl-5 text-sm text-muted">
-        <li>List rules also filter which records are returned.</li>
-        <li v-if="isUsers">
-          Group peers returns the users that share at least one group with the caller, plus the
-          caller's own record — which stays reachable even without any membership. Create is never
-          granted by it.
-        </li>
-        <li v-else>
-          Group members compares the record's group field against the groups the caller is a member
-          of. A caller without any membership sees nothing, and a record can neither be created in
-          nor moved into a group the caller does not belong to.
-        </li>
-        <li>
-          Own records compares the owner field to <code>auth.id</code> from the tenant user's JWT.
-        </li>
-        <li v-if="isUsers">
-          On this collection, Own records compares <code>record.id</code> to <code>auth.id</code>
-          instead — the own record of a user is their own account. No owner field is involved, and
-          Own records never grants Create here.
-        </li>
-        <li v-else>
-          Add a <code>RELATION → users</code> field in Schema, select it here, then use the Own records
-          preset. Paprika sets the field automatically on create.
-        </li>
-      </ul>
-    </UCard>
+    <p v-if="isUsers" class="text-sm text-muted">
+      Sign-up goes through <code>POST /api/auth/register</code> and is switched on under Auth; the
+      Create rule does not affect it.
+    </p>
+
+    <div
+      v-if="dirty"
+      class="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-default bg-default px-4 py-3 shadow-lg"
+    >
+      <p class="text-sm font-medium text-default">Unsaved changes</p>
+      <div class="flex gap-2">
+        <UButton variant="ghost" color="neutral" :disabled="saving" @click="discardChanges">
+          Discard
+        </UButton>
+        <UButton :loading="saving" icon="i-lucide-save" @click="saveRules">Save rules</UButton>
+      </div>
+    </div>
   </div>
 </template>
