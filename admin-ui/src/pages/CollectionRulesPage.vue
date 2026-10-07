@@ -61,9 +61,7 @@ const presetOptions = computed(() =>
 const operations = computed(() =>
   RULE_OPERATIONS.map((op) => ({
     ...op,
-    endpoint: `${op.method} /api/collections/${collection.value}${op.path}`,
-    // The one rule whose effect is easy to miss: it also narrows what a list returns.
-    hint: op.key === 'listRule' ? 'Also decides which records a list returns.' : ''
+    endpoint: `${op.method} /api/collections/${collection.value}${op.path}`
   }))
 )
 
@@ -286,7 +284,6 @@ await loadDefinition()
             <td class="px-4 py-3 align-top sm:px-6">
               <div class="font-medium text-default">{{ op.label }}</div>
               <code class="text-xs text-muted">{{ op.endpoint }}</code>
-              <p v-if="op.hint" class="mt-0.5 text-xs text-muted">{{ op.hint }}</p>
             </td>
             <td class="w-full px-4 py-3 align-top sm:w-72 sm:pr-6">
               <USelect
