@@ -20,3 +20,5 @@
 *.p12
 *.jks
 *.pem
+CLAUDE.md
+admin-ui/.gitignore
