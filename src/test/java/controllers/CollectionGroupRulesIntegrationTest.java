@@ -20,6 +20,8 @@ import utils.AdminTestUtils;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static com.mongodb.client.model.Filters.eq;
@@ -105,6 +107,29 @@ class CollectionGroupRulesIntegrationTest {
         assertThat(filteredToForeignGroup.getStatusCode(), equalTo(StatusCodes.OK));
         assertThat(filteredToForeignGroup.getContent(), containsString("\"total\":0"));
         assertThat(filteredToForeignGroup.getContent(), not(containsString("Post of crew B")));
+    }
+
+    @Test
+    void filtersThatMatchEveryGroupStillOnlyNarrowTheScope() {
+        // Other tests add records to crew A, so compare with the unfiltered scope instead of a fixed count
+        String unfiltered = list(tokenA).getContent();
+        String total = unfiltered.substring(unfiltered.lastIndexOf("\"total\":"));
+
+        for (String query : List.of(
+                "filter%5Bid%5D%5Bnotnull%5D=",
+                "filter%5Bcrew%5D%5Bin%5D=" + URLEncoder.encode(
+                        "[\"" + CREW_A + "\",\"" + CREW_B + "\"]", StandardCharsets.UTF_8),
+                "filter%5Bcrew%5D%5Bne%5D=nobody")) {
+            TestResponse list = TestRequest
+                    .get("/api/collections/" + POSTS + "?offset=0&limit=50&" + query)
+                    .withHeader("Authorization", "Bearer " + tokenA)
+                    .execute();
+
+            assertThat(query, list.getStatusCode(), equalTo(StatusCodes.OK));
+            assertThat(query, list.getContent(), containsString("Post of crew A"));
+            assertThat(query, list.getContent(), not(containsString("Post of crew B")));
+            assertThat(query, list.getContent(), endsWith(total));
+        }
     }
 
     @Test

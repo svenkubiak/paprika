@@ -59,6 +59,17 @@ class UsersPeersRulesIntegrationTest {
             assertThat(list.getContent(), containsString("peers-me"));
             assertThat(list.getContent(), not(containsString("peers-stranger")));
 
+            // A filter matching every user only narrows the peers scope
+            TestResponse filtered = TestRequest.get(
+                            "/api/collections/users?offset=0&limit=100&filter%5Busername%5D%5BstartsWith%5D=peers-")
+                    .withHeader("Authorization", "Bearer " + token)
+                    .execute();
+            assertThat(filtered.getStatusCode(), equalTo(StatusCodes.OK));
+            assertThat(filtered.getContent(), containsString("peers-mate"));
+            assertThat(filtered.getContent(), not(containsString("peers-stranger")));
+            assertThat(filtered.getContent(), not(containsString("peers-loner")));
+            assertThat(filtered.getContent(), containsString("\"total\":2"));
+
             TestResponse mateView = TestRequest.get("/api/collections/users/" + mate)
                     .withHeader("Authorization", "Bearer " + token)
                     .execute();

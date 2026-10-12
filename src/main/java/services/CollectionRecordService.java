@@ -6,6 +6,9 @@ import auth.TenantContext;
 import auth.TenantContextHolder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.mongodb.MongoException;
+import com.mongodb.MongoExecutionTimeoutException;
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.*;
 import constants.SystemFields;
 import enums.Role;
@@ -29,10 +32,14 @@ import rules.ListSortParser;
 import utils.*;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static com.mongodb.client.model.Filters.eq;
@@ -48,6 +55,12 @@ public class CollectionRecordService {
     // Without a sort MongoDB guarantees no order, so records could repeat or vanish across pages;
     // _id is indexed and insertion-ordered
     private static final Bson DEFAULT_SORT = Sorts.ascending("_id");
+
+    // A list without a usable index scans and sorts in memory; past this it is refused, not left running
+    static final Duration LIST_MAX_TIME = Duration.ofSeconds(5);
+    static final String QUERY_TOO_EXPENSIVE_MESSAGE = "query too expensive, add an index or narrow the filter";
+    // MaxTimeMSExpired, QueryExceededMemoryLimitNoDiskUseAllowed, and the sort memory limit of older servers
+    private static final Set<Integer> TOO_EXPENSIVE_CODES = Set.of(50, 292, 16819, 16820);
 
     private static Bson recordProjection(String collection) {
         return RecordProjections.forCollection(collection);
@@ -182,7 +195,10 @@ public class CollectionRecordService {
         Bson clientFilter;
         Bson clientSort;
         try {
-            clientFilter = ListFilterParser.parse(filter, definition);
+            // filter[<field>][<operator>] keys are not bound to a parameter, mangoo has no
+            // repeatable one; they come from the query parameters alongside the plain filter
+            clientFilter = ListFilterParser.toBson(
+                    ListFilterParser.parse(filter, request.getQueryParameter(), definition));
             clientSort = ListSortParser.parse(sort, definition);
         } catch (ListFilterParser.InvalidFilterException | ListSortParser.InvalidSortException e) {
             return RecordResult.badRequest(e.getMessage());
@@ -204,21 +220,62 @@ public class CollectionRecordService {
         // An oversized limit is clamped, not reset to the default, which would silently drop records
         int effectiveLimit = limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
 
-        List<Document> items = new ArrayList<>();
-        tenantCollections.dataCollection(ctx, collection)
-                .find(effectiveFilter)
-                .projection(recordProjection(collection))
-                // Equal sort values have no defined order either, so _id breaks ties to keep paging stable
-                .sort(clientSort == null ? DEFAULT_SORT : Sorts.orderBy(clientSort, DEFAULT_SORT))
-                .skip(effectiveOffset)
-                .limit(effectiveLimit)
-                .into(items);
+        // Equal sort values have no defined order either, so _id breaks ties to keep paging stable
+        Bson effectiveSort = clientSort == null ? DEFAULT_SORT : Sorts.orderBy(clientSort, DEFAULT_SORT);
+        Optional<ListPage> page = listPage(
+                tenantCollections.dataCollection(ctx, collection),
+                effectiveFilter,
+                effectiveSort,
+                recordProjection(collection),
+                effectiveOffset,
+                effectiveLimit,
+                LIST_MAX_TIME);
 
-        FileFieldUtils.enrichRecords(items, definition, collection);
+        if (page.isEmpty()) {
+            return RecordResult.badRequest(QUERY_TOO_EXPENSIVE_MESSAGE);
+        }
 
-        long total = tenantCollections.dataCollection(ctx, collection).countDocuments(effectiveFilter);
+        ListPage result = page.orElseThrow();
+        FileFieldUtils.enrichRecords(result.items(), definition, collection);
 
-        return RecordResult.ok(Map.of("items", items, "total", total));
+        return RecordResult.ok(Map.of("items", result.items(), "total", result.total()));
+    }
+
+    record ListPage(List<Document> items, long total) {
+    }
+
+    // Page and count share the filter and the time limit; empty when either one is too expensive
+    static Optional<ListPage> listPage(
+            MongoCollection<Document> records,
+            Bson filter,
+            Bson sort,
+            Bson projection,
+            int offset,
+            int limit,
+            Duration maxTime) {
+        try {
+            List<Document> items = records.find(filter)
+                    .projection(projection)
+                    .sort(sort)
+                    .skip(offset)
+                    .limit(limit)
+                    .maxTime(maxTime.toMillis(), TimeUnit.MILLISECONDS)
+                    .into(new ArrayList<>());
+
+            long total = records.countDocuments(
+                    filter, new CountOptions().maxTime(maxTime.toMillis(), TimeUnit.MILLISECONDS));
+
+            return Optional.of(new ListPage(items, total));
+        } catch (MongoException e) {
+            if (isTooExpensive(e)) {
+                return Optional.empty();
+            }
+            throw e;
+        }
+    }
+
+    static boolean isTooExpensive(MongoException e) {
+        return e instanceof MongoExecutionTimeoutException || TOO_EXPENSIVE_CODES.contains(e.getCode());
     }
 
     public RecordResult read(TenantContext ctx, String collection, String id) {

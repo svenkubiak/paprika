@@ -101,7 +101,7 @@ class CollectionFilterIntegrationTest {
                 .execute();
 
         assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
-        assertThat(response.getContent(), containsString("Unknown filter field: nope"));
+        assertThat(response.getContent(), containsString("filter 'nope:eq:x': unknown field 'nope'"));
     }
 
     // A plain string compare would never match the stored boolean or number.
@@ -200,7 +200,7 @@ class CollectionFilterIntegrationTest {
                 .execute();
 
         assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
-        assertThat(response.getContent(), containsString("not filterable"));
+        assertThat(response.getContent(), containsString("json field 'payload' is not filterable"));
     }
 
     @Test
@@ -218,7 +218,7 @@ class CollectionFilterIntegrationTest {
                 .execute();
 
         assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
-        assertThat(response.getContent(), containsString("not filterable"));
+        assertThat(response.getContent(), containsString("file field 'attachment' only supports null and notnull"));
     }
 
     @Test

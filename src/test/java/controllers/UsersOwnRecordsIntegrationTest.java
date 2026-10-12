@@ -99,6 +99,27 @@ class UsersOwnRecordsIntegrationTest {
         });
     }
 
+    /** A filter only narrows: one that matches every record still yields the own account alone. */
+    @Test
+    void aFilterMatchingEverythingStaysWithinTheOwnAccount() {
+        withUsersRules(OWN_RECORDS, () -> {
+            UserService userService = Application.getInstance(UserService.class);
+            userService.createUser("own-filter-me", null, "secret-password-123");
+            userService.createUser("own-filter-other", null, "secret-password-123");
+            String token = accessTokenFor("own-filter-me");
+
+            for (String query : List.of("filter=id:notnull", "filter%5Bid%5D%5Bnotnull%5D=",
+                    "filter%5Busername%5D%5BstartsWith%5D=own-filter")) {
+                TestResponse list = get("/api/collections/users?offset=0&limit=25&" + query, token);
+
+                assertThat(query, list.getStatusCode(), equalTo(StatusCodes.OK));
+                assertThat(query, list.getContent(), containsString("own-filter-me"));
+                assertThat(query, list.getContent(), not(containsString("own-filter-other")));
+                assertThat(query, list.getContent(), containsString("\"total\":1"));
+            }
+        });
+    }
+
     @Test
     void deleteRemovesTheOwnAccountAndNoOther() {
         withUsersRules(OWN_RECORDS, () -> {
