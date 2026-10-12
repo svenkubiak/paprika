@@ -34,6 +34,7 @@ import static com.mongodb.client.model.Filters.eq;
 public class TenantCollectionService {
     private static final Logger LOG = LoggerFactory.getLogger(TenantCollectionService.class);
     private static final String DEFAULT_INDEX = "_id_";
+    private static final String MONGO_ID = "_id";
     private final TenantDatabaseResolver resolver;
     private final RuleService ruleService;
 
@@ -386,6 +387,8 @@ public class TenantCollectionService {
                 .map(FieldDefinition::name)
                 .collect(Collectors.toSet());
         availableFields.addAll(SystemFields.indexableFieldNames());
+        // Lists break ties on _id, so only an index ending in _id can serve a sort by another field
+        availableFields.add(MONGO_ID);
 
         Set<String> usedFields = new HashSet<>();
         for (IndexField field : index.fields()) {
@@ -403,6 +406,17 @@ public class TenantCollectionService {
             }
             if (field.direction() == null) {
                 throw new IllegalArgumentException("Index direction is required for field: " + field.field());
+            }
+        }
+
+        if (usedFields.contains(MONGO_ID)) {
+            // MongoDB indexes _id on its own already
+            if (index.fields().size() == 1) {
+                throw new IllegalArgumentException("_id is already indexed and cannot be an index on its own");
+            }
+            // _id is unique by itself, so every combination with it would be too and the constraint would be void
+            if (index.unique()) {
+                throw new IllegalArgumentException("A unique index must not contain _id");
             }
         }
     }

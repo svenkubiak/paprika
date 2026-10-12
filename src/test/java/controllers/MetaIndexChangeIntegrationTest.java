@@ -137,6 +137,69 @@ class MetaIndexChangeIntegrationTest {
         assertThat(response.getContent(), containsString("Unknown index field: does_not_exist"));
     }
 
+    /** Lists break ties on _id, so only an index ending in _id can serve a sort by another field. */
+    @Test
+    void anIndexMayEndInId() {
+        String collection = "index_with_id_" + DbUtils.id();
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        TenantTestUtils.seedCollection(collection, OPEN);
+        String id = collections.findDefinition(ctx, collection).id();
+
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+        TestResponse response = patchDefinition(collection, id, cookies, """
+                {"name": "title_sort", "unique": false, "fields": [
+                  {"field": "title", "direction": "ASC"},
+                  {"field": "_id", "direction": "ASC"}
+                ]}
+                """);
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.OK));
+        Document keys = namedIndex(collections, ctx, collection, "title_sort").get("key", Document.class);
+        assertThat(keys.keySet().stream().toList(), equalTo(List.of("title", "_id")));
+    }
+
+    @Test
+    void anIndexOnIdAloneIsRejected() {
+        String collection = "index_id_alone_" + DbUtils.id();
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        TenantTestUtils.seedCollection(collection, OPEN);
+        String id = collections.findDefinition(ctx, collection).id();
+
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+        TestResponse response = patchDefinition(collection, id, cookies, """
+                {"name": "id_only", "unique": false, "fields": [{"field": "_id", "direction": "DESC"}]}
+                """);
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(response.getContent(), containsString("_id is already indexed and cannot be an index on its own"));
+    }
+
+    /** _id is unique by itself, so a unique index containing it would never reject a duplicate. */
+    @Test
+    void aUniqueIndexMustNotContainId() {
+        String collection = "index_unique_id_" + DbUtils.id();
+        TenantContext ctx = TenantTestUtils.defaultTenantContext();
+        TenantCollectionService collections = Application.getInstance(TenantCollectionService.class);
+        TenantTestUtils.seedCollection(collection, OPEN);
+        String id = collections.findDefinition(ctx, collection).id();
+
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+
+        TestResponse response = patchDefinition(collection, id, cookies, """
+                {"name": "unique_title", "unique": true, "fields": [
+                  {"field": "title", "direction": "ASC"},
+                  {"field": "_id", "direction": "ASC"}
+                ]}
+                """);
+
+        assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(response.getContent(), containsString("A unique index must not contain _id"));
+    }
+
     private static TestResponse patchDefinition(
             String collection,
             String id,

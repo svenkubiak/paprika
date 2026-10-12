@@ -303,8 +303,9 @@ function indexesForRows(sourceRows: SchemaRow[]): IndexDefinition[] {
   return [...generated, ...preserved]
 }
 
+// _id is not a record field, but lists break ties on it: an index ending in _id serves a sort
 function indexableFieldsFor(sourceRows: SchemaRow[]): string[] {
-  return [...sourceRows.map((row) => row.name.trim()).filter(Boolean), ...SYSTEM_RECORD_FIELDS]
+  return [...sourceRows.map((row) => row.name.trim()).filter(Boolean), ...SYSTEM_RECORD_FIELDS, '_id']
 }
 
 function openAddIndex() {
