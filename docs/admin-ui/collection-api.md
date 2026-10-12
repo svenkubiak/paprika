@@ -19,39 +19,151 @@ Every response includes the three [system fields](/concepts/collections#system-f
 
 ## Listing: paging, filtering and sorting
 
-`GET /api/collections/{collection}` takes five optional query parameters:
+`GET /api/collections/{collection}` takes these optional query parameters:
 
 ```
-GET /api/collections/{collection}?offset=0&limit=25&filter=<field>:eq:<value>&search=<text>&sort=<field>:asc|desc
+GET /api/collections/{collection}?offset=0&limit=25&filter[status][eq]=published&search=<text>&sort=<field>:asc|desc
 ```
 
 - **`offset`** — number of records to skip; negative values count as `0`.
 - **`limit`** — page size. Omitted or `<= 0` means the default of **25**; anything above the
   maximum of **100** is **clamped to 100**. A request for `limit=500` therefore answers with 100
   records, not with a silently shorter page.
-- **`filter`** — exactly one field and one operator. `eq` compares exactly; `contains` matches
-  part of a text value (`STRING`, `EMAIL`, `URL`, `SELECT`, `RELATION`), ignoring case. The value
-  is taken literally, so characters like `.` or `(` have no special meaning. It can only narrow
-  what the collection's [rules](/admin-ui/collection-rules) already allow, never widen it.
+- **`filter`** — conditions on fields, see [Filtering](#filtering) below.
 - **`search`** — free text matched like `contains` against the `id` and every text field at
   once; a record matches if any of them contains the text. This is what the search box of the
   data view uses. Like `filter` it only narrows, and the two can be combined. `total` counts the
   matching records.
-- **`sort`** — exactly one field and one direction (`asc` or `desc`). Allowed are the collection's
-  schema fields plus the system fields `id`, `createdAt` and `updatedAt`. `JSON` and `FILE` fields
-  cannot be sorted. An unknown field, an unknown direction or a malformed value answers `400` —
-  an invalid sort is never answered with an arbitrarily ordered page.
+- **`sort`** — up to three fields, see [Sorting](#sorting) below.
+
+`total` always counts with the same conditions as the page, so it never reveals how many records
+there would be without the filter.
+
+### Filtering
+
+A condition names a field, an operator and a value. There are two ways to write it, and they can
+be combined:
+
+```
+GET /api/collections/posts?filter=status:eq:published
+GET /api/collections/posts?filter[status][in]=["draft","review"]&filter[publishedAt][gte]=2026-01-01T00:00:00Z&filter[cover][notnull]=
+```
+
+- **`filter=<field>:<operator>:<value>`** holds exactly one condition. It is split on the first
+  two colons only, so the value may contain colons. `null` and `notnull` take no value:
+  `filter=cover:null`.
+- **`filter[<field>][<operator>]=<value>`** can be repeated for as many conditions as needed. `null`
+  and `notnull` take an empty value: `filter[cover][notnull]=`.
+
+All conditions are combined with **and**, with each other and with the collection's
+[rules](/admin-ui/collection-rules): a filter can only narrow what the rules already allow, never
+widen it. There is no `or` and no grouping.
+
+Each query parameter may appear only once — Paprika rejects a request that repeats one with `400`,
+rather than silently using one of the values. So every `filter[<field>][<operator>]` combination can
+be used once per request. Two `eq` conditions on the same field could never both be true anyway; a
+range is `gte` plus `lt`, and several allowed values are one `in`.
+
+| Operator | Field types | Value | Matches |
+|---|---|---|---|
+| `eq`, `ne` | every type except `JSON` and `FILE` | one value | equal / not equal |
+| `gt`, `gte`, `lt`, `lte` | `NUMBER`, `DATE`, `TIME`, `DATETIME`, `createdAt`, `updatedAt` | one value | greater / greater or equal / less / less or equal |
+| `in`, `nin` | every type except `JSON` and `FILE` | JSON array | one of / none of the values |
+| `contains` | `STRING`, `EMAIL`, `URL`, `SELECT`, `RELATION` | one value | part of the text, ignoring case |
+| `startsWith` | `STRING`, `EMAIL`, `URL` | one value | the start of the text, ignoring case |
+| `null`, `notnull` | every type except `JSON`, including `FILE` | none | has no value / has a value |
+
+Besides the schema fields, `id`, `createdAt` and `updatedAt` can be filtered. `JSON` fields cannot
+be filtered at all, and `FILE` fields only with `null`/`notnull` ("has a cover image"). Order
+comparisons are not offered on text fields: as strings `"10"` sorts before `"9"`, which would
+surprise more than it helps.
+
+**Values** are checked against the field type, and a value that does not fit is a `400`, not an
+empty list:
+
+- `NUMBER` must be a number; `BOOLEAN` is `true` or `false`.
+- `SELECT` values must be among the field's allowed values, so a typo is reported.
+- `DATE`, `TIME`, `DATETIME`, `createdAt` and `updatedAt` take any ISO value and are compared in
+  UTC, so `filter[publishedAt][gte]=2026-01-01T00:00:00+02:00` finds records from
+  `2025-12-31T22:00:00Z` on.
+- Text and `RELATION` values are taken literally. `contains` and `startsWith` have no pattern
+  syntax: `.`, `*` or `(` match themselves.
+- `in`/`nin` take a JSON array, so commas inside values need no escaping and values keep their
+  type: `filter[price][in]=[10,20]`, `filter[tags][in]=["a","b"]`. Entries must have the field's
+  JSON type — a number field takes `[10]`, not `["10"]`.
+
+**No value** means: the field is missing, `null`, an empty string or an empty array. That is what
+`null` matches and `notnull` excludes. **`ne` and `nin` also match records without a value**:
+`filter[status][ne]=archived` returns records without a status as well. To exclude them, add
+`notnull`: `filter[status][ne]=archived&filter[status][notnull]=`. This is deliberate — without an
+`or`, it is the only rule that leaves both readings expressible. Systems differ here (SQL and
+PostgREST leave out `NULL` on "not equal", MongoDB's `$ne` includes missing fields), so do not
+assume one or the other.
+
+**Multi-valued fields** (`SELECT` and `RELATION` with *max select* above 1) hold an array, and every
+operator looks at the single entries: `eq` means "contains the value", `ne` "does not contain it",
+`in` "contains any of them", `nin` "contains none of them", and `contains` matches part of any
+entry.
+
+**Limits**: at most 20 conditions per request, values of at most 500 characters and at most 100
+entries in an `in`/`nin` list. Each is a `400`.
+
+**URL encoding**: values must be URL-encoded. In particular a `+` (as in a time offset) has to be
+sent as `%2B`, otherwise it arrives as a space. curl does this for you:
+
+```bash
+curl -G 'https://<host>/api/collections/posts' \
+  --data-urlencode 'filter[publishedAt][gte]=2026-01-01T00:00:00+02:00' \
+  --data-urlencode 'filter[status][in]=["draft","review"]'
+```
+
+The brackets may be sent as they are or encoded (`filter%5Bstatus%5D%5Beq%5D=…`).
+
+**Errors** are a `400` whose message names the condition and the problem, for example:
+
+```json
+{ "error": "filter[price][gte]='abc': value for number field 'price' is not a number" }
+```
+
+On the `users` collection, `password` and the stored credentials (`passwordHash`, `passwordSalt`,
+the reset and verification tokens) are never returned, so they can neither be filtered nor sorted.
+Every other field of `users` works like on any other collection.
+
+### Sorting
+
+```
+GET /api/collections/posts?sort=status:asc,publishedAt:desc
+```
+
+`sort` takes up to three `<field>:asc|desc` keys separated by commas; the single-field form
+`sort=title:asc` is the same thing with one key. The fields are those that can be filtered, except
+`FILE`. An unknown field, an unknown direction, a field used twice or a malformed value answers
+`400` — an invalid sort is never answered with an arbitrarily ordered page.
 
 Without `sort` the list has a **stable default order** (insertion order). That order is what makes
 paging reliable: without it, a write between two page requests can make the same record appear on
-two pages or disappear from all of them. With `sort`, records with the same value keep that
-insertion order among themselves, in both directions, so paging over a field like a status or a
-date is just as reliable.
+two pages or disappear from all of them. With `sort`, records that are equal in every sort field
+keep that insertion order among themselves, in both directions, so paging over a field like a
+status or a date is just as reliable.
+
+**Records without a value** sort the way MongoDB orders them, for every sort key including the
+second and third: with `asc` an empty array comes first, then missing and `null` (which count as
+equal), then the values — and an empty string sorts among the strings, before `"a"`. `desc`
+reverses this, so they come last. A multi-valued field sorts by its smallest entry with `asc` and
+by its largest with `desc`. "No value" in a filter and the position in a sort are therefore not the
+same thing for `""` and `[]`.
 
 ::: tip Sorting and indexes
-Sorting on a field that has no [index](/admin-ui/collection-schema#indexes) makes MongoDB sort in
-memory, and that sort fails once it exceeds 32 MB. For collections that grow, add an index for the
-field you sort by.
+An [index](/admin-ui/collection-schema#indexes) only speeds up a sort if it matches it exactly,
+**including the insertion order that breaks ties**: the sort fields in the same order and
+direction, followed by `_id` ascending. For `sort=status:asc` that is an index on
+`status` ascending, `_id` ascending; for `sort=status:desc,title:asc` one on `status` descending,
+`title` ascending, `_id` ascending. An index on `status` alone helps filtering by `status`, but not
+sorting by it.
+
+Without a matching index MongoDB reads and sorts every matching record for each page. That is fine
+for small collections; for large ones a list that takes longer than 5 seconds answers `400` with
+`query too expensive, add an index or narrow the filter`.
 :::
 
 ## Create and update answer with the record

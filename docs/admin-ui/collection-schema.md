@@ -63,10 +63,10 @@ Once a field exists, its name can't be changed from this UI — only its other o
 
 ## Indexing a field
 
-An indexed field carries an **indexed** or **unique** tag next to its name; hover it for the direction (ascending/descending). The **Indexes** table below lists every index of the collection, compound ones included. Enable indexing in the field editor to speed up filtering/sorting on that field, or to enforce that no two records share the same value.
+An indexed field carries an **indexed** or **unique** tag next to its name; hover it for the direction (ascending/descending). The **Indexes** table below lists every index of the collection, compound ones included. Enable indexing in the field editor to speed up filtering on that field, or to enforce that no two records share the same value.
 
-::: tip Index what you sort by
-The list endpoint's [`sort` parameter](/admin-ui/collection-api#listing-paging-filtering-and-sorting) works on any sortable field, indexed or not. Without an index MongoDB sorts in memory, and that sort fails once it exceeds 32 MB — so for a collection that grows, index the field your clients sort by.
+::: tip Indexes for sorting end in `_id`
+The list endpoint's [`sort` parameter](/admin-ui/collection-api#sorting) works on any sortable field, indexed or not. It always breaks ties by insertion order (`_id`), so an index only serves a sort if it has the sort fields in the same order and direction **followed by `_id` ascending** — for `sort=status:desc` a compound index on `status` descending, `_id` ascending. Add `_id` as the last field of a compound index in the **Indexes** table. `_id` cannot be an index on its own (MongoDB always has that one) and cannot be part of a unique index (it is unique by itself, so the index would never reject anything). Without a matching index MongoDB reads and sorts every matching record per page, and a list that takes longer than 5 seconds answers `400`.
 :::
 
 ## Deleting a field
