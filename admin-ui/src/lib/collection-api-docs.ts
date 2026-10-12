@@ -278,6 +278,111 @@ export function methodColor(method: ApiHttpMethod): 'primary' | 'success' | 'war
   }
 }
 
+// password is a write-only field of users and is refused by filter and sort
+function listableFields(collection: string, fields: FieldDefinition[]): FieldDefinition[] {
+  return fields.filter(
+    (field) => field.type !== 'JSON' && !(collection === 'users' && field.name === 'password')
+  )
+}
+
+function filterValue(field: FieldDefinition): string {
+  switch (field.type) {
+    case 'NUMBER':
+      return '10'
+    case 'BOOLEAN':
+      return 'true'
+    case 'DATE':
+      return '2026-01-01'
+    case 'TIME':
+      return '09:00'
+    case 'DATETIME':
+      return '2026-01-01T00:00:00Z'
+    case 'SELECT':
+      return field.options?.values?.[0] ?? 'draft'
+    default:
+      return 'example'
+  }
+}
+
+const RANGE_END: Record<string, string> = {
+  NUMBER: '100',
+  DATE: '2026-12-31',
+  TIME: '17:00',
+  DATETIME: '2027-01-01T00:00:00Z'
+}
+const ORDERED_TYPES = new Set(Object.keys(RANGE_END))
+const TEXT_TYPES = new Set(['STRING', 'EMAIL', 'URL'])
+
+// Built from the collection's own fields; createdAt is the range fallback every collection has
+function filterConditions(collection: string, fields: FieldDefinition[]): string[] {
+  const listable = listableFields(collection, fields)
+  const conditions: string[] = []
+
+  const text = listable.find((field) => TEXT_TYPES.has(field.type))
+  if (text) conditions.push(`filter[${text.name}][contains]=${filterValue(text)}`)
+
+  const ordered = listable.find((field) => ORDERED_TYPES.has(field.type))
+  if (ordered) {
+    conditions.push(`filter[${ordered.name}][gte]=${filterValue(ordered)}`, `filter[${ordered.name}][lt]=${RANGE_END[ordered.type]}`)
+  } else {
+    conditions.push('filter[createdAt][gte]=2026-01-01T00:00:00Z')
+  }
+
+  const select = listable.find((field) => field.type === 'SELECT' && (field.options?.values?.length ?? 0) > 0)
+  if (select) {
+    const values = (select.options?.values ?? []).slice(0, 2).map((value) => JSON.stringify(value))
+    conditions.push(`filter[${select.name}][in]=[${values.join(',')}]`)
+  }
+
+  const file = listable.find((field) => field.type === 'FILE')
+  if (file) conditions.push(`filter[${file.name}][notnull]=`)
+
+  return conditions
+}
+
+function sortExample(collection: string, fields: FieldDefinition[]): string {
+  const sortable = listableFields(collection, fields).filter((field) => field.type !== 'FILE')
+  const keys = sortable.slice(0, 2).map((field, index) => `${field.name}:${index === 0 ? 'asc' : 'desc'}`)
+  return [...keys, 'createdAt:desc'].slice(0, 3).join(',')
+}
+
+function listQueryExamples(collection: string, fields: FieldDefinition[]): ApiExampleBlock[] {
+  const base = `/api/collections/${collection}`
+  const listable = listableFields(collection, fields)
+  const first = listable.find((field) => field.type !== 'FILE')
+  const single = first ? `${first.name}:eq:${filterValue(first)}` : 'createdAt:gte:2026-01-01T00:00:00Z'
+  const conditions = filterConditions(collection, fields)
+  const curl = conditions.map((condition) => `  --data-urlencode '${condition}'`).join(' \\\n')
+
+  return [
+    {
+      title: 'Request',
+      description: 'One condition: <field>:<operator>:<value>. The value may contain colons.',
+      code: `GET ${base}?filter=${single}`
+    },
+    {
+      title: 'Request',
+      description:
+        'Several conditions, all combined with and: filter[<field>][<operator>]=<value>, each key at most once. ' +
+        'Operators: eq, ne, in, nin (JSON array) on every type; gt, gte, lt, lte on number, date, time and date & time; ' +
+        'contains on text, select and relation; startsWith on text; null and notnull (empty value) on every type including files. ' +
+        'ne and nin also match records without a value. At most 20 conditions, values up to 500 characters, lists up to 100 entries.',
+      code: `GET ${base}?${conditions.join('&')}`
+    },
+    {
+      title: 'Request (curl)',
+      description: 'URL-encode every condition; a + in a time offset must be sent as %2B.',
+      code: `curl -G 'https://<host>${base}' \\\n${curl}`
+    },
+    {
+      title: 'Request',
+      description:
+        'Sort by up to three fields; ties are broken by creation order. Records without a value come first with asc and last with desc.',
+      code: `GET ${base}?sort=${sortExample(collection, fields)}`
+    }
+  ]
+}
+
 export function buildCollectionApiDocs(collection: string, fields: FieldDefinition[]): ApiEndpointDoc[] {
   const base = `/api/collections/${collection}`
   const record = recordJson(fields)
@@ -358,17 +463,7 @@ export function buildCollectionApiDocs(collection: string, fields: FieldDefiniti
             'Search: part of the id or any text field, ignoring case, across all pages.',
           code: `GET ${base}?search=<text>`
         },
-        {
-          title: 'Request',
-          description:
-            'Filter on one field: eq compares exactly, contains matches part of a text field. The value is URL-encoded.',
-          code: `GET ${base}?filter=<field>:eq:<value>\nGET ${base}?filter=<field>:contains:<value>`
-        },
-        {
-          title: 'Request',
-          description: 'Sort by one field; without sort the order is the order of creation.',
-          code: `GET ${base}?sort=<field>:asc|desc`
-        },
+        ...listQueryExamples(collection, fields),
         {
           title: 'Response',
           description: '200 OK',
@@ -378,6 +473,11 @@ export function buildCollectionApiDocs(collection: string, fields: FieldDefiniti
             .join('\n')}\n  ],\n  "total": 1\n}`,
           variant: 'success'
         },
+        errorBlock(
+          '400 Bad Request',
+          'An invalid condition or sort names itself; a query over the time limit asks for an index or a narrower filter',
+          `{\n  "error": "filter[id][gt]='a': operator 'gt' is not supported for string field 'id'"\n}\n{\n  "error": "query too expensive, add an index or narrow the filter"\n}`
+        ),
         ...authErrors()
       ]
     },

@@ -63,58 +63,80 @@ Until then, file download and delete remain authenticated API operations without
 
 ### Current behavior
 
-`GET /api/collections/{collection}` accepts an optional `filter` query parameter:
+`GET /api/collections/{collection}` accepts filter conditions in two forms, combined with AND:
 
 ```
-GET /api/collections/{collection}?filter=<field>:<eq|contains>:<value>&offset=0&limit=25
+GET /api/collections/{collection}?filter=<field>:<operator>:<value>
+GET /api/collections/{collection}?filter[<field>][<operator>]=<value>&filter[<field>][<operator>]=<value>
 ```
 
-- Exactly one field and one operator: `eq`, or `contains` for text types (`STRING`, `EMAIL`,
-  `URL`, `SELECT`, `RELATION`) — a case-insensitive substring match. The value is regex-escaped,
-  so it always matches literally; an empty `contains` value or a non-text field is a `400`.
-- Parsing splits on the **first two colons only**, so the value may itself contain colons.
-- The value is URL-encoded on the wire (Undertow decodes it before binding).
-- An absent or empty `filter` behaves exactly as before — no filter is applied.
+- The plain `filter` holds one condition and is split on the **first two colons only**, so the
+  value may contain colons; `null`/`notnull` take no value (`cover:null`). The old
+  `<field>:eq:<value>` and `<field>:contains:<value>` stay valid unchanged.
+- `filter[<field>][<operator>]` keys may be repeated with different fields/operators. A
+  repeatable `filter=…&filter=…` is not possible: mangoo rejects any request that repeats a
+  query key (HTTP parameter pollution guard in `DispatcherHandler`) and binds only one value. The
+  bracket keys are read from `Request.getQueryParameter()` in `CollectionRecordService.list`;
+  a key that is repeated is therefore a `400` from mangoo, never a silently dropped condition.
+- Values are URL-decoded by Undertow before they reach the parser; they are not decoded again.
+- Operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `nin`, `contains`, `startsWith`, `null`,
+  `notnull`. Order comparisons only on `NUMBER`, `DATE`, `TIME`, `DATETIME` and the timestamp
+  system fields; `contains` on `STRING`, `EMAIL`, `URL`, `SELECT`, `RELATION`; `startsWith` on
+  `STRING`, `EMAIL`, `URL`. `JSON` is not filterable, `FILE` only with `null`/`notnull`.
+- `in`/`nin` take a JSON array whose entries must have the field's JSON type.
+- "No value" is missing, `null`, `""` or `[]`. `null` matches it, `notnull` excludes it, and
+  `ne`/`nin` include it (MongoDB's native `$ne`/`$nin` semantics); `ne` plus `notnull` gives the
+  SQL reading.
+- On arrays (multi-valued `SELECT`/`RELATION`) every operator applies per element.
+- Limits (`ListFilterParser.MAX_CONDITIONS`, `MAX_VALUE_LENGTH`, `MAX_LIST_ENTRIES`): 20
+  conditions, 500 characters per value or list entry, 100 list entries.
 
 The client filter is combined with the authorization filter via `Filters.and` in
 `CollectionRecordService.list` and can only **narrow** a list, never replace or widen it. The
 rule evaluation, `AuthorizationDecision`, and the fail-closed behavior of the list path are
 untouched. Both the returned page and `total` use the same effective filter.
 
-Parsing and type conversion live in `rules/ListFilterParser`:
+Parsing, validation and conversion live in `rules/ListFilterParser`. Each condition is parsed
+into a `FilterCondition(field, operator, value)` with an already typed value, validated against
+the `CollectionDefinition`, and only then turned into `Bson` (`ListFilterParser.toBson`), so the
+conditions themselves do not depend on MongoDB:
 
-- Allowed fields are the collection's schema fields plus the indexable system fields
-  (`id`, `createdAt`, `updatedAt`). An unknown field is a `400`.
-- Values are converted to the field's BSON type (`BOOLEAN`, `NUMBER`, string types). `DATE`,
-  `TIME`, `DATETIME` and the timestamp system fields are stored as normalized ISO strings
-  (`utils/Timestamps`: UTC `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`, `HH:mm:ss`, `yyyy-MM-dd`), and the
-  filter value is normalized the same way before the comparison, so `+02:00` and `Z` match the
-  same record. A value that does not parse as the field's type is a `400`. `JSON` and `FILE` are
-  not filterable and return `400`.
+- Allowed fields (`rules/ListFields`, shared with the sort) are the schema fields plus `id`,
+  `createdAt`, `updatedAt`. On `users`, `password` and the credential fields
+  (`UserRecordUtils.CREDENTIAL_FIELDS`) are rejected: a field that is never returned must not be
+  probed through a filter or an ordering either.
+- Values are converted to the field's BSON type. `DATE`, `TIME`, `DATETIME` and the timestamp
+  system fields are stored as normalized ISO strings (`utils/Timestamps`), and filter values are
+  normalized the same way, so `+02:00` and `Z` compare correctly. `SELECT` values must be among
+  the allowed values. A value that does not fit is a `400` naming the condition, e.g.
+  `filter[price][gte]='abc': value for number field 'price' is not a number`.
+- `contains` and `startsWith` build the regex with `Pattern.quote` only, never from client regex
+  syntax.
 
 An index is **not** required. Without one the filter costs a collection scan, but the rule
-filter already bounds the candidate set — this is an operational tuning question, not a reason
-to reject the request. `contains` is an unanchored regex and never uses an index.
+filter already bounds the candidate set. `contains` is an unanchored regex and never uses an
+index; `startsWith` is case-insensitive and cannot use one efficiently either.
+
+`find` and `countDocuments` run with `maxTime` (`CollectionRecordService.LIST_MAX_TIME`, 5 s).
+Hitting it, or MongoDB refusing a sort over its memory limit, answers `400` with
+`query too expensive, add an index or narrow the filter` instead of a `500`.
 
 A separate `search=<text>` parameter backs the search box of the admin data views
 (`ListFilterParser.search`): `contains` against `id` and every text field, ORed together. The
-OR is built on the server and not exposed in the filter grammar, which stays at one condition.
-`search` is ANDed with the rule filter and the client filter like any other narrowing. The
-tenant users list (`GET /api/meta/tenants/{id}/users?search=`) uses the same matcher over the
-users schema, so both admin views find the same records.
+OR is built on the server and not exposed in the filter grammar. `search` is ANDed with the rule
+filter and the client filter like any other narrowing. The tenant users list
+(`GET /api/meta/tenants/{id}/users?search=`) uses the same matcher over the users schema, so both
+admin views find the same records.
 
-The list also accepts an optional `sort` parameter of the same shape, parsed by
-`rules/ListSortParser`:
+The list also accepts an optional `sort` parameter, parsed by `rules/ListSortParser`:
 
 ```
-GET /api/collections/{collection}?sort=<field>:asc|desc
+GET /api/collections/{collection}?sort=<field>:asc|desc[,<field>:asc|desc]
 ```
 
-- Exactly one field and one direction; no multi-field sort and no `-field` shorthand, for the
-  same reason the filter has no composition.
-- Allowed fields are the schema fields plus the indexable system fields; `JSON` and `FILE` are
-  not sortable. An unknown field, an unknown direction, or a malformed value is a `400` — an
-  invalid sort is never answered with an arbitrarily ordered page.
+- Up to three keys (`ListSortParser.MAX_FIELDS`); no `-field` shorthand. The same fields as the
+  filter, except `FILE`. An unknown field, a field used twice, an unknown direction, or a
+  malformed value is a `400` — an invalid sort is never answered with an arbitrarily ordered page.
 - Without `sort`, the list is ordered by `_id`, which is always indexed and insertion-ordered.
   That default is what makes paging stable: an unordered cursor can repeat or drop a record
   once a write lands between two page requests.
@@ -122,8 +144,16 @@ GET /api/collections/{collection}?sort=<field>:asc|desc
   defined order otherwise, so paging over a non-unique field (a status, a date, `createdAt`
   within the same millisecond) could repeat or skip records. `_id` is used rather than `id`
   because `id` can be set by clients and has no unique index.
-- Sorting on a field without an index makes MongoDB sort in memory and fails above 32 MB. Like
-  the filter, that is an operational tuning question rather than a reason to reject the request.
+- Records without a value sort in MongoDB's order, for every key: with `asc` `[]` first, then
+  missing and `null` (equal, so `_id` decides), then the values, with `""` among the strings.
+  `desc` reverses it. Arrays sort by their smallest element with `asc` and their largest with
+  `desc`. This differs from the filter's "no value" for `""` and `[]`; it is documented, not
+  normalized.
+- Because of the `_id` tiebreaker, an index on the sort field alone cannot serve the sort
+  (verified with `explain()`: `{status: 1}` leaves a `SORT` stage for `{status: 1, _id: 1}`, and
+  every matching record is read per page). An index serves it only with the sort keys in order
+  and direction followed by `_id` ascending. Index definitions therefore accept `_id`
+  (`TenantCollectionService.validateIndex`), except as the only field and in a unique index.
 
 `limit` is **clamped** to the maximum of 100 rather than falling back to the default of 25: a
 request for more than the maximum asks for as much as possible, and answering it with a much
@@ -134,12 +164,20 @@ shorter page loses records without the client being able to notice. `limit <= 0`
 
 The following are intentionally out of scope for now and would be the natural follow-ups:
 
+- **Composition** — `or`, brackets and nested expressions. If `or` across different fields turns
+  out to be needed, it gets its own design.
+- **Sort extras** — sorting by computed expressions (e.g. "field A, otherwise field B") and
+  control over the position of records without a value (`nullsfirst`/`nullslast`).
+- **Index tuning beyond `_id`** — Paprika does not append `_id` to indexes automatically, and the
+  tiebreaker is always ascending, so `asc` and `desc` on the same field need two indexes.
+- **Relations** — relation traversal and expanding relations.
+- **Full-text search** with a `$text` index, field projection, cursor-based pagination,
+  aggregations, filters on realtime subscriptions, and custom rule expressions.
 - **Bulk mutations** — `DELETE`/`PATCH` with a filter. `beforeUpdate`/`beforeDelete` hooks and
   the field guards run per record, so a bulk mutation has to clarify how those apply before it
   can exist.
-- **More operators and composition** — anything beyond `eq` and `contains`, plus `and`/`or`,
-  bracketing, ordering comparisons, full-text search with a text index, multi-field sorting, and
-  relation traversal.
+- **In-memory evaluation** of `FilterCondition`s (e.g. for realtime) — the parsed form allows it,
+  but nothing uses it yet.
 
 ## Image variants for file fields
 

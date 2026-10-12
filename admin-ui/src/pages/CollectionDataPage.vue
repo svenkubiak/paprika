@@ -8,6 +8,16 @@ import { useAppToast } from '@/composables/useAppToast'
 import { usePageSize } from '@/composables/usePageSize'
 import { applyDefaultsToRecord, booleanToFormValue, BOOLEAN_UNSET } from '@/lib/field-validation'
 import TenantUsersManager from '@/components/TenantUsersManager.vue'
+import ListFilterBuilder from '@/components/ListFilterBuilder.vue'
+import {
+  filterEntries,
+  filterFields,
+  listRequestPath,
+  MAX_FILTER_CONDITIONS,
+  nextCondition,
+  readableListRequestPath,
+  type FilterCondition
+} from '@/lib/list-filters'
 import type { RecordSavePayload } from '@/components/RecordEditorSheet.vue'
 import type { CollectionDefinition, FieldDefinition } from '@/types'
 
@@ -39,6 +49,23 @@ let latestRecordsRequest = 0
 /** The search the records on screen were loaded with; typing applies it after a short pause. */
 const appliedSearch = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+const filterConditions = ref<FilterCondition[]>([])
+/** The filter parameters the records on screen were loaded with; edits apply after a short pause. */
+const appliedFilters = ref<[string, string][]>([])
+/** The server's 400 for the applied filters, shown in the filter panel instead of a toast. */
+const filterError = ref<string | null>(null)
+let filterTimer: ReturnType<typeof setTimeout> | undefined
+let nextConditionId = 1
+
+const availableFilterFields = computed(() => filterFields(definition.value?.fields || []))
+
+const listQuery = computed(() => ({
+  collection: collection.value,
+  sort: `${sortField.value}:${sortDirection.value}`,
+  search: appliedSearch.value,
+  filters: appliedFilters.value
+}))
 
 const pageSizeOptions = [
   { label: '10', value: 10 },
@@ -99,6 +126,11 @@ watch(collection, async () => {
   search.value = ''
   appliedSearch.value = ''
   clearTimeout(searchTimer)
+  // Conditions name fields of the previous collection
+  filterConditions.value = []
+  appliedFilters.value = []
+  filterError.value = null
+  clearTimeout(filterTimer)
   sortField.value = 'createdAt'
   sortDirection.value = 'desc'
   page.value = 1
@@ -121,6 +153,36 @@ watch(search, (value) => {
   }, 300)
 })
 
+// Like the search: applied after a short pause, and a new filter starts again on the first page.
+// Only complete conditions without an issue are sent, so a half-typed row changes nothing.
+watch(
+  filterConditions,
+  (conditions) => {
+    clearTimeout(filterTimer)
+    filterTimer = setTimeout(() => {
+      const entries = filterEntries(conditions, availableFilterFields.value)
+      if (JSON.stringify(entries) === JSON.stringify(appliedFilters.value)) return
+      appliedFilters.value = entries
+      if (page.value !== 1) {
+        page.value = 1
+        return
+      }
+      refreshRecords()
+    }, 300)
+  },
+  { deep: true }
+)
+
+function addFilter() {
+  if (filterConditions.value.length >= MAX_FILTER_CONDITIONS) return
+  const condition = nextCondition(nextConditionId++, availableFilterFields.value, filterConditions.value)
+  if (condition) filterConditions.value = [...filterConditions.value, condition]
+}
+
+function clearFilters() {
+  filterConditions.value = []
+}
+
 watch([page, pageSize], () => {
   if (isUsers.value) return
   refreshRecords()
@@ -142,6 +204,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearTimeout(searchTimer)
+  clearTimeout(filterTimer)
   window.removeEventListener('paprika:new-collection', onNewCollectionShortcut as EventListener)
 })
 
@@ -172,13 +235,23 @@ async function refreshRecords() {
       offset,
       pageSize.value,
       `${sortField.value}:${sortDirection.value}`,
-      appliedSearch.value
+      appliedSearch.value,
+      appliedFilters.value
     )
     // Collection switches and quick paging can overlap requests; only the newest may write.
     if (request !== latestRecordsRequest) return
     records.value = result.items
     total.value = result.total
+    filterError.value = null
   } catch (error) {
+    if (request !== latestRecordsRequest) return
+    // A rejected filter is the answer to what is being typed, so it belongs next to the rows
+    if (appliedFilters.value.length > 0 && error instanceof Error) {
+      filterError.value = error.message
+      records.value = []
+      total.value = 0
+      return
+    }
     toast.add({
       title: error instanceof Error ? error.message : 'Failed to load records',
       color: 'error',
@@ -409,6 +482,16 @@ if (!isUsers.value) {
         />
 
         <UButton
+          variant="soft"
+          color="neutral"
+          icon="i-lucide-filter"
+          :disabled="filterConditions.length >= MAX_FILTER_CONDITIONS"
+          @click="addFilter"
+        >
+          Add filter
+        </UButton>
+
+        <UButton
           v-if="selectedIds.size > 0"
           color="error"
           variant="soft"
@@ -418,6 +501,17 @@ if (!isUsers.value) {
           Delete selected ({{ selectedIds.size }})
         </UButton>
       </div>
+
+      <ListFilterBuilder
+        v-if="filterConditions.length > 0"
+        v-model="filterConditions"
+        :fields="availableFilterFields"
+        :error="filterError"
+        :request-path="listRequestPath(listQuery)"
+        :readable-request-path="readableListRequestPath(listQuery)"
+        class="mb-4"
+        @clear="clearFilters"
+      />
 
       <UTable
         :data="records"
@@ -478,11 +572,29 @@ if (!isUsers.value) {
         </template>
         <template #empty>
           <p v-if="loading" class="py-10 text-center text-sm text-muted">Loading records…</p>
-          <div v-else-if="appliedSearch" class="flex flex-col items-center gap-3 py-10 text-center">
-            <p class="text-sm text-muted">No records match “{{ appliedSearch }}”.</p>
-            <UButton variant="soft" color="neutral" icon="i-lucide-x" @click="search = ''">
-              Clear search
-            </UButton>
+          <div
+            v-else-if="appliedSearch || appliedFilters.length > 0"
+            class="flex flex-col items-center gap-3 py-10 text-center"
+          >
+            <p class="text-sm text-muted">
+              {{ appliedSearch ? `No records match “${appliedSearch}”` : 'No records match' }}{{
+                appliedFilters.length > 0 ? (appliedSearch ? ' and the filters.' : ' the filters.') : '.'
+              }}
+            </p>
+            <div class="flex flex-wrap justify-center gap-2">
+              <UButton v-if="appliedSearch" variant="soft" color="neutral" icon="i-lucide-x" @click="search = ''">
+                Clear search
+              </UButton>
+              <UButton
+                v-if="appliedFilters.length > 0"
+                variant="soft"
+                color="neutral"
+                icon="i-lucide-filter-x"
+                @click="clearFilters"
+              >
+                Clear filters
+              </UButton>
+            </div>
           </div>
           <div v-else class="flex flex-col items-center gap-3 py-10 text-center">
             <p class="text-sm text-muted">No records yet.</p>

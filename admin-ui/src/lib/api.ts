@@ -19,6 +19,7 @@ import type {
   TwoFactorSetupResult,
   ValidationError
 } from '@/types'
+import { encodeEntries } from '@/lib/list-filters'
 
 export class ApiError extends Error {
   status: number
@@ -502,17 +503,21 @@ export const api = {
     })
   },
 
-  /** `search` matches part of the id or any text field, ignoring case, across all pages. */
+  /**
+   * `search` matches part of the id or any text field, ignoring case, across all pages.
+   * `filters` are `filter[<field>][<operator>]` parameters, see `filterEntries`.
+   */
   listRecords(
     collection: string,
     offset: number,
     limit: number,
     sort: string,
-    search = ''
+    search = '',
+    filters: [string, string][] = []
   ): Promise<PaginatedRecords> {
     const searchParam = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''
     return request(
-      `/api/collections/${encodeURIComponent(collection)}?offset=${offset}&limit=${limit}&sort=${encodeURIComponent(sort)}${searchParam}`
+      `/api/collections/${encodeURIComponent(collection)}?offset=${offset}&limit=${limit}&sort=${encodeURIComponent(sort)}${searchParam}${encodeEntries(filters)}`
     )
   },
 
