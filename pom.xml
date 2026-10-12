@@ -24,7 +24,7 @@
 				<excludes>
 					<exclude>**/*.java</exclude>
 				</excludes>
-			</resource>x
+			</resource>
 			<resource>
 				<directory>src/main/resources</directory>
 				<includes>

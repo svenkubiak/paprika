@@ -209,7 +209,13 @@ export default defineConfig({
     outDir: assetsOutDir,
     chunkSizeWarningLimit: 600,
     emptyOutDir: false,
-    rollupOptions: {
+    rolldownOptions: {
+      // Rolldown warns when plugin callbacks take most of the build time. Nuxt UI's icon loader
+      // always does in a build this small, and the frontend-maven-plugin logs the warning as an
+      // error.
+      checks: {
+        bundlerTimings: false
+      },
       output: {
         entryFileNames: 'js/[name]-[hash].js',
         chunkFileNames: 'js/[name]-[hash].js',
