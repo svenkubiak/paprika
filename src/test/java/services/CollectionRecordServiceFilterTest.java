@@ -43,6 +43,15 @@ class CollectionRecordServiceFilterTest {
 
     private static final List<String> NO_VALUE = List.of("missing", "null", "empty", "emptyArray");
 
+    // Costs depend on each record's "cost": no JavaScript, whose interruption is reported as
+    // 11601 instead of 50 depending on timing, and no constant MongoDB could compute once per query
+    private static final int EXPENSIVE = 2_000_000;
+    private static final Bson COSTLY = Filters.expr(new Document("$gte", List.of(
+            new Document("$reduce", new Document("input", new Document("$range", List.of(0, "$cost")))
+                    .append("initialValue", 0)
+                    .append("in", new Document("$add", List.of("$$value", 1)))),
+            0)));
+
     @Test
     void nullMatchesMissingNullEmptyStringAndEmptyArray() {
         String collection = noValueCollection("filter_null_");
@@ -330,10 +339,12 @@ class CollectionRecordServiceFilterTest {
     void aQueryOverTheTimeLimitIsReportedAsTooExpensive() {
         String collection = collection("limit_find_",
                 new FieldDefinition("name", FieldType.STRING, false, true, null));
-        insert(collection, doc("slow"));
+        for (int i = 0; i < 3; i++) {
+            insert(collection, doc("costly-" + i).append("cost", EXPENSIVE));
+        }
 
         Optional<CollectionRecordService.ListPage> page = CollectionRecordService.listPage(
-                records(collection), sleepingFilter(200), Sorts.ascending("_id"),
+                records(collection), COSTLY, Sorts.ascending("_id"),
                 Projections.excludeId(), 0, 25, Duration.ofMillis(20));
 
         assertThat(page.isPresent(), is(false));
@@ -343,15 +354,16 @@ class CollectionRecordServiceFilterTest {
     void aCountOverTheTimeLimitIsReportedAsTooExpensive() {
         String collection = collection("limit_count_",
                 new FieldDefinition("name", FieldType.STRING, false, true, null));
+        insert(collection, doc("cheap").append("cost", 0));
         for (int i = 0; i < 10; i++) {
-            insert(collection, doc("slow-" + i));
+            insert(collection, doc("costly-" + i).append("cost", EXPENSIVE));
         }
 
-        // The page stops after one record (40 ms), the count has to evaluate all ten (400 ms)
-        assertThat(records(collection).find(sleepingFilter(40)).limit(1)
+        // The page stops after the cheap first record, only the count has to evaluate the costly ones
+        assertThat(records(collection).find(COSTLY).sort(Sorts.ascending("_id")).limit(1)
                 .maxTime(200, TimeUnit.MILLISECONDS).into(new ArrayList<>()), hasSize(1));
         Optional<CollectionRecordService.ListPage> page = CollectionRecordService.listPage(
-                records(collection), sleepingFilter(40), Sorts.ascending("_id"),
+                records(collection), COSTLY, Sorts.ascending("_id"),
                 Projections.excludeId(), 0, 1, Duration.ofMillis(200));
 
         assertThat(page.isPresent(), is(false));
@@ -363,9 +375,10 @@ class CollectionRecordServiceFilterTest {
                 new FieldDefinition("name", FieldType.STRING, false, true, null));
         insert(collection, doc("any"));
 
-        assertThrows(MongoException.class, () -> CollectionRecordService.listPage(
-                records(collection), Filters.expr(new Document("$function", new Document("body", "this is not javascript (").append("args", List.of()).append("lang", "js"))), Sorts.ascending("_id"),
+        MongoException e = assertThrows(MongoException.class, () -> CollectionRecordService.listPage(
+                records(collection), Filters.expr(new Document("$toInt", "not a number")), Sorts.ascending("_id"),
                 Projections.excludeId(), 0, 25, Duration.ofSeconds(5)));
+        assertThat(CollectionRecordService.isTooExpensive(e), is(false));
     }
 
     @Test
@@ -376,6 +389,8 @@ class CollectionRecordServiceFilterTest {
         assertThat(CollectionRecordService.isTooExpensive(serverError(16819)), is(true));
         assertThat(CollectionRecordService.isTooExpensive(serverError(16820)), is(true));
         assertThat(CollectionRecordService.isTooExpensive(serverError(2)), is(false));
+        // An interrupted operation (killOp) is not a query that is too expensive
+        assertThat(CollectionRecordService.isTooExpensive(serverError(11601)), is(false));
         assertThat(CollectionRecordService.isTooExpensive(new MongoException("network")), is(false));
     }
 
@@ -384,13 +399,6 @@ class CollectionRecordServiceFilterTest {
         assertThat(CollectionRecordService.LIST_MAX_TIME, is(Duration.ofSeconds(5)));
         assertThat(CollectionRecordService.QUERY_TOO_EXPENSIVE_MESSAGE,
                 is("query too expensive, add an index or narrow the filter"));
-    }
-
-    // countDocuments runs as an aggregation, where $where is not allowed; $function is
-    private static Bson sleepingFilter(int millis) {
-        return Filters.expr(new Document("$function", new Document("body", "function() { sleep(" + millis + "); return true; }")
-                .append("args", List.of())
-                .append("lang", "js")));
     }
 
     private static MongoQueryException serverError(int code) {
