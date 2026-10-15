@@ -13,7 +13,6 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<jdk.version>25</jdk.version>
 		<node.version>v24.21.0</node.version>
-		<!-- Default for the admin UI tests (npm test), which -DskipTests skips like the Java tests -->
 		<skipTests>false</skipTests>
 	</properties>
 	<build>
@@ -649,7 +648,7 @@
 					<plugin>
 						<groupId>org.pitest</groupId>
 						<artifactId>pitest-maven</artifactId>
-						<version>1.30.0</version>
+						<version>1.30.1</version>
 						<dependencies>
 							<dependency>
 								<groupId>org.pitest</groupId>
