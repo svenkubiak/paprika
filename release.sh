@@ -92,22 +92,30 @@ git push origin "${RELEASE_VERSION}"
 ok
 
 # ─── 8. Build and push Docker image ──────────────────────────────────────────
-step "8/9  Building Docker image from tag v${RELEASE_VERSION}"
+step "8/9  Building and pushing Docker image (linux/arm64, linux/amd64)"
 git checkout "${RELEASE_VERSION}"
 
 IMAGE="${REGISTRY}:${RELEASE_VERSION}"
 IMAGE_LATEST="${REGISTRY}:latest"
+BUILDER="paprika-release"
 
-docker build \
+# The default docker driver builds one platform. A container builder publishes
+# both architectures under the same tag as one manifest list.
+if ! docker buildx inspect "${BUILDER}" >/dev/null 2>&1; then
+    docker buildx create --name "${BUILDER}" --driver docker-container >/dev/null
+fi
+docker buildx inspect --bootstrap "${BUILDER}" >/dev/null
+
+docker buildx build \
+    --builder "${BUILDER}" \
     --pull \
     --no-cache \
+    --platform linux/arm64,linux/amd64 \
     -f Dockerfile \
     -t "${IMAGE}" \
     -t "${IMAGE_LATEST}" \
+    --push \
     .
-
-docker push "${IMAGE}"
-docker push "${IMAGE_LATEST}"
 
 git checkout main
 ok
@@ -132,6 +140,6 @@ git push origin main
 ok
 
 echo -e "\n${GREEN}${BOLD}Release ${RELEASE_VERSION} complete.${NC}"
-echo -e "  Docker : ${IMAGE}"
+echo -e "  Docker : ${IMAGE} (linux/arm64, linux/amd64)"
 echo -e "  Tag    : ${RELEASE_VERSION}"
 echo -e "  Next   : ${NEXT_SNAPSHOT}"
