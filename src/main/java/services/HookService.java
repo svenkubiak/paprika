@@ -36,6 +36,8 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 @Singleton
 public class HookService {
@@ -60,6 +62,27 @@ public class HookService {
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.requestLogService = Objects.requireNonNull(requestLogService, "requestLogService must not be null");
         this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    /** Stops taking after-hooks and gives the ones already running a few seconds. */
+    public void shutdown() {
+        asyncExecutor.shutdown();
+        try {
+            if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                asyncExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            asyncExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void submitAfter(Runnable task) {
+        try {
+            asyncExecutor.submit(task);
+        } catch (RejectedExecutionException e) {
+            LOG.debug("Dropped an after-hook because the instance is stopping");
+        }
     }
 
     public List<HookDefinition> listForCollection(TenantContext ctx, String collection) {
@@ -382,7 +405,7 @@ public class HookService {
         // Read eagerly: the async call outlives the request, the Request object may not.
         String requestId = request.getAttributeAsString(RequestAttributes.REQUEST_ID);
         for (HookDefinition hook : hooks) {
-            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId, requestId));
+            submitAfter(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId, requestId));
         }
         realtimeService.broadcast(ctx, definition, event, record, recordId);
     }
@@ -427,7 +450,7 @@ public class HookService {
         List<HookDefinition> hooks = findEnabledHooks(ctx, SystemCollections.USERS, event);
         String requestId = request.getAttributeAsString(RequestAttributes.REQUEST_ID);
         for (HookDefinition hook : hooks) {
-            asyncExecutor.submit(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId, requestId));
+            submitAfter(() -> executeAsync(ctx, hook, definition, event, request, body, record, recordId, requestId));
         }
     }
 

@@ -11,7 +11,11 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import services.ApiKeyService;
 import services.FileStorageService;
+import services.HookService;
+import services.ImageVariantQueue;
+import services.RealtimeService;
 import services.RequestLogService;
 import services.SystemCollectionService;
 
@@ -22,15 +26,27 @@ public class Bootstrap implements MangooBootstrap {
     private final SystemCollectionService systemCollectionService;
     private final RequestLogService requestLogService;
     private final FileStorageService fileStorageService;
+    private final RealtimeService realtimeService;
+    private final HookService hookService;
+    private final ApiKeyService apiKeyService;
+    private final ImageVariantQueue imageVariantQueue;
 
     @Inject
     public Bootstrap(
             SystemCollectionService systemCollectionService,
             RequestLogService requestLogService,
-            FileStorageService fileStorageService) {
+            FileStorageService fileStorageService,
+            RealtimeService realtimeService,
+            HookService hookService,
+            ApiKeyService apiKeyService,
+            ImageVariantQueue imageVariantQueue) {
         this.systemCollectionService = systemCollectionService;
         this.requestLogService = requestLogService;
         this.fileStorageService = fileStorageService;
+        this.realtimeService = realtimeService;
+        this.hookService = hookService;
+        this.apiKeyService = apiKeyService;
+        this.imageVariantQueue = imageVariantQueue;
     }
     
     @Override
@@ -224,6 +240,9 @@ public class Bootstrap implements MangooBootstrap {
 
     @Override
     public void applicationStopped() {
-        // TODO Auto-generated method stub
+        realtimeService.closeAll();
+        hookService.shutdown();
+        apiKeyService.shutdown();
+        imageVariantQueue.shutdown();
     }
 }

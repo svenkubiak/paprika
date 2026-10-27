@@ -17,8 +17,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A single worker bounds decodes instance-wide: decode memory scales with declared pixels, so
- * concurrent decodes in request threads could exhaust the heap. A full queue or a restart only
- * loses variants; downloads fall back to a wider variant or the original.
+ * concurrent decodes in request threads could exhaust the heap. A full queue, or work still
+ * queued when shutdown gives up, only loses variants; downloads fall back to a wider variant
+ * or the original.
  */
 @Singleton
 public class ImageVariantQueue {
@@ -31,9 +32,12 @@ public class ImageVariantQueue {
         }
     }
 
+    private static final Duration SHUTDOWN_WAIT = Duration.ofSeconds(5);
+
     private final FileStorageService storage;
     private final ThreadPoolExecutor worker;
     private final AtomicInteger pending = new AtomicInteger();
+    private volatile boolean stopped;
 
     // Lets a test hold the worker to fill the queue deterministically
     volatile CountDownLatch hold;
@@ -52,8 +56,11 @@ public class ImageVariantQueue {
                 new ThreadPoolExecutor.AbortPolicy());
     }
 
-    /** Call only once the record is written. {@code false} when the queue is full. */
+    /** Call only once the record is written. {@code false} when the queue is full or the instance is stopping. */
     public boolean submit(TenantContext ctx, Job job) {
+        if (stopped) {
+            return false;
+        }
         pending.incrementAndGet();
         try {
             worker.execute(() -> run(ctx, job));
@@ -62,6 +69,21 @@ public class ImageVariantQueue {
             pending.decrementAndGet();
             LOG.warn("Image variant queue is full, field {} keeps its original without variants", job.fieldName());
             return false;
+        }
+    }
+
+    /** Finishes queued variants, then drops whatever is still waiting. */
+    public void shutdown() {
+        stopped = true;
+        worker.shutdown();
+        try {
+            if (!worker.awaitTermination(SHUTDOWN_WAIT.toMillis(), TimeUnit.MILLISECONDS)) {
+                LOG.info("Image variant worker did not finish, dropping the rest");
+                worker.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            worker.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 

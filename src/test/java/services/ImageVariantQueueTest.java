@@ -72,6 +72,19 @@ class ImageVariantQueueTest {
     }
 
     @Test
+    void shutdownKeepsTheUploadAndDropsTheVariants() throws Exception {
+        FileStorageService storage = new FileStorageService(storageRoot);
+        ImageVariantQueue queue = new ImageVariantQueue(storage, 10);
+        queue.shutdown();
+        FileFieldService files = new FileFieldService(storage, queue);
+
+        String fileId = commitUpload(files);
+
+        assertThat(storage.read(CTX, fileId), notNullValue());
+        assertThat(storage.variantWidths(CTX, fileId), is(empty()));
+    }
+
+    @Test
     void aFileDeletedBeforeItsTurnLeavesNoVariantBehind() throws Exception {
         FileStorageService storage = new FileStorageService(storageRoot);
         ImageVariantQueue queue = new ImageVariantQueue(storage, 10);

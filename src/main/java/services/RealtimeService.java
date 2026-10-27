@@ -57,6 +57,14 @@ public class RealtimeService {
         return clientId;
     }
 
+    /** Closes every open stream. Called once, when the process stops. */
+    public void closeAll() {
+        int closed = revoke(client -> true);
+        if (closed > 0) {
+            LOG.info("Closed {} realtime client(s)", closed);
+        }
+    }
+
     public void onDisconnect(String clientId) {
         if (StringUtils.isBlank(clientId)) {
             return;

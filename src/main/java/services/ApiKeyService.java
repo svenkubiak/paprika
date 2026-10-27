@@ -28,6 +28,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
@@ -63,6 +64,11 @@ public class ApiKeyService {
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.tenantUserService = Objects.requireNonNull(tenantUserService, "tenantUserService must not be null");
         this.realtimeService = Objects.requireNonNull(realtimeService, "realtimeService must not be null");
+    }
+
+    /** Drops a last-use write that has not started. The key itself is already accepted. */
+    public void shutdown() {
+        touchExecutor.shutdownNow();
     }
 
     /** {@code expiresAt} is {@code null} for a key that never expires. */
@@ -328,14 +334,18 @@ public class ApiKeyService {
         }
 
         lastTouch.put(key.id(), now);
-        touchExecutor.submit(() -> {
-            try {
-                keys().updateOne(eq("id", key.id()),
-                        new Document("$set", new Document("lastUsedAt", Timestamps.format(now))));
-            } catch (RuntimeException e) {
-                LOG.warn("Failed to record last use of API key {}: {}", key.id(), e.getMessage());
-            }
-        });
+        try {
+            touchExecutor.submit(() -> {
+                try {
+                    keys().updateOne(eq("id", key.id()),
+                            new Document("$set", new Document("lastUsedAt", Timestamps.format(now))));
+                } catch (RuntimeException e) {
+                    LOG.warn("Failed to record last use of API key {}: {}", key.id(), e.getMessage());
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            LOG.debug("Dropped last-use update for API key {}, shutdown in progress", key.id());
+        }
     }
 
     private boolean isExpired(ApiKeyDefinition key) {
