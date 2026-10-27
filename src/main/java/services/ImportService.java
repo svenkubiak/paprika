@@ -10,6 +10,7 @@ import enums.Role;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import models.ApiKeyDefinition;
 import models.TenantDefinition;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -31,7 +32,10 @@ import java.util.zip.ZipInputStream;
 @Singleton
 public class ImportService {
     private static final Logger LOG = LogManager.getLogger(ImportService.class);
-    private static final String SUPPORTED_VERSION = "1";
+    // Version 1 archives predate api_keys and token_revocations. They stay readable, and a missing
+    // entry leaves the live collection alone: absence is not an empty collection.
+    private static final Set<String> SUPPORTED_VERSIONS = Set.of("1", ExportService.VERSION);
+    private static final Set<String> LEGACY_VERSIONS = Set.of("1");
     private static final long MAX_UNCOMPRESSED_BYTES = 512L * 1024 * 1024;
     private static final int MAX_ENTRY_COUNT = 10_000;
     private static final int READ_BUFFER_SIZE = 8192;
@@ -39,6 +43,8 @@ public class ImportService {
     private static final String SYSTEM_TENANTS = "system/tenants.json";
     private static final String SYSTEM_USERS = "system/users.json";
     private static final String SYSTEM_SETTINGS = "system/settings.json";
+    private static final String SYSTEM_API_KEYS = "system/api_keys.json";
+    private static final String SYSTEM_TOKEN_REVOCATIONS = "system/token_revocations.json";
     static final String SNAPSHOT_DIRECTORY = "pre-import-snapshots";
 
     private final TenantDatabaseResolver resolver;
@@ -85,7 +91,7 @@ public class ImportService {
         Map<String, Object> manifest = readManifest(entries);
 
         String version = (String) manifest.get("version");
-        if (!SUPPORTED_VERSION.equals(version)) {
+        if (!SUPPORTED_VERSIONS.contains(version)) {
             throw new IllegalArgumentException("Unsupported backup version: " + version);
         }
 
@@ -97,6 +103,9 @@ public class ImportService {
 
         List<Document> tenantDocuments = requiredDocuments(entries, SYSTEM_TENANTS);
         List<Document> settings = requiredDocuments(entries, SYSTEM_SETTINGS);
+        // Revocations are addressed by _id (jti: / sub:). Dropping it would restore rows nothing can find.
+        List<Document> apiKeys = systemDocuments(entries, SYSTEM_API_KEYS, version, false);
+        List<Document> tokenRevocations = systemDocuments(entries, SYSTEM_TOKEN_REVOCATIONS, version, true);
 
         Map<String, TenantDefinition> definitions = new LinkedHashMap<>();
         for (TenantDefinition tenant : parseTenantDefinitions(tenantDocuments)) {
@@ -113,7 +122,7 @@ public class ImportService {
             tenants.add(parseTenant(entries, tenant));
         }
 
-        return new BackupPlan(tenantDocuments, users, settings, tenants);
+        return new BackupPlan(tenantDocuments, users, settings, apiKeys, tokenRevocations, tenants);
     }
 
     private Map<String, Object> readManifest(Map<String, byte[]> entries) {
@@ -147,7 +156,7 @@ public class ImportService {
                 continue;
             }
             String physicalName = key.substring(dataPrefix.length(), key.length() - ".json".length());
-            data.put(physicalName, documents(key, entry.getValue()));
+            data.put(physicalName, documents(key, entry.getValue(), false));
         }
 
         return new TenantPlan(tenant, metaCollections, metaHooks, data, entries.get(prefix + "meta/collections.json"));
@@ -171,12 +180,29 @@ public class ImportService {
             throw new IllegalArgumentException("Incomplete backup: missing " + name
                     + ". Nothing was imported - a missing entry is a broken archive, not an empty collection");
         }
-        return documents(name, data);
+        return documents(name, data, false);
     }
 
-    private static List<Document> documents(String name, byte[] data) {
+    /**
+     * @return the documents, or null when a legacy archive does not contain the entry. Null means
+     *         "do not touch the live collection". An empty array is present and replaces it.
+     */
+    private static List<Document> systemDocuments(
+            Map<String, byte[]> entries, String name, String version, boolean keepId) {
+        byte[] data = entries.get(name);
+        if (data == null) {
+            if (LEGACY_VERSIONS.contains(version)) {
+                return null;
+            }
+            throw new IllegalArgumentException("Incomplete backup: missing " + name
+                    + ". Nothing was imported - a missing entry is a broken archive, not an empty collection");
+        }
+        return documents(name, data, keepId);
+    }
+
+    private static List<Document> documents(String name, byte[] data, boolean keepId) {
         try {
-            return parseDocuments(data);
+            return parseDocuments(data, keepId);
         } catch (IOException | RuntimeException e) {
             throw new IllegalArgumentException("Invalid backup: " + name + " could not be read: " + e.getMessage());
         }
@@ -286,6 +312,12 @@ public class ImportService {
         restoreCollection(db, TenantDefinition.COLLECTION, plan.tenantDocuments());
         restoreCollection(db, CollectionName.USERS, plan.users());
         restoreCollection(db, CollectionName.SETTINGS, plan.settings());
+        if (plan.apiKeys() != null) {
+            restoreCollection(db, ApiKeyDefinition.COLLECTION, plan.apiKeys());
+        }
+        if (plan.tokenRevocations() != null) {
+            restoreCollection(db, MongoTokenBlacklist.COLLECTION, plan.tokenRevocations());
+        }
 
         // Dropping took the indexes with it; rebuilt by their owning service so no second list can drift
         systemCollections.ensureSystemStructure();
@@ -343,7 +375,7 @@ public class ImportService {
         return docs.size();
     }
 
-    private static List<Document> parseDocuments(byte[] data) throws IOException {
+    private static List<Document> parseDocuments(byte[] data, boolean keepId) throws IOException {
         String json = new String(data, StandardCharsets.UTF_8).trim();
         if (json.isEmpty() || "[]".equals(json)) return List.of();
 
@@ -355,7 +387,13 @@ public class ImportService {
         List<Document> docs = new ArrayList<>();
         for (var node : nodes) {
             Document doc = Document.parse(node.toString());
-            doc.remove("_id");
+            if (keepId) {
+                if (doc.get("_id") == null) {
+                    throw new IllegalArgumentException("a document addressed by _id has none");
+                }
+            } else {
+                doc.remove("_id");
+            }
             docs.add(doc);
         }
         return docs;
@@ -409,6 +447,7 @@ public class ImportService {
         }
         Files.createDirectories(tenantDir);
 
+        Set<String> restored = new HashSet<>();
         int count = 0;
         for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
             if (!entry.getKey().startsWith(filesPrefix)) continue;
@@ -419,9 +458,36 @@ public class ImportService {
             if (!target.startsWith(tenantDir)) continue;
 
             Files.write(target, entry.getValue());
+            restored.add(fileId);
             count++;
         }
+        deleteFilesMissingFromArchive(tenantDir, restored, tenant.id());
         return count;
+    }
+
+    // The archive is the whole tenant directory. A file left behind would outlive the records that referenced it.
+    private static void deleteFilesMissingFromArchive(Path tenantDir, Set<String> restored, String tenantId) throws IOException {
+        List<Path> doomed = new ArrayList<>();
+        try (var stream = Files.list(tenantDir)) {
+            for (Path file : (Iterable<Path>) stream::iterator) {
+                if (Files.isDirectory(file)) continue;
+                String fileId = file.getFileName().toString();
+                if (restored.contains(fileId)) continue;
+                if (fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) continue;
+
+                Path target = file.normalize();
+                if (!target.startsWith(tenantDir)) continue;
+                doomed.add(target);
+            }
+        }
+        int removed = 0;
+        for (Path target : doomed) {
+            Files.deleteIfExists(target);
+            removed++;
+        }
+        if (removed > 0) {
+            LOG.info("Removed {} file(s) of tenant {} that were not in the backup", removed, tenantId);
+        }
     }
 
     /** {@code snapshot} is returned, not only logged, for when the restored backup was the wrong one. */
@@ -431,6 +497,8 @@ public class ImportService {
             List<Document> tenantDocuments,
             List<Document> users,
             List<Document> settings,
+            List<Document> apiKeys,
+            List<Document> tokenRevocations,
             List<TenantPlan> tenants) {}
 
     private record TenantPlan(

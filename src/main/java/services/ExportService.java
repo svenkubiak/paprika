@@ -6,6 +6,7 @@ import constants.CollectionName;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import models.ApiKeyDefinition;
 import models.TenantDefinition;
 import org.bson.Document;
 import org.bson.json.JsonMode;
@@ -23,7 +24,9 @@ import java.util.zip.ZipOutputStream;
 
 @Singleton
 public class ExportService {
-    private static final String VERSION = "1";
+    // Version 2 adds system/api_keys.json and system/token_revocations.json. Version 1 archives
+    // stay readable; they simply do not contain those collections.
+    static final String VERSION = "2";
     private static final Set<String> SKIP_FROM_DATA = Set.of(CollectionName.META_COLLECTIONS, CollectionName.META_HOOKS);
     private static final JsonWriterSettings JSON_SETTINGS = JsonWriterSettings.builder().outputMode(JsonMode.RELAXED).build();
 
@@ -65,6 +68,9 @@ public class ExportService {
         writeMongoCollection(zip, "system/tenants.json", db.getCollection(TenantDefinition.COLLECTION));
         writeMongoCollection(zip, "system/users.json", db.getCollection(CollectionName.USERS));
         writeMongoCollection(zip, "system/settings.json", db.getCollection(CollectionName.SETTINGS));
+        // Hashes only. The plaintext of a key is never stored, so a restored key keeps working.
+        writeMongoCollection(zip, "system/api_keys.json", db.getCollection(ApiKeyDefinition.COLLECTION));
+        writeMongoCollection(zip, "system/token_revocations.json", db.getCollection(MongoTokenBlacklist.COLLECTION));
     }
 
     private void writeTenantDatabase(ZipOutputStream zip, TenantDefinition tenant) throws IOException {

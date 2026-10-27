@@ -51,7 +51,7 @@ async function confirmImport() {
         <div class="space-y-2">
           <h3 class="font-medium">Export backup</h3>
           <p class="max-w-2xl text-sm text-muted">
-            Download a complete backup of all tenants, collections, data, and uploaded files as a ZIP archive.
+            Download a complete backup of all tenants, collections, data, uploaded files, API keys, and revoked admin sessions as a ZIP archive.
           </p>
           <UButton
             icon="i-lucide-download"
@@ -67,7 +67,7 @@ async function confirmImport() {
         <div class="space-y-2">
           <h3 class="font-medium">Restore from backup</h3>
           <p class="max-w-2xl text-sm text-muted">
-            Upload a previously exported ZIP to restore all data. This will permanently overwrite everything.
+            Upload a previously exported ZIP to restore the instance. This replaces tenants, data, API keys, revoked admin sessions, and files. Files that are not in the archive are deleted.
           </p>
           <div class="flex flex-wrap items-center gap-3">
             <input
@@ -105,7 +105,7 @@ async function confirmImport() {
             variant="soft"
             icon="i-lucide-triangle-alert"
             title="Everything is replaced by the backup"
-            description="All existing tenants, collections, data, and files are overwritten with the backup contents. The state from before the restore is saved to the server's storage directory first, so a wrong restore can be undone."
+            description="Tenants, collections, data, API keys, revoked admin sessions, and files are replaced by the archive. A file that is not in the archive is deleted. The state from before the restore is saved to the server's storage directory first, so a wrong restore can be undone."
           />
           <UAlert
             color="warning"

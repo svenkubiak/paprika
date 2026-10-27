@@ -4,14 +4,16 @@ Part of the [Settings](/admin-ui/settings) page — instance-wide backup and res
 
 ## Export
 
-**Download backup** downloads a single ZIP archive containing **all tenants**: their collections, schemas, rules, hooks, records, and uploaded files. It's an all-tenant snapshot, not a per-tenant export — there's no way to back up or restore a single tenant in isolation from this page.
+**Download backup** downloads a single ZIP archive containing **all tenants**: their collections, schemas, rules, hooks, records, and uploaded files, plus the instance's API keys and admin-session revocations. It's an all-tenant snapshot, not a per-tenant export — there's no way to back up or restore a single tenant in isolation from this page.
+
+API keys are stored as hashes. The archive contains those hashes, not the plaintext, which Paprika never keeps. A restored key therefore keeps working for whoever already has it. Admin-session revocations are the `token_revocations` collection: a session that was revoked at the time of the export stays revoked after the restore.
 
 ## Restore
 
 Uploading a previously exported ZIP restores its contents.
 
 ::: danger This overwrites everything
-Restoring a backup **overwrites all existing tenants, collections, data, and files** with whatever is in the ZIP. It is not a merge — anything created since the backup was taken, in any tenant, is lost. The confirmation dialog spells this out; read it before confirming, especially on a production instance.
+Restoring a backup **replaces** the instance with the archive: tenants, collections, records, API keys, admin-session revocations, and uploaded files. It is not a merge. Anything created since the backup was taken is lost, including a file that is no longer in the archive — those files are deleted. The confirmation dialog spells this out; read it before confirming, especially on a production instance.
 :::
 
 ### What happens before anything is written
@@ -35,16 +37,16 @@ people expect.
 
 | Limit | Value | Where it comes from |
 |---|---|---|
-| Upload size of a restore | **4 MiB** | Undertow's `undertow.maxentitysize`; a larger request body is refused before Paprika sees it |
-| Upload size through the proxy | **1 MB unless you change it** | nginx's `client_max_body_size` default — set it to `4m`, see [nginx example](/operations/going-to-production#nginx-example) |
+| Upload size of a restore | **64 MiB (67,108,864 bytes)** | Undertow's `undertow.maxentitysize`; a larger request body is refused before Paprika sees it |
+| Upload size through the proxy | **1 MB unless you change it** | nginx's `client_max_body_size` default — set it to `64m`, see [nginx example](/operations/going-to-production#nginx-example) |
 | Uncompressed archive contents | 512 MB | Checked while unpacking, as a zip-bomb guard |
 | Entries in the archive | 10 000 | Collections plus uploaded files, across all tenants |
 | Download size of an export | no limit | Only your heap |
 
-The first row is the one that decides. **A restore works as long as the ZIP is at most 4 MiB** —
+The first row is the one that decides. **A restore works as long as the ZIP is at most 64 MiB (67,108,864 bytes)** —
 compressed, so with JSON data that is a fair amount of records, but not many uploaded files.
 Raising it means replacing the whole bundled `config.yaml` via `-Dapplication.config=…`, which is
-a maintenance burden of its own; treat 4 MiB as the number to plan with.
+a maintenance burden of its own; treat 64 MiB as the number to plan with.
 
 ::: danger An export is not proof of a working restore
 Nothing limits the size of a **download**, so an instance that has grown past the upload limit
@@ -60,6 +62,8 @@ live at the same time. The packaged install runs with `-XX:MaxRAMPercentage=70` 
 and because the snapshot is written before the first write, the state from before is on disk
 either way. In Docker the JVM defaults to 25 % of the container memory unless you set
 `JAVA_OPTS`.
+
+**Older archives.** An export from before manifest version 2 has no `system/api_keys.json` and no `system/token_revocations.json`. Restoring one still brings back tenants, records and files, and it still deletes tenant files that are not in the archive. It does not replace API keys or admin-session revocations, because the archive never contained them. A current export is version 2, and a version 2 archive that is missing either file is refused before anything is written.
 
 **Beyond that.** For an instance too large for this page, back up at the infrastructure level:
 `mongodump` (or your provider's snapshots) for the databases, and a file-level copy of
