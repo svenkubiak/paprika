@@ -34,12 +34,15 @@ services:
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
     volumes:
       - ./storage:/app/storage
+    # Same check as nc -z. Bash is already in the image; nc and curl are not.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/8080'"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
+    # Startup order only. Paprika waits until MongoDB's own healthcheck passes.
+    # A database that dies later does not stop this container; GET /health reports that.
     depends_on:
       mongodb:
         condition: service_healthy
