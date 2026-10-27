@@ -206,18 +206,9 @@ Release frequency may change at any time.
 
 ## Backward Compatibility
 
-The Licensor aims to maintain reasonable compatibility where practical, but does not guarantee backward compatibility unless expressly agreed in writing.
+The public surface of the Software changes only under the rules in `docs/operations/compatibility.md`. A breaking change is announced in the release notes.
 
-Major releases may include breaking changes.
-
-Minor or patch releases may also include changes necessary for:
-
-* security;
-* correctness;
-* compatibility;
-* legal compliance;
-* dependency updates; or
-* architectural improvements.
+That document is a project policy. It does not by itself create a support commitment, a backport obligation, or a warranty. Unless expressly agreed in writing, there is no guarantee of compatibility beyond what that policy describes.
 
 Users are responsible for reviewing release notes and testing upgrades before production deployment.
 

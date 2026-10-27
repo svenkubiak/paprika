@@ -4,9 +4,7 @@ Paprika ships as a plain HTTP application. It doesn't terminate TLS, it doesn't 
 
 This page walks through the hardening you should have in place before a Paprika instance is reachable from the outside. The [installation section in the README](https://github.com/svenkubiak/paprika#-installation) covers getting it running; this is what to do around it.
 
-::: warning Beta
-Paprika is still in beta and not yet recommended for production. Treat everything below as the baseline you'd want *before* that changes, not a sign that it's ready.
-:::
+The [compatibility contract](/operations/compatibility) is what a release is allowed to change. Everything below is the deployment Paprika is built to run in.
 
 ## Put it behind a reverse proxy
 
@@ -442,10 +440,10 @@ server {
         limit_req zone=paprika_write burst=20 nodelay;
 
         # File uploads go through here. nginx defaults to 1m, which caps every upload at one
-        # megabyte no matter what the field's maxSize says. 4m matches Undertow's own limit
-        # (undertow.maxentitysize, 4 MiB), which is the real ceiling - a larger value here only
-        # moves the rejection from a clean 413 to a dropped connection.
-        client_max_body_size 4m;
+        # megabyte no matter what the field's maxSize says. 64m matches Undertow's own limit
+        # (undertow.maxentitysize, 64 MiB / 67,108,864 bytes), which is the real ceiling - a larger
+        # value here only moves the rejection from a clean 413 to a dropped connection.
+        client_max_body_size 64m;
 
         proxy_pass http://paprika;
     }
@@ -489,9 +487,9 @@ server {
         if ($paprika_admin_allowed = 0) { return 403; }
 
         # A backup restore is a file upload on this path, and nginx's 1m default would reject
-        # anything bigger with a 413. 4m is as far as it goes: Undertow refuses a larger request
+        # anything bigger with a 413. 64m is as far as it goes: Undertow refuses a larger request
         # body. See Backup & Restore for what that means for the size of an instance.
-        client_max_body_size 4m;
+        client_max_body_size 64m;
 
         proxy_pass http://paprika;
     }
@@ -553,11 +551,11 @@ paprika.example.com {
     # cap concurrent connections per source at the firewall - see "Cap the concurrent realtime
     # connections" above for why this is not optional.
 
-    # Caddy has no request body limit by default either. Undertow refuses a body over 4 MiB,
-    # so there is nothing to raise - only something to know when an upload or a backup restore
-    # comes back as a dropped request.
+    # Caddy has no request body limit by default either. Undertow refuses a body over 64 MiB
+    # (67,108,864 bytes), so there is nothing to raise - only something to know when an upload
+    # or a backup restore comes back as a dropped request. 64MiB, not 64MB: Caddy's MB is decimal.
     request_body {
-        max_size 4MB
+        max_size 64MiB
     }
 
     header Strict-Transport-Security "max-age=63072000; includeSubDomains"
@@ -617,7 +615,7 @@ location /health {
 }
 ```
 
-The Docker setup includes a healthcheck on the `paprika` container that polls `/health` every 30 seconds. You can use the same endpoint in whatever tooling you prefer.
+The Docker setup includes a healthcheck on the `paprika` container that opens a TCP connection to port 8080 every 30 seconds. It only checks that the process accepts connections. `/health` is there for a load balancer or uptime monitor that wants the database status as well.
 
 ## Getting a 503 from the proxy after a restart or update
 
@@ -653,7 +651,7 @@ A 502 (not 503) during the first seconds after a start is different and harmless
 - **Lock down MongoDB.** The production config runs with authentication on (`auth: true`). Keep the database on a private network the outside can't reach, use a dedicated user with access to just the Paprika databases, and never publish the Mongo port. Everything a tenant stores lives here, one database per tenant.
 - **Protect the storage directory.** `PAPRIKA_STORAGE` holds uploaded files. Put it on a volume only the Paprika process can read and write, and include it in your backups.
 - **Take backups.** Use the [Backup & Restore](/admin-ui/backup-restore) tooling, and back up MongoDB and the storage directory on the infrastructure side too. Test a restore once in a while so you know it works before you need it.
-- **Keep it updated.** Re-running the install script updates an existing installation while leaving your `.env` and `storage/` alone. Stay current for security fixes while Paprika is in beta.
+- **Keep it updated.** Re-running the install script updates an existing installation while leaving your `.env` and `storage/` alone. Stay current for security fixes. What an upgrade is allowed to change is the [compatibility contract](/operations/compatibility).
 - **Mind the setup link.** The one-time superadmin setup token is printed to the application log and expires after 30 minutes. Complete setup promptly, and don't leave that log where others can read it.
 - **Set a log retention.** API request logs are kept according to the retention you configure under [Settings](/admin-ui/settings#request-logs). Pick a window that fits your needs instead of keeping everything forever.
 

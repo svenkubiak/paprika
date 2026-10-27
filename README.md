@@ -3,16 +3,16 @@
 [![SemVer](https://img.shields.io/badge/SemVer-2.0.0-green)](https://semver.org/lang/de)
 [![Release Build](https://github.com/svenkubiak/paprika/actions/workflows/release.yml/badge.svg)](https://github.com/svenkubiak/paprika/actions/workflows/release.yml)
 [![Docs](https://img.shields.io/badge/docs-online-blue?logo=readthedocs&logoColor=white)](https://docs.getpaprika.dev/)
-[![Status](https://img.shields.io/badge/status-beta-orange)](https://github.com/svenkubiak/paprika#-paprika)
+[![Compatibility](https://img.shields.io/badge/compatibility-versioned-green)](https://docs.getpaprika.dev/operations/compatibility)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](https://github.com/svenkubiak/paprika/blob/main/LICENSING.md)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-%F0%9F%8D%BA-yellow)](https://buymeacoffee.com/svenkubiak)
 
 # 🫑 Paprika
 
-> [!WARNING]
-> **Paprika is currently in beta and not yet recommended for production use.**
+> [!IMPORTANT]
+> Paprika's public surface is versioned. What a release may change, and how a breaking change is announced, is the [compatibility contract](https://docs.getpaprika.dev/operations/compatibility).
 >
-> All releases before 1.0.0 are considered beta. APIs, configuration, database structures, and Docker images can change at any time without notice, including breaking changes between minor versions. Commercial licensing is **not yet available**, so Paprika is currently for development, testing, and evaluation only.
+> A commercial license is required for commercial production and is **not yet offered**. Noncommercial use is covered by the [PolyForm Noncommercial License](LICENSE).
 
 Paprika is a source-available, self-hosted **Backend-as-a-Service (BaaS)** built on [mangoo I/O](https://github.com/svenkubiak/mangooio) and MongoDB. It gives you multi-tenant collections, a REST API, access rules, webhooks, and a modern admin UI, all without running a separate frontend process in production.
 

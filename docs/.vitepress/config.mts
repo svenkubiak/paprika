@@ -63,7 +63,8 @@ export default defineConfig({
       {
         text: 'Operations',
         items: [
-          { text: 'Going to Production', link: '/operations/going-to-production' }
+          { text: 'Going to Production', link: '/operations/going-to-production' },
+          { text: 'Compatibility', link: '/operations/compatibility' }
         ]
       },
       {
