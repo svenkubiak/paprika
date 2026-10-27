@@ -22,7 +22,7 @@ jobs:
           cache: maven
 
       - name: Build .deb package
-        run: mvn package -P package-deb-x86 -DskipTests
+        run: mvn -B package -P package-deb-x86
 
       - uses: actions/upload-artifact@v7
         with:
@@ -47,7 +47,7 @@ jobs:
           cache: maven
 
       - name: Build .deb package
-        run: mvn package -P package-deb-arm64 -DskipTests
+        run: mvn -B package -P package-deb-arm64
 
       - uses: actions/upload-artifact@v7
         with:

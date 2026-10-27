@@ -80,7 +80,9 @@ ok
 
 # ─── 6. Build release artifact ────────────────────────────────────────────────
 step "6/9  Building release artifact"
-mvn clean package -DskipTests -q || fail "Maven package failed."
+# Same tests as step 2. The package build is what produces the jar that gets tagged,
+# so it runs them again instead of packaging with -DskipTests.
+mvn clean package -q || fail "Maven package failed."
 
 # ─── 7. Commit, tag, push ─────────────────────────────────────────────────────
 step "7/9  Committing, tagging and pushing"
