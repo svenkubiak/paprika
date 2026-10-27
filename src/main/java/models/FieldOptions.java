@@ -31,8 +31,8 @@ public record FieldOptions(
         List<Integer> imageWidths,
         Boolean multiline
 ) {
-    // Below Undertow's 4 MiB body limit (undertow.maxentitysize), leaving headroom for the
-    // multipart boundaries, part headers and other fields of the same request.
+    // A modest default, well under the 64 MiB request ceiling (undertow.maxentitysize).
+    // Several files, or one larger file, still have to fit in that one request.
     public static final long DEFAULT_MAX_SIZE = 4_000_000L;
 
     // Every width multiplies the storage of every upload to the field.

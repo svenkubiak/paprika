@@ -6,8 +6,8 @@ import { parseDefaultValue } from '@/lib/field-validation'
 export const MAX_IMAGE_WIDTHS = 4
 
 /**
- * Mirrors FieldOptions.DEFAULT_MAX_SIZE: kept under the server's 4 MiB request body limit so the
- * multipart overhead and other fields of the upload still fit.
+ * Mirrors FieldOptions.DEFAULT_MAX_SIZE. The whole request is capped at 64 MiB
+ * (undertow.maxentitysize); several files in one upload have to fit into that together.
  */
 export const DEFAULT_FILE_MAX_SIZE = 4_000_000
 

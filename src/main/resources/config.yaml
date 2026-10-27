@@ -2,9 +2,11 @@
 
 default:
   undertow:
+    # 64 MiB (67,108,864 bytes). Docs, the admin UI and the proxy examples use this same ceiling.
+    # A field's default maxSize stays at 4,000,000; raising it is bounded by this request limit.
     maxentitysize: 67108864
   form:
-    maxfilesize: 64000000
+    maxfilesize: 67108864
   application:
     name: paprika
     secret: tXbwvKVetgZSi1VSIEGTsPcIWmSwajJuQkYrx7OSwwGdGZ3J5yGi8IFiGhVEuT6T

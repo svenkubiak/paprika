@@ -71,6 +71,15 @@ class ConfigYamlTest {
         assertThat(flatten(null), hasKey(services.MailService.SMTP_FROM_NAME_KEY));
     }
 
+    /** Docs, the admin UI and the proxy examples all describe this ceiling. */
+    @Test
+    void theRequestBodyLimitIsSixtyFourMebibytes() {
+        Map<String, String> defaults = flatten(null);
+
+        assertThat(defaults.get("undertow.maxentitysize"), equalTo("67108864"));
+        assertThat(defaults.get("form.maxfilesize"), equalTo("67108864"));
+    }
+
     @Test
     void theTestEnvironmentUsesItsOwnStorageDirectory() {
         Map<String, String> test = flatten("test");

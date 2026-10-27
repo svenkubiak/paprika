@@ -24,7 +24,7 @@ export const schemaFieldHints = {
   fileMaxSize: {
     short: 'Maximum upload size per file.',
     long:
-      'The whole request may not exceed 4 MiB, so several files in one request have to fit into that together.'
+      'The whole request may not exceed 64 MiB, so several files in one request have to fit into that together.'
   },
   fileMimeTypes: {
     short: 'Allow list of MIME types. Leave empty to allow any type.',
