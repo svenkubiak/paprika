@@ -68,28 +68,58 @@ if [[ ! "$CURRENT_VERSION" =~ -SNAPSHOT$ ]]; then
     fail "Current version '${CURRENT_VERSION}' is not a SNAPSHOT. Set a SNAPSHOT version first."
 fi
 
-RELEASE_VERSION="${CURRENT_VERSION%-SNAPSHOT}"
+SNAPSHOT_BASE="${CURRENT_VERSION%-SNAPSHOT}"
 
-# MAJOR.MINOR.PATCH, or a pre-release of it such as 1.0.0-Beta1
-VERSION_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+# A release is MAJOR.MINOR.PATCH, a beta a pre-release of it such as 1.0.0-Beta1
+RELEASE_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+$'
+BETA_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$'
 
-if [[ ! "$RELEASE_VERSION" =~ $VERSION_PATTERN ]]; then
-    fail "Version '${RELEASE_VERSION}' is not valid SemVer 2.0.0 (MAJOR.MINOR.PATCH)."
+if [[ ! "$SNAPSHOT_BASE" =~ $RELEASE_PATTERN ]]; then
+    fail "Version '${CURRENT_VERSION}' is not valid SemVer 2.0.0 (MAJOR.MINOR.PATCH-SNAPSHOT)."
+fi
+
+# Tags pushed from elsewhere count as well, so no beta number is handed out twice
+if ! git fetch --quiet --tags origin; then
+    echo -e "${YELLOW}Could not fetch the tags from origin, using the local ones.${NC}"
 fi
 
 echo -e "Current  : ${YELLOW}${CURRENT_VERSION}${NC}"
-echo -e "Proposed : ${YELLOW}${RELEASE_VERSION}${NC} (enter e.g. ${RELEASE_VERSION}-Beta1 for a pre-release)"
-read -rp "Confirm release version [${RELEASE_VERSION}]: " INPUT_VERSION
-RELEASE_VERSION="${INPUT_VERSION:-$RELEASE_VERSION}"
+echo -e "  [r] Release ${SNAPSHOT_BASE}: also tagged latest, which every installation without a pinned version gets"
+echo -e "  [b] Beta of ${SNAPSHOT_BASE}: a pre-release, latest stays where it is"
 
-if [[ ! "$RELEASE_VERSION" =~ $VERSION_PATTERN ]] || [[ "$RELEASE_VERSION" == *-SNAPSHOT ]]; then
-    fail "Version '${RELEASE_VERSION}' is not valid SemVer 2.0.0 (MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-suffix)."
+# An explicit answer, no default: a stray Enter must not publish a release as latest
+RELEASE_TYPE=""
+while [[ "$RELEASE_TYPE" != "r" && "$RELEASE_TYPE" != "b" ]]; do
+    read -rp "Release or beta? [r/b]: " RELEASE_TYPE
+    RELEASE_TYPE="$(echo "$RELEASE_TYPE" | tr '[:upper:]' '[:lower:]')"
+done
+
+if [[ "$RELEASE_TYPE" == "r" ]]; then
+    PROPOSED="$SNAPSHOT_BASE"
+else
+    LAST_BETA="$(git tag --list "${SNAPSHOT_BASE}-Beta*" \
+        | grep -E "^${SNAPSHOT_BASE//./\\.}-Beta[0-9]+$" \
+        | sed 's/.*-Beta//' | sort -n | tail -1 || true)"
+    PROPOSED="${SNAPSHOT_BASE}-Beta$(( ${LAST_BETA:-0} + 1 ))"
 fi
 
-# A pre-release is published like a release, but never as the latest one
+read -rp "Confirm release version [${PROPOSED}]: " INPUT_VERSION
+RELEASE_VERSION="${INPUT_VERSION:-$PROPOSED}"
+
+if [[ "$RELEASE_TYPE" == "r" && ! "$RELEASE_VERSION" =~ $RELEASE_PATTERN ]]; then
+    fail "A release is MAJOR.MINOR.PATCH, '${RELEASE_VERSION}' is not. Choose beta for a pre-release."
+fi
+if [[ "$RELEASE_TYPE" == "b" ]] && { [[ ! "$RELEASE_VERSION" =~ $BETA_PATTERN ]] || [[ "$RELEASE_VERSION" == *-SNAPSHOT ]]; }; then
+    fail "A beta is MAJOR.MINOR.PATCH-suffix such as ${PROPOSED}, '${RELEASE_VERSION}' is not."
+fi
+if git rev-parse --quiet --verify "refs/tags/${RELEASE_VERSION}" >/dev/null; then
+    fail "Tag '${RELEASE_VERSION}' already exists."
+fi
+
+# A beta is published like a release, but never as the latest one
 RELEASE_BASE="${RELEASE_VERSION%%-*}"
 PRERELEASE=false
-if [[ "$RELEASE_VERSION" != "$RELEASE_BASE" ]]; then
+if [[ "$RELEASE_TYPE" == "b" ]]; then
     PRERELEASE=true
 fi
 
