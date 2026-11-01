@@ -242,4 +242,6 @@ Subscribing fixes the identity of a stream. The `viewRule` is evaluated again fo
 
 ## The users collection is a special case
 
+With several Paprika instances behind a load balancer, the stream stays on the instance that accepted it, and the requests around it may reach any instance. A `subscribe` on another instance is checked against the same `clientId` registry and forwarded to the instance holding the stream; the `subscribed` event on the stream confirms it a moment after the `204`. A record change reaches every subscriber, whichever instance wrote it, and a revocation closes the user's streams on every instance. A record larger than 1 MiB is not sent between instances: the other instances read it again themselves, so they deliver its current state, and a deletion of such a record reaches only the subscribers on the instance that deleted it.
+
 For the tenant [`users` collection](/admin-ui/tenant-users), the reference shows the **Authentication** card and no realtime link. You can't subscribe to `users` and Paprika never broadcasts account changes, so there's nothing live to document. Its REST endpoints also never return `passwordHash` or `passwordSalt`, and passwords are only ever written through the virtual `password` field, so they never show up in an example response either.

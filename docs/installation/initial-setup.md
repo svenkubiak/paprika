@@ -16,7 +16,7 @@ The token itself never leaves the URL fragment (`#token=...`), so it isn't sent 
 
 ## If the token expires
 
-Restart Paprika. As long as no superadmin account has completed setup yet, it prints a fresh token on startup. Once a superadmin exists with a password, this path closes — the log will no longer print setup links, and further superadmin accounts are created exclusively through the invite flow described in [Superadmins](/admin-ui/superadmins).
+Restart Paprika. As long as no superadmin account has completed setup yet, it prints a fresh token on startup. A link printed earlier stays valid until its own 30 minutes are up, so with several instances starting at once, the link from any of their logs works. Once a superadmin exists with a password, this path closes — the log will no longer print setup links, and further superadmin accounts are created exclusively through the invite flow described in [Superadmins](/admin-ui/superadmins).
 
 ## Add more than one superadmin
 
