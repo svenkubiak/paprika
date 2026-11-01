@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -123,5 +124,18 @@ class FileStorageServiceTest {
         storage.deleteTenantDirectory("tenant-a/../tenant-a");
 
         assertThat(new String(storage.read(tenantA, "file-1")), is("one"));
+    }
+
+    /** On a shared volume another instance may be writing a variant right now; only finished ones count. */
+    @Test
+    void aVariantStillBeingWrittenIsNotListed() throws Exception {
+        FileStorageService storage = new FileStorageService(tempDir);
+        TenantContext tenantA = TenantContext.guest("tenant-a", "tenant_a_db");
+        storage.store(tenantA, "file-1", "original".getBytes());
+        storage.store(tenantA, FileStorageService.variantKey("file-1", 320), "small".getBytes());
+        Files.write(tempDir.resolve("tenant-a").resolve("." + FileStorageService.variantKey("file-1", 640) + ".4f1c.tmp"),
+                "half".getBytes());
+
+        assertThat(storage.variantWidths(tenantA, "file-1"), contains(320));
     }
 }
