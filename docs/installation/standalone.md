@@ -112,7 +112,7 @@ cd /opt/paprika
 curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/install-or-update.sh | sudo bash -s -- --version 1.0.0-Beta1
 ```
 
-A pre-release counts as older than its release, so `1.0.0` updates `1.0.0-Beta1`. While the installed pre-release is newer than the latest release, an update without `--version` changes nothing.
+A pre-release counts as older than its release, so `1.0.0` updates `1.0.0-Beta1`. While the installed pre-release is newer than the latest release, an update without `--version` changes nothing. See [Pre-releases](./pre-releases) for the whole round trip.
 
 Installing a version older than the installed one is possible, but not supported: data written by a newer version may be unreadable for an older one. Back up your database first.
 
