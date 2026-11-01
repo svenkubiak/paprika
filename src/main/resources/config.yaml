@@ -169,6 +169,10 @@ environments:
       secret: file{}
       parameter:
         strict: true
+      admin:
+        enable: env{}
+        username: env{}
+        password: env{}
     connector:
       http:
         host: env{}
