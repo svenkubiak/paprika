@@ -156,6 +156,23 @@ The script:
 rm -rf /opt/paprika/storage
 ```
 
+## Testing an unreleased version
+
+`--deb` installs or updates from a local package instead of a GitHub release — everything else, from the secrets to the systemd unit, runs as for a release. The package names its version, so `--deb` does not combine with `--version`, and it has to match the architecture of the machine. There is no published checksum to verify a local package against.
+
+Build the package on Linux from a checkout of the branch, with the profile of the target architecture (`package-deb-x86` or `package-deb-arm64`):
+
+```bash
+mvn -P package-deb-x86 -DskipTests package
+```
+
+Then run the script of the same checkout from the install directory:
+
+```bash
+cd /opt/paprika
+sudo bash ~/paprika/install-or-update.sh --deb ~/paprika/target/dist/<package>.deb
+```
+
 ## Moving secrets from .env to files
 
 Installations from before secret files keep their secrets in `.env`. The install script does not migrate them: on such an installation it stops before downloading anything and changes nothing. Move the values once by hand — they stay the same, so nobody is signed out — and run the update afterwards:

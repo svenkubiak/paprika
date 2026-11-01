@@ -11,9 +11,19 @@ set -euo pipefail
 #  Usage:
 #    mkdir /srv/paprika && cd /srv/paprika
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-docker.sh | bash
+#
+#  Testing an unreleased version:
+#    PAPRIKA_REF    branch or tag to download compose.yml and mongo-init.js from (default: main)
+#    PAPRIKA_IMAGE  image to run instead of the published one, e.g. one built locally;
+#                   kept in .env, so later docker compose commands use it as well
+#
+#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/feature/1.x/install-docker.sh \
+#         | PAPRIKA_REF=feature/1.x PAPRIKA_IMAGE=paprika:1.x-test bash
 # ─────────────────────────────────────────────────────────────────────────────
 
-GITHUB_RAW="https://raw.githubusercontent.com/svenkubiak/paprika/main"
+PAPRIKA_REF="${PAPRIKA_REF:-main}"
+PAPRIKA_IMAGE="${PAPRIKA_IMAGE:-}"
+GITHUB_RAW="https://raw.githubusercontent.com/svenkubiak/paprika/${PAPRIKA_REF}"
 DOCS_URL="https://docs.getpaprika.dev/installation/docker"
 ENV_FILE=".env"
 SECRETS_DIR="secrets"
@@ -69,6 +79,15 @@ ask() {
     printf '%s' "$2" > /dev/tty
     IFS= read -r __reply < /dev/tty || true
     printf -v "$1" '%s' "$__reply"
+}
+
+# Writes PAPRIKA_IMAGE into .env, replacing an earlier value, so compose.yml picks it up from now on
+remember_image() {
+    [ -n "$PAPRIKA_IMAGE" ] || return 0
+    local kept
+    kept=$(grep -v "^PAPRIKA_IMAGE=" "$ENV_FILE" || true)
+    printf '%s\nPAPRIKA_IMAGE=%s\n' "$kept" "$PAPRIKA_IMAGE" > "$ENV_FILE"
+    echo "Using image ${PAPRIKA_IMAGE} (PAPRIKA_IMAGE in ${ENV_FILE})."
 }
 
 # Installations before Paprika 1.0 kept their secrets in .env; there is no automatic migration.
@@ -127,8 +146,16 @@ if [ "$IS_UPDATE" = true ]; then
     esac
 
     echo ""
-    echo "Pulling latest image..."
-    docker compose pull paprika
+    remember_image
+    # Set now or by an earlier run, PAPRIKA_IMAGE may name a test image built on this host,
+    # which is in no registry
+    CUSTOM_IMAGE="${PAPRIKA_IMAGE:-$(grep "^PAPRIKA_IMAGE=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)}"
+    echo "Pulling image..."
+    if [ -z "$CUSTOM_IMAGE" ]; then
+        docker compose pull paprika
+    elif ! docker compose pull paprika; then
+        echo "Could not pull ${CUSTOM_IMAGE}, using the local image."
+    fi
 
     echo "Restarting service..."
     docker compose up -d paprika
@@ -256,6 +283,8 @@ EOF
     echo ".env written."
 fi
 
+remember_image
+
 # ── Create data directories ───────────────────────────────────────────────────
 
 mkdir -p storage mongodb
@@ -263,7 +292,7 @@ mkdir -p storage mongodb
 # ── Download compose file ─────────────────────────────────────────────────────
 
 echo ""
-echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE}..."
+echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE} (${PAPRIKA_REF})..."
 curl -fsSL -o "$COMPOSE_FILE" "${GITHUB_RAW}/${COMPOSE_FILE}"
 curl -fsSL -o "$MONGO_INIT_FILE" "${GITHUB_RAW}/${MONGO_INIT_FILE}"
 

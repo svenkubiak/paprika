@@ -1,7 +1,8 @@
 services:
 
   paprika:
-    image: ghcr.io/svenkubiak/paprika:latest
+    # PAPRIKA_IMAGE in .env runs another image, e.g. one built locally to test an unreleased version
+    image: ${PAPRIKA_IMAGE:-ghcr.io/svenkubiak/paprika:latest}
     container_name: paprika
     restart: unless-stopped
     ports:

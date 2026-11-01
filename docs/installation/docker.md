@@ -142,6 +142,33 @@ docker compose up -d
 
 `. ./.env` reads `.env` as shell code: if an SMTP value contains spaces or quotes, check the `smtp.*` files afterwards. The new `compose.yml` replaces your local copy — re-apply your own changes to it, as described under [Update](#update).
 
+## Testing an unreleased version
+
+Two environment variables point the install script at a version that is not released yet: `PAPRIKA_REF` downloads `compose.yml` and `mongo-init.js` from another branch or tag than `main`, and `PAPRIKA_IMAGE` runs another image than `ghcr.io/svenkubiak/paprika:latest`. The script keeps `PAPRIKA_IMAGE` in `.env`, so `compose.yml` and every later `docker compose` command use it as well; remove the line to go back to the published image.
+
+Build the image from a checkout of the branch:
+
+```bash
+mvn -DskipTests package
+docker build -t paprika:1.x-test .
+```
+
+On another host, either build it there, copy it with `docker save paprika:1.x-test | ssh <host> docker load`, or push it under a tag of its own — never `latest`, which every installation pulls:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/svenkubiak/paprika:1.x-test --push .
+```
+
+Then install into an empty directory, with the branch pushed so its files can be downloaded:
+
+```bash
+mkdir /srv/paprika-test && cd /srv/paprika-test
+curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/feature/1.x/install-docker.sh \
+  | PAPRIKA_REF=feature/1.x PAPRIKA_IMAGE=paprika:1.x-test bash
+```
+
+An update with `PAPRIKA_IMAGE` pulls the image if a registry has it, and otherwise keeps the local one.
+
 ## Next steps
 
 After the service is up, follow [Initial Setup](./initial-setup) to create your first superadmin.
