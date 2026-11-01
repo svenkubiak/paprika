@@ -18,6 +18,7 @@ import org.bson.Document;
 import utils.ApiKeys;
 import utils.Cidrs;
 import utils.DbUtils;
+import utils.DbWrites;
 import utils.Timestamps;
 
 import java.net.InetAddress;
@@ -107,17 +108,7 @@ public class ApiKeyService {
     public record CreatedApiKey(Map<String, Object> key, String plaintext) {}
 
     public void ensureApiKeysCollection() {
-        var database = resolver.system();
-        boolean exists = false;
-        for (String name : database.listCollectionNames()) {
-            if (ApiKeyDefinition.COLLECTION.equals(name)) {
-                exists = true;
-                break;
-            }
-        }
-        if (!exists) {
-            database.createCollection(ApiKeyDefinition.COLLECTION);
-        }
+        DbWrites.createCollectionIfMissing(resolver.system(), ApiKeyDefinition.COLLECTION);
 
         var collection = keys();
         ensureIndex(collection, LOOKUP_INDEX, Indexes.ascending("lookup"), true);

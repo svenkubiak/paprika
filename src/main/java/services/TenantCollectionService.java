@@ -26,7 +26,6 @@ import validation.SchemaNames;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 import static com.mongodb.client.model.Filters.eq;
 
@@ -50,12 +49,7 @@ public class TenantCollectionService {
     }
 
     public void ensureMetaHooksCollection(TenantContext ctx) {
-        var database = resolver.tenant(ctx);
-        Set<String> names = StreamSupport.stream(database.listCollectionNames().spliterator(), false)
-                .collect(Collectors.toSet());
-        if (!names.contains(CollectionName.META_HOOKS)) {
-            database.createCollection(CollectionName.META_HOOKS);
-        }
+        DbWrites.createCollectionIfMissing(resolver.tenant(ctx), CollectionName.META_HOOKS);
     }
 
     public void insertHook(TenantContext ctx, HookDefinition hook) {

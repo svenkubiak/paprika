@@ -53,6 +53,9 @@ public class SystemUserService {
     private static final String FINGERPRINT = "fingerprint";
     private static final String TWO_FACTOR_FAILURES = "twoFactorFailures";
     private static final String TWO_FACTOR_LOCKED_UNTIL = "twoFactorLockedUntil";
+    private static final String SETUP_TOKENS = "setupTokens";
+    private static final String SETUP_TOKEN_HASH = "hash";
+    private static final String SETUP_TOKEN_EXPIRES_AT = "expiresAt";
 
     // Per-user guess budget for TOTP codes: the proxy rate limit counts per address, and an
     // attacker with many addresses would otherwise brute-force the six digits within days.
@@ -129,18 +132,27 @@ public class SystemUserService {
             return;
         }
 
-        // An active token is replaced, not kept: only its hash is stored, so it could never be
-        // printed again after a restart.
+        // Every start adds a token instead of reusing one: only hashes are stored, so an earlier
+        // token could never be printed again. Adding rather than replacing keeps the link valid
+        // that another instance, starting at the same time, has just logged.
         Document user = findByUsername(username.trim());
-
-        String token;
-        if (user == null) {
-            token = createSuperadminSetup(username, null);
-        } else {
-            token = renewSetupToken(user.getString("id"));
+        String token = user == null ? createInitialSetup(username) : addSetupToken(user);
+        if (token != null) {
+            LOG.warn("Complete initial superadmin setup within 30 minutes: /setup#token={}", token);
         }
+    }
 
-        LOG.warn("Complete initial superadmin setup within 30 minutes: /setup#token={}", token);
+    // Another instance may insert the same user between the lookup and the insert
+    String createInitialSetup(String username) {
+        try {
+            return createSuperadminSetup(username, null);
+        } catch (IllegalArgumentException e) {
+            Document user = findByUsername(username.trim());
+            if (user == null) {
+                throw e;
+            }
+            return addSetupToken(user);
+        }
     }
 
     public String createSuperadminSetup(String username, String email) {
@@ -155,8 +167,7 @@ public class SystemUserService {
                 .append("username", username.trim())
                 .append("email", normalizeEmail(email))
                 .append("role", Role.SUPERADMIN)
-                .append("setupTokenHash", hashSetupToken(token))
-                .append("setupTokenExpiresAt", Timestamps.format(Instant.now().plus(SETUP_TOKEN_TTL)));
+                .append(SETUP_TOKENS, List.of(setupToken(token)));
 
         DbWrites.rejectDuplicateAs("Username already exists",
                 () -> resolver.systemCollection(CollectionName.USERS).insertOne(invite));
@@ -173,9 +184,9 @@ public class SystemUserService {
 
         String tokenHash = hashSetupToken(token);
         Document user = resolver.systemCollection(CollectionName.USERS)
-                .find(eq("setupTokenHash", tokenHash))
+                .find(eq(SETUP_TOKENS + "." + SETUP_TOKEN_HASH, tokenHash))
                 .first();
-        if (user == null || hasPassword(user) || !isSetupTokenActive(user)) {
+        if (user == null || hasPassword(user) || !isSetupTokenActive(user, tokenHash)) {
             return Optional.empty();
         }
 
@@ -186,13 +197,12 @@ public class SystemUserService {
 
         String salt = CommonUtils.randomString(PASSWORD_SALT_LENGTH);
         var result = resolver.systemCollection(CollectionName.USERS).updateOne(
-                and(eq("id", user.getString("id")), eq("setupTokenHash", tokenHash)),
+                and(eq("id", user.getString("id")), eq(SETUP_TOKENS + "." + SETUP_TOKEN_HASH, tokenHash)),
                 combine(
                         set("username", username.trim()),
                         set("passwordSalt", salt),
                         set("passwordHash", hashPassword(password, salt)),
-                        unset("setupTokenHash"),
-                        unset("setupTokenExpiresAt"),
+                        unset(SETUP_TOKENS),
                         unset("passwordChangeRequired")
                 )
         );
@@ -460,8 +470,7 @@ public class SystemUserService {
                         set("passwordSalt", salt),
                         set("passwordHash", hashPassword(newPassword, salt)),
                         unset("passwordChangeRequired"),
-                        unset("setupTokenHash"),
-                        unset("setupTokenExpiresAt")
+                        unset(SETUP_TOKENS)
                 )
         );
     }
@@ -704,17 +713,19 @@ public class SystemUserService {
                 && StringUtils.isNotBlank(user.getString("passwordHash"));
     }
 
-    private boolean isSetupTokenActive(Document user) {
-        String tokenHash = user.getString("setupTokenHash");
-        String expiresAt = user.getString("setupTokenExpiresAt");
-        if (StringUtils.isBlank(tokenHash) || StringUtils.isBlank(expiresAt)) {
-            return false;
+    private boolean isSetupTokenActive(Document user, String tokenHash) {
+        for (Document setupToken : user.getList(SETUP_TOKENS, Document.class, List.of())) {
+            String expiresAt = setupToken.getString(SETUP_TOKEN_EXPIRES_AT);
+            if (!tokenHash.equals(setupToken.getString(SETUP_TOKEN_HASH)) || StringUtils.isBlank(expiresAt)) {
+                continue;
+            }
+            try {
+                return Instant.parse(expiresAt).isAfter(Instant.now());
+            } catch (DateTimeParseException e) {
+                return false;
+            }
         }
-        try {
-            return Instant.parse(expiresAt).isAfter(Instant.now());
-        } catch (DateTimeParseException e) {
-            return false;
-        }
+        return false;
     }
 
     private String generateSetupToken() {
@@ -723,16 +734,22 @@ public class SystemUserService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private String renewSetupToken(String userId) {
+    /** Null if the user completed the setup in the meantime. */
+    private String addSetupToken(Document user) {
+        if (hasPassword(user)) {
+            return null;
+        }
+
         String token = generateSetupToken();
-        resolver.systemCollection(CollectionName.USERS).updateOne(
-                eq("id", userId),
-                combine(
-                        set("setupTokenHash", hashSetupToken(token)),
-                        set("setupTokenExpiresAt", Timestamps.format(Instant.now().plus(SETUP_TOKEN_TTL)))
-                )
-        );
-        return token;
+        var result = resolver.systemCollection(CollectionName.USERS).updateOne(
+                and(eq("id", user.getString("id")), not(exists("passwordHash"))),
+                push(SETUP_TOKENS, setupToken(token)));
+        return result.getModifiedCount() == 1 ? token : null;
+    }
+
+    private Document setupToken(String token) {
+        return new Document(SETUP_TOKEN_HASH, hashSetupToken(token))
+                .append(SETUP_TOKEN_EXPIRES_AT, Timestamps.format(Instant.now().plus(SETUP_TOKEN_TTL)));
     }
 
     private String hashSetupToken(String token) {

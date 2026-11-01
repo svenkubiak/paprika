@@ -1,5 +1,6 @@
 package services;
 
+import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.Updates;
 import constants.CollectionName;
 import jakarta.inject.Inject;
@@ -53,21 +54,16 @@ public class SettingsService {
 
     public void set(String key, String value) {
         String now = Timestamps.now();
-        var collection = resolver.systemCollection(CollectionName.SETTINGS);
-        Document existing = collection.find(eq("key", key)).first();
 
-        if (existing == null) {
-            collection.insertOne(new Document()
-                    .append("id", DbUtils.id())
-                    .append("key", key)
-                    .append("value", value)
-                    .append("updatedAt", now));
-            return;
-        }
-
-        collection.updateOne(
+        // One upsert instead of read-then-insert: two instances writing a new key at the same time
+        // would otherwise both insert, and the unique index would fail the second
+        resolver.systemCollection(CollectionName.SETTINGS).updateOne(
                 eq("key", key),
-                Updates.combine(Updates.set("value", value), Updates.set("updatedAt", now))
+                Updates.combine(
+                        Updates.set("value", value),
+                        Updates.set("updatedAt", now),
+                        Updates.setOnInsert("id", DbUtils.id())),
+                new UpdateOptions().upsert(true)
         );
     }
 

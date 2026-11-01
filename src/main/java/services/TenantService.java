@@ -25,7 +25,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static com.mongodb.client.model.Filters.eq;
@@ -75,7 +74,14 @@ public class TenantService {
 
         String slug = config.getString("paprika.bootstrap.default-tenant-slug", "default");
         String name = config.getString("paprika.bootstrap.default-tenant-name", "Default");
-        create(name, slug);
+        try {
+            create(name, slug);
+        } catch (IllegalArgumentException e) {
+            // Another instance starting at the same time created it first
+            if (!hasAnyTenant()) {
+                throw e;
+            }
+        }
     }
 
     public TenantDefinition create(String name, String slug) {
@@ -342,7 +348,8 @@ public class TenantService {
 
         CollectionDefinition existing = metaCollections.find(eq("name", SystemCollections.USERS)).first();
         if (existing == null) {
-            metaCollections.insertOne(SystemCollectionService.defaultUsersDefinition(DbUtils.id()));
+            DbWrites.ignoreDuplicate(
+                    () -> metaCollections.insertOne(SystemCollectionService.defaultUsersDefinition(DbUtils.id())));
             return;
         }
 
@@ -364,7 +371,8 @@ public class TenantService {
         var metaCollections = database.getCollection(CollectionName.META_COLLECTIONS, CollectionDefinition.class);
         CollectionDefinition existing = metaCollections.find(eq("name", SystemCollections.USERS)).first();
         if (existing == null) {
-            metaCollections.insertOne(SystemCollectionService.defaultUsersDefinition(DbUtils.id()));
+            DbWrites.ignoreDuplicate(
+                    () -> metaCollections.insertOne(SystemCollectionService.defaultUsersDefinition(DbUtils.id())));
         }
 
         ensureRequestLogsInfrastructure(tenant);
@@ -377,7 +385,8 @@ public class TenantService {
         var metaCollections = database.getCollection(CollectionName.META_COLLECTIONS, CollectionDefinition.class);
         CollectionDefinition existing = metaCollections.find(eq("name", SystemCollections.REQUEST_LOGS)).first();
         if (existing == null) {
-            metaCollections.insertOne(SystemCollectionService.defaultRequestLogsDefinition(DbUtils.id()));
+            DbWrites.ignoreDuplicate(
+                    () -> metaCollections.insertOne(SystemCollectionService.defaultRequestLogsDefinition(DbUtils.id())));
         }
 
         var logsCollection = database.getCollection(CollectionName.meta(SystemCollections.REQUEST_LOGS));
@@ -454,11 +463,7 @@ public class TenantService {
     }
 
     private void ensureCollection(MongoDatabase database, String name) {
-        Set<String> names = StreamSupport.stream(database.listCollectionNames().spliterator(), false)
-                .collect(Collectors.toSet());
-        if (!names.contains(name)) {
-            database.createCollection(name);
-        }
+        DbWrites.createCollectionIfMissing(database, name);
     }
 
     private void validateName(String name) {
