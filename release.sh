@@ -17,7 +17,7 @@ ok()   { echo -e "${GREEN}done${NC}"; }
 cd "$SCRIPT_DIR"
 
 # ─── 1. Uncommitted changes ───────────────────────────────────────────────────
-step "1/9  Checking working tree"
+step "1/8  Checking working tree"
 if ! git diff --quiet || ! git diff --cached --quiet; then
     fail "Uncommitted changes detected. Commit or stash them first."
 fi
@@ -33,12 +33,9 @@ if [[ "$BRANCH" != "main" ]]; then
 fi
 ok
 
-# ─── 2. Maven build ───────────────────────────────────────────────────────────
-step "2/9  Running mvn clean verify"
-mvn clean verify || fail "Maven build failed."
-
-# ─── 3. npm outdated ──────────────────────────────────────────────────────────
-step "3/9  Checking npm dependencies"
+# ─── 2. npm outdated ──────────────────────────────────────────────────────────
+# Before the build: it needs neither the build nor its result, and an abort here costs seconds
+step "2/8  Checking npm dependencies"
 OUTDATED=0
 
 cd admin-ui
@@ -60,8 +57,8 @@ if [[ "$OUTDATED" -eq 1 ]]; then
 fi
 ok
 
-# ─── 4. Determine release version ─────────────────────────────────────────────
-step "4/9  Determining release version"
+# ─── 3. Determine release version ─────────────────────────────────────────────
+step "3/8  Determining release version"
 CURRENT_VERSION="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
 
 if [[ ! "$CURRENT_VERSION" =~ -SNAPSHOT$ ]]; then
@@ -123,19 +120,22 @@ if [[ "$RELEASE_TYPE" == "b" ]]; then
     PRERELEASE=true
 fi
 
-# ─── 5. Set Maven version ─────────────────────────────────────────────────────
-step "5/9  Setting Maven version to ${RELEASE_VERSION}"
+# ─── 4. Set Maven version ─────────────────────────────────────────────────────
+step "4/8  Setting Maven version to ${RELEASE_VERSION}"
 mvn versions:set -DnewVersion="$RELEASE_VERSION" -DgenerateBackupPoms=false -q
 ok
 
-# ─── 6. Build release artifact ────────────────────────────────────────────────
-step "6/9  Building release artifact"
-# Same tests as step 2. The package build is what produces the jar that gets tagged,
-# so it runs them again instead of packaging with -DskipTests.
-mvn clean package -q || fail "Maven package failed."
+# ─── 5. Build and test the release artifact ───────────────────────────────────
+step "5/8  Running mvn clean verify"
+# The one build of the release: the full test suite runs against the jar that gets tagged.
+# The working tree was clean in step 1, so a failed build takes back the version change only.
+if ! mvn clean verify; then
+    git checkout -- pom.xml
+    fail "Maven build failed. pom.xml is back at ${CURRENT_VERSION}."
+fi
 
-# ─── 7. Commit, tag, push ─────────────────────────────────────────────────────
-step "7/9  Committing, tagging and pushing"
+# ─── 6. Commit, tag, push ─────────────────────────────────────────────────────
+step "6/8  Committing, tagging and pushing"
 git add pom.xml
 git commit -m "Release ${RELEASE_VERSION}"
 git tag -a "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
@@ -143,8 +143,8 @@ git push origin "${BRANCH}"
 git push origin "${RELEASE_VERSION}"
 ok
 
-# ─── 8. Build and push Docker image ──────────────────────────────────────────
-step "8/9  Building and pushing Docker image (linux/arm64, linux/amd64)"
+# ─── 7. Build and push Docker image ──────────────────────────────────────────
+step "7/8  Building and pushing Docker image (linux/arm64, linux/amd64)"
 git checkout "${RELEASE_VERSION}"
 
 IMAGE="${REGISTRY}:${RELEASE_VERSION}"
@@ -177,8 +177,8 @@ docker buildx build \
 git checkout "${BRANCH}"
 ok
 
-# ─── 9. Prepare next SNAPSHOT ────────────────────────────────────────────────
-step "9/9  Preparing next SNAPSHOT"
+# ─── 8. Prepare next SNAPSHOT ────────────────────────────────────────────────
+step "8/8  Preparing next SNAPSHOT"
 # After a pre-release, development continues towards its release
 if [[ "$PRERELEASE" == true ]]; then
     NEXT_SNAPSHOT="${RELEASE_BASE}-SNAPSHOT"
