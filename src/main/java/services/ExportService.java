@@ -11,6 +11,7 @@ import models.TenantDefinition;
 import org.bson.Document;
 import org.bson.json.JsonMode;
 import org.bson.json.JsonWriterSettings;
+import utils.AtomicFiles;
 import utils.Timestamps;
 
 import java.io.ByteArrayOutputStream;
@@ -24,9 +25,9 @@ import java.util.zip.ZipOutputStream;
 
 @Singleton
 public class ExportService {
-    // Version 2 adds system/api_keys.json and system/token_revocations.json. Version 1 archives
-    // stay readable; they simply do not contain those collections.
-    static final String VERSION = "2";
+    // Version 2 added system/api_keys.json and system/token_revocations.json; version 3 drops the
+    // revocations again, as mangoo keeps them in its own store. Older archives stay readable.
+    static final String VERSION = "3";
     private static final Set<String> SKIP_FROM_DATA = Set.of(CollectionName.META_COLLECTIONS, CollectionName.META_HOOKS);
     private static final JsonWriterSettings JSON_SETTINGS = JsonWriterSettings.builder().outputMode(JsonMode.RELAXED).build();
 
@@ -70,7 +71,6 @@ public class ExportService {
         writeMongoCollection(zip, "system/settings.json", db.getCollection(CollectionName.SETTINGS));
         // Hashes only. The plaintext of a key is never stored, so a restored key keeps working.
         writeMongoCollection(zip, "system/api_keys.json", db.getCollection(ApiKeyDefinition.COLLECTION));
-        writeMongoCollection(zip, "system/token_revocations.json", db.getCollection(MongoTokenBlacklist.COLLECTION));
     }
 
     private void writeTenantDatabase(ZipOutputStream zip, TenantDefinition tenant) throws IOException {
@@ -94,6 +94,8 @@ public class ExportService {
                 if (Files.isDirectory(file)) continue;
                 String fileId = file.getFileName().toString();
                 if (fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) continue;
+                // An upload still being written, here or on another instance
+                if (AtomicFiles.isTemporary(fileId)) continue;
                 zip.putNextEntry(new ZipEntry("tenants/" + tenant.id() + "/files/" + fileId));
                 Files.copy(file, zip);
                 zip.closeEntry();

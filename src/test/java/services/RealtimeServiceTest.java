@@ -8,13 +8,10 @@ import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import rules.RuleService;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -344,44 +341,5 @@ class RealtimeServiceTest {
         RealtimeClient client = new RealtimeClient("client-" + userId, null);
         client.authenticate(userId, Role.USER, "tenant-1", List.of(collection), RealtimeCredential.UNBOUNDED);
         return client;
-    }
-
-    private static final class RecordingConnection implements RealtimeConnection {
-        private final List<Event> events = new CopyOnWriteArrayList<>();
-        private volatile boolean open = true;
-
-        @Override
-        public boolean isOpen() {
-            return open;
-        }
-
-        @Override
-        public void send(String data, String eventName, String id) {
-            events.add(new Event(data, eventName, id));
-        }
-
-        @Override
-        public void close() throws IOException {
-            open = false;
-        }
-
-        List<Event> events() {
-            return List.copyOf(events);
-        }
-
-        List<String> eventNames() {
-            return events.stream().map(Event::eventName).toList();
-        }
-
-        void awaitEventCount(int expected) throws InterruptedException {
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            while (events.size() < expected && System.nanoTime() < deadline) {
-                TimeUnit.MILLISECONDS.sleep(10);
-            }
-            assertThat(events.size(), is(expected));
-        }
-    }
-
-    private record Event(String data, String eventName, String id) {
     }
 }

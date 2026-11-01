@@ -18,6 +18,7 @@ import org.bson.Document;
 import org.bson.conversions.Bson;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
+import utils.AtomicFiles;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -33,9 +34,11 @@ import java.util.zip.ZipInputStream;
 @Singleton
 public class ImportService {
     private static final Logger LOG = LogManager.getLogger(ImportService.class);
-    // Version 1 archives predate api_keys and token_revocations. They stay readable, and a missing
-    // entry leaves the live collection alone: absence is not an empty collection.
-    private static final Set<String> SUPPORTED_VERSIONS = Set.of("1", ExportService.VERSION);
+    // Version 1 archives predate api_keys. They stay readable, and a missing entry leaves the live
+    // collection alone: absence is not an empty collection. Version 2 archives also carry
+    // system/token_revocations.json, which is not restored: revocations live in mangoo's store and
+    // describe the cookies in circulation now, which a restore does not change.
+    private static final Set<String> SUPPORTED_VERSIONS = Set.of("1", "2", ExportService.VERSION);
     private static final Set<String> LEGACY_VERSIONS = Set.of("1");
     private static final long MAX_UNCOMPRESSED_BYTES = 512L * 1024 * 1024;
     private static final int MAX_ENTRY_COUNT = 10_000;
@@ -45,7 +48,6 @@ public class ImportService {
     private static final String SYSTEM_USERS = "system/users.json";
     private static final String SYSTEM_SETTINGS = "system/settings.json";
     private static final String SYSTEM_API_KEYS = "system/api_keys.json";
-    private static final String SYSTEM_TOKEN_REVOCATIONS = "system/token_revocations.json";
     static final String SNAPSHOT_DIRECTORY = "pre-import-snapshots";
 
     private final TenantDatabaseResolver resolver;
@@ -104,9 +106,7 @@ public class ImportService {
 
         List<Document> tenantDocuments = requiredDocuments(entries, SYSTEM_TENANTS);
         List<Document> settings = requiredDocuments(entries, SYSTEM_SETTINGS);
-        // Revocations are addressed by _id (jti: / sub:). Dropping it would restore rows nothing can find.
-        List<Document> apiKeys = systemDocuments(entries, SYSTEM_API_KEYS, version, false);
-        List<Document> tokenRevocations = systemDocuments(entries, SYSTEM_TOKEN_REVOCATIONS, version, true);
+        List<Document> apiKeys = systemDocuments(entries, SYSTEM_API_KEYS, version);
 
         Map<String, TenantDefinition> definitions = new LinkedHashMap<>();
         for (TenantDefinition tenant : parseTenantDefinitions(tenantDocuments)) {
@@ -123,7 +123,7 @@ public class ImportService {
             tenants.add(parseTenant(entries, tenant));
         }
 
-        return new BackupPlan(tenantDocuments, users, settings, apiKeys, tokenRevocations, tenants);
+        return new BackupPlan(tenantDocuments, users, settings, apiKeys, tenants);
     }
 
     private Map<String, Object> readManifest(Map<String, byte[]> entries) {
@@ -157,7 +157,7 @@ public class ImportService {
                 continue;
             }
             String physicalName = key.substring(dataPrefix.length(), key.length() - ".json".length());
-            data.put(physicalName, documents(key, entry.getValue(), false));
+            data.put(physicalName, documents(key, entry.getValue()));
         }
 
         return new TenantPlan(tenant, metaCollections, metaHooks, data, entries.get(prefix + "meta/collections.json"));
@@ -181,7 +181,7 @@ public class ImportService {
             throw new IllegalArgumentException("Incomplete backup: missing " + name
                     + ". Nothing was imported - a missing entry is a broken archive, not an empty collection");
         }
-        return documents(name, data, false);
+        return documents(name, data);
     }
 
     /**
@@ -189,7 +189,7 @@ public class ImportService {
      *         "do not touch the live collection". An empty array is present and replaces it.
      */
     private static List<Document> systemDocuments(
-            Map<String, byte[]> entries, String name, String version, boolean keepId) {
+            Map<String, byte[]> entries, String name, String version) {
         byte[] data = entries.get(name);
         if (data == null) {
             if (LEGACY_VERSIONS.contains(version)) {
@@ -198,13 +198,13 @@ public class ImportService {
             throw new IllegalArgumentException("Incomplete backup: missing " + name
                     + ". Nothing was imported - a missing entry is a broken archive, not an empty collection");
         }
-        return documents(name, data, keepId);
+        return documents(name, data);
     }
 
-    private static List<Document> documents(String name, byte[] data, boolean keepId) {
+    private static List<Document> documents(String name, byte[] data) {
         try {
-            return parseDocuments(data, keepId);
-        } catch (IOException | RuntimeException e) {
+            return parseDocuments(data);
+        } catch (RuntimeException e) {
             throw new IllegalArgumentException("Invalid backup: " + name + " could not be read: " + e.getMessage());
         }
     }
@@ -316,9 +316,6 @@ public class ImportService {
         if (plan.apiKeys() != null) {
             restoreCollection(db, ApiKeyDefinition.COLLECTION, plan.apiKeys());
         }
-        if (plan.tokenRevocations() != null) {
-            restoreCollection(db, MongoTokenBlacklist.COLLECTION, plan.tokenRevocations());
-        }
 
         // Dropping took the indexes with it; rebuilt by their owning service so no second list can drift
         systemCollections.ensureSystemStructure();
@@ -376,7 +373,7 @@ public class ImportService {
         return docs.size();
     }
 
-    private static List<Document> parseDocuments(byte[] data, boolean keepId) throws IOException {
+    private static List<Document> parseDocuments(byte[] data) {
         String json = new String(data, StandardCharsets.UTF_8).trim();
         if (json.isEmpty() || "[]".equals(json)) return List.of();
 
@@ -388,19 +385,13 @@ public class ImportService {
         List<Document> docs = new ArrayList<>();
         for (var node : nodes) {
             Document doc = Document.parse(node.toString());
-            if (keepId) {
-                if (doc.get("_id") == null) {
-                    throw new IllegalArgumentException("a document addressed by _id has none");
-                }
-            } else {
-                doc.remove("_id");
-            }
+            doc.remove("_id");
             docs.add(doc);
         }
         return docs;
     }
 
-    private void restoreUserDefinedIndexes(MongoDatabase db, byte[] collectionsData) throws IOException {
+    private void restoreUserDefinedIndexes(MongoDatabase db, byte[] collectionsData) {
         if (collectionsData == null) return;
         List<Map<String, Object>> defs = JsonUtils.getMapper().readValue(collectionsData, new TypeReference<>() {});
 
@@ -458,7 +449,7 @@ public class ImportService {
             Path target = tenantDir.resolve(fileId).normalize();
             if (!target.startsWith(tenantDir)) continue;
 
-            Files.write(target, entry.getValue());
+            AtomicFiles.write(target, entry.getValue());
             restored.add(fileId);
             count++;
         }
@@ -473,7 +464,8 @@ public class ImportService {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (Files.isDirectory(file)) continue;
                 String fileId = file.getFileName().toString();
-                if (restored.contains(fileId)) continue;
+                // Another instance may be writing it right now
+                if (restored.contains(fileId) || AtomicFiles.isTemporary(fileId)) continue;
                 if (fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) continue;
 
                 Path target = file.normalize();
@@ -499,7 +491,6 @@ public class ImportService {
             List<Document> users,
             List<Document> settings,
             List<Document> apiKeys,
-            List<Document> tokenRevocations,
             List<TenantPlan> tenants) {}
 
     private record TenantPlan(

@@ -4,6 +4,7 @@ import auth.TenantContext;
 import com.mongodb.client.MongoDatabase;
 import constants.CollectionName;
 import io.mangoo.core.Application;
+import io.mangoo.interfaces.TokenBlacklist;
 import io.mangoo.test.TestRunner;
 import io.mangoo.utils.JsonUtils;
 import models.ApiKeyDefinition;
@@ -47,6 +48,8 @@ class BackupImportSafetyTest {
     private static final String REVOKED_JTI = "backup-probe-jti";
     private static final String STRAY_JTI = "backup-stray-jti";
     private static final String REVOKED_SUBJECT = "backup-probe-subject";
+    // Recent: mangoo lets a revocation expire with the tokens it covers, and TTL removes it then
+    private static final Instant REVOKED_SINCE = Instant.now();
 
     private static String probeRecordId;
     private static String keptKeyId;
@@ -76,9 +79,9 @@ class BackupImportSafetyTest {
         keptKeyId = String.valueOf(kept.key().get("id"));
         keptKeyPlaintext = kept.plaintext();
 
-        MongoTokenBlacklist blacklist = blacklist();
+        TokenBlacklist blacklist = blacklist();
         blacklist.revoke(REVOKED_JTI, Instant.now().plus(1, ChronoUnit.DAYS));
-        blacklist.revokeSubject(REVOKED_SUBJECT, Instant.parse("2020-01-01T00:00:00Z"));
+        blacklist.revokeSubject(REVOKED_SUBJECT, REVOKED_SINCE);
 
         TenantContext ctx = TenantTestUtils.defaultTenantContext();
         storage().store(ctx, KEPT_FILE, "kept".getBytes(StandardCharsets.UTF_8));
@@ -88,7 +91,6 @@ class BackupImportSafetyTest {
         probeCollection().deleteOne(eq("id", probeRecordId));
         assertThat(probeRecord(), is((Document) null));
         systemCollection(ApiKeyDefinition.COLLECTION).deleteOne(eq("id", keptKeyId));
-        systemCollection(MongoTokenBlacklist.COLLECTION).deleteMany(new Document());
         storage().delete(ctx, KEPT_FILE);
 
         ApiKeyService.CreatedApiKey stray = apiKeys().create(
@@ -209,7 +211,6 @@ class BackupImportSafetyTest {
 
         assertThat(indexNames(system.getCollection(ApiKeyDefinition.COLLECTION)),
                 hasItems("lookup", "tenantId"));
-        assertThat(indexNames(system.getCollection(MongoTokenBlacklist.COLLECTION)), hasItem("expiresAt_ttl"));
     }
 
     @Test
@@ -220,12 +221,21 @@ class BackupImportSafetyTest {
                 systemCollection(ApiKeyDefinition.COLLECTION).find(eq("id", strayKeyId)).first(), nullValue());
     }
 
+    // Revocations describe the cookies in circulation now; restoring older data does not bring a revoked one back
     @Test
-    void aRestoreBringsRevocationsBackAndDropsRevocationsIssuedAfterTheSnapshot() {
-        MongoTokenBlacklist blacklist = blacklist();
+    void aRestoreLeavesTheCurrentRevocationsAlone() {
+        TokenBlacklist blacklist = blacklist();
         assertThat(blacklist.isRevoked(REVOKED_JTI, null, null), is(true));
-        assertThat(blacklist.isRevoked(null, REVOKED_SUBJECT, Instant.parse("2019-06-01T00:00:00Z")), is(true));
-        assertThat(blacklist.isRevoked(STRAY_JTI, null, null), is(false));
+        assertThat(blacklist.isRevoked(null, REVOKED_SUBJECT, REVOKED_SINCE.minusSeconds(60)), is(true));
+        assertThat("revoked after the snapshot, and still revoked",
+                blacklist.isRevoked(STRAY_JTI, null, null), is(true));
+    }
+
+    @Test
+    void anExportNoLongerContainsRevocations() throws Exception {
+        byte[] archive = export();
+
+        assertThrows(IllegalStateException.class, () -> zipEntry(archive, "system/token_revocations.json"));
     }
 
     @Test
@@ -254,8 +264,7 @@ class BackupImportSafetyTest {
                 TenantTestUtils.defaultTenant(), "backup-v1-extra", userId, null);
         blacklist().revoke("backup-v1-extra-jti", Instant.now().plus(1, ChronoUnit.DAYS));
 
-        byte[] legacy = asVersion1(withoutEntry(
-                withoutEntry(export(), "system/api_keys.json"), "system/token_revocations.json"));
+        byte[] legacy = asVersion(withoutEntry(export(), "system/api_keys.json"), "1");
 
         try {
             importService().importAll(legacy);
@@ -264,6 +273,22 @@ class BackupImportSafetyTest {
             assertThat(blacklist().isRevoked("backup-v1-extra-jti", null, null), is(true));
             assertThat(apiKeys().resolve(keptKeyPlaintext, InetAddress.getLoopbackAddress()).key().isPresent(),
                     is(true));
+        } finally {
+            importService().importAll(roundTripArchive);
+        }
+    }
+
+    @Test
+    void aVersion2BackupIsRestoredWithoutItsRevocations() throws Exception {
+        byte[] version2 = asVersion(withEntry(export(), "system/token_revocations.json",
+                "[{\"_id\": \"jti:backup-v2-jti\", \"expiresAt\": {\"$date\": \"2099-01-01T00:00:00Z\"}}]"
+                        .getBytes(StandardCharsets.UTF_8)), "2");
+
+        try {
+            importService().importAll(version2);
+            assertThat(apiKeys().resolve(keptKeyPlaintext, InetAddress.getLoopbackAddress()).key().isPresent(),
+                    is(true));
+            assertThat(blacklist().isRevoked("backup-v2-jti", null, null), is(false));
         } finally {
             importService().importAll(roundTripArchive);
         }
@@ -301,8 +326,8 @@ class BackupImportSafetyTest {
         return Application.getInstance(ApiKeyService.class);
     }
 
-    private static MongoTokenBlacklist blacklist() {
-        return Application.getInstance(MongoTokenBlacklist.class);
+    private static TokenBlacklist blacklist() {
+        return Application.getInstance(TokenBlacklist.class);
     }
 
     private static FileStorageService storage() {
@@ -313,9 +338,9 @@ class BackupImportSafetyTest {
         return Application.getInstance(TenantDatabaseResolver.class).systemCollection(name);
     }
 
-    private static byte[] asVersion1(byte[] zip) throws Exception {
+    private static byte[] asVersion(byte[] zip, String version) throws Exception {
         Map<String, Object> manifest = JsonUtils.getMapper().readValue(zipEntry(zip, "manifest.json"), new TypeReference<>() {});
-        manifest.put("version", "1");
+        manifest.put("version", version);
         return withEntry(zip, "manifest.json", JsonUtils.getMapper().writeValueAsBytes(manifest));
     }
 

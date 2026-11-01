@@ -11,12 +11,12 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.*;
 import org.bson.Document;
+import utils.DbWrites;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 @Singleton
 public class SystemCollectionService {
@@ -26,7 +26,7 @@ public class SystemCollectionService {
     private final TenantService tenantService;
     private final SystemUserService systemUserService;
     private final ApiKeyService apiKeyService;
-    private final MongoTokenBlacklist tokenBlacklist;
+    private final MongoRealtimeCluster realtimeCluster;
     private final Config config;
 
     @Inject
@@ -35,13 +35,13 @@ public class SystemCollectionService {
             TenantService tenantService,
             SystemUserService systemUserService,
             ApiKeyService apiKeyService,
-            MongoTokenBlacklist tokenBlacklist,
+            MongoRealtimeCluster realtimeCluster,
             Config config) {
         this.resolver = Objects.requireNonNull(resolver, "resolver must not be null");
         this.tenantService = Objects.requireNonNull(tenantService, "tenantService must not be null");
         this.systemUserService = Objects.requireNonNull(systemUserService, "systemUserService must not be null");
         this.apiKeyService = Objects.requireNonNull(apiKeyService, "apiKeyService must not be null");
-        this.tokenBlacklist = Objects.requireNonNull(tokenBlacklist, "tokenBlacklist must not be null");
+        this.realtimeCluster = Objects.requireNonNull(realtimeCluster, "realtimeCluster must not be null");
         this.config = Objects.requireNonNull(config, "config must not be null");
     }
 
@@ -62,7 +62,7 @@ public class SystemCollectionService {
         ensureSettingsCollection();
         apiKeyService.ensureApiKeysCollection();
         tenantService.ensureTenantsCollection();
-        tokenBlacklist.ensureCollection();
+        realtimeCluster.ensureCollection();
     }
 
     private void ensureSuperadminUsersCollection() {
@@ -233,13 +233,7 @@ public class SystemCollectionService {
     }
 
     private void ensureCollection(String name) {
-        var database = resolver.system();
-        Set<String> names = StreamSupport.stream(database.listCollectionNames().spliterator(), false)
-                .collect(Collectors.toSet());
-
-        if (!names.contains(name)) {
-            database.createCollection(name);
-        }
+        DbWrites.createCollectionIfMissing(resolver.system(), name);
     }
 
     private void ensureUsernameIndex() {
