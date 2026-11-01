@@ -1,5 +1,6 @@
 /.settings
 /target
+/smoke-test/target
 /.idea
 .classpath
 .project

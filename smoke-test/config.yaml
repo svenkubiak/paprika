@@ -1,0 +1,71 @@
+# External configuration of both smoke instances, passed with -Dapplication.config. Outside the JAR,
+# literal secrets are allowed; these are generated for the smoke test and protect nothing.
+default:
+  undertow:
+    maxentitysize: 67108864
+  form:
+    maxfilesize: 67108864
+  application:
+    name: paprika-smoke
+    secret: SfzQakQaMuMy2bytvPCSLPhk6DaDfje4Ddn1g1SSUuHQQj4TOY8eLzCsX7ycojWw
+    language: en
+    shutdown:
+      timeout: 10
+    admin:
+      enable: false
+    parameter:
+      strict: true
+    validation:
+      passthrough: true
+  connector:
+    http:
+      host: localhost
+      port: arg{9201}
+  session:
+    cookie:
+      name: paprika-session
+      secret: IfpBXhAmaDrCV21R1Q8Y5yDQoBf1Zk0sK207h949W0tik5W93HjStokviaYd3Mcw
+      key: NSuxd3cmSYXsdFBV3upMI0SY7wGvy1lw2t07cAUAt6hpR01uHR7YdEJU58jgBsaU
+      secure: false
+  authentication:
+    hashing:
+      timeout: 200
+    redirect:
+      login: /login
+    origin: true
+    blacklist: true
+    cookie:
+      name: paprika-authentication
+      secret: GuIRb4d3Nokt8RDAeU6Bczt5WxAIAk4A81rLj8Y6Z01NlvId7E8GeMfDN14NwjDq
+      key: kSicMt5R4Z8kov8c1kb0dZO1PfR2rG8f5uRfgZmuIcxeZqn4Vt7EavSCcgFUUZT3
+      secure: false
+      token:
+        expires: 3600
+  token:
+    secret: kAJS6ShsicgLWg1Bqvmx8ytaJuhw2G511XwUqwQ6yQHipyNsMDKeYxFioPURApyd
+    key: jEZ8dTxRg4N5sYnH5W4B2RoReRcewi5QVeXLdPRcxTkzgqcZxyIEyhm9afuybxP9
+  paprika:
+    bootstrap:
+      superadmin-username: admin
+      default-tenant-name: Default
+      default-tenant-slug: default
+    # Both instances on one directory, as on a shared volume; set by run.sh
+    storage: arg{}
+  flash:
+    cookie:
+      name: paprika-flash
+      secret: CI4cFOE5DT3AmTkr4q4thAQy0ULctiuzxHgRy4p1zwboPZsW4cIIUN7cwp2BxQ0y
+      key: 6oppcANv47gGaun0R0FIAaWN9Bf7ghG1Hu3sVqd8lQ1Z0O11Gjzq9Jbm9l9EMQd8
+      secure: false
+  persistence:
+    mongo:
+      embedded: false
+      url: mongodb://localhost:27217,localhost:27218,localhost:27219/?replicaSet=rs0
+      dbname: paprika
+      auth: false
+      package: models
+
+environments:
+  prod:
+    application:
+      language: en
