@@ -12,18 +12,47 @@ set -euo pipefail
 #    mkdir /srv/paprika && cd /srv/paprika
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-docker.sh | bash
 #
-#  Testing an unreleased version:
-#    PAPRIKA_REF    branch or tag to download compose.yml and mongo-init.js from (default: main)
-#    PAPRIKA_IMAGE  image to run instead of the published one, e.g. one built locally;
-#                   kept in .env, so later docker compose commands use it as well
+#  Install or update to a specific version, e.g. a pre-release; take the script of that version:
+#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/install-docker.sh \
+#         | bash -s -- --version 1.0.0-Beta1
 #
-#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/feature/1.x/install-docker.sh \
-#         | PAPRIKA_REF=feature/1.x PAPRIKA_IMAGE=paprika:1.x-test bash
+#  The version is kept in .env as PAPRIKA_VERSION: later updates stay on it until --version names
+#  another one. Without it, the stack runs the latest release.
 # ─────────────────────────────────────────────────────────────────────────────
 
-PAPRIKA_REF="${PAPRIKA_REF:-main}"
-PAPRIKA_IMAGE="${PAPRIKA_IMAGE:-}"
-GITHUB_RAW="https://raw.githubusercontent.com/svenkubiak/paprika/${PAPRIKA_REF}"
+# ── Arguments ─────────────────────────────────────────────────────────────────
+
+REQUESTED_VERSION=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --version)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --version requires a version, e.g. --version 1.0.0 or --version 1.0.0-Beta1" >&2
+                exit 1
+            fi
+            REQUESTED_VERSION="$2"
+            shift 2
+            ;;
+        --version=*)
+            REQUESTED_VERSION="${1#*=}"
+            shift
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            echo "       Usage: $0 [--version <x.y.z[-suffix]>]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ -n "$REQUESTED_VERSION" ] && ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    echo "Error: '${REQUESTED_VERSION}' is not a valid version (expected x.y.z or x.y.z-suffix, e.g. 1.0.0-Beta1)." >&2
+    exit 1
+fi
+
+# The files of a version come from its tag, so compose.yml always matches the image it runs
+GITHUB_RAW="https://raw.githubusercontent.com/svenkubiak/paprika/${REQUESTED_VERSION:-main}"
 DOCS_URL="https://docs.getpaprika.dev/installation/docker"
 ENV_FILE=".env"
 SECRETS_DIR="secrets"
@@ -81,13 +110,13 @@ ask() {
     printf -v "$1" '%s' "$__reply"
 }
 
-# Writes PAPRIKA_IMAGE into .env, replacing an earlier value, so compose.yml picks it up from now on
-remember_image() {
-    [ -n "$PAPRIKA_IMAGE" ] || return 0
+# Writes the requested version into .env, replacing an earlier one; compose.yml runs its image tag
+pin_version() {
+    [ -n "$REQUESTED_VERSION" ] || return 0
     local kept
-    kept=$(grep -v "^PAPRIKA_IMAGE=" "$ENV_FILE" || true)
-    printf '%s\nPAPRIKA_IMAGE=%s\n' "$kept" "$PAPRIKA_IMAGE" > "$ENV_FILE"
-    echo "Using image ${PAPRIKA_IMAGE} (PAPRIKA_IMAGE in ${ENV_FILE})."
+    kept=$(grep -v "^PAPRIKA_VERSION=" "$ENV_FILE" || true)
+    printf '%s\nPAPRIKA_VERSION=%s\n' "$kept" "$REQUESTED_VERSION" > "$ENV_FILE"
+    echo "Pinned to version ${REQUESTED_VERSION} (PAPRIKA_VERSION in ${ENV_FILE})."
 }
 
 # Installations before Paprika 1.0 kept their secrets in .env; there is no automatic migration.
@@ -138,24 +167,24 @@ if [ "$IS_UPDATE" = true ]; then
 
     CURRENT=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' paprika 2>/dev/null || echo "unknown")
 
+    # A version pinned by an earlier run stays until --version names another one
+    PINNED=$(grep "^PAPRIKA_VERSION=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+    TARGET="${REQUESTED_VERSION:-${PINNED:-latest}}"
+
     echo ""
     echo "Running installation found (version: ${CURRENT})."
-    ask confirm "Pull latest image and restart? [Y/n] "
+    ask confirm "Pull image ${TARGET} and restart? [Y/n] "
     case "$confirm" in
         [nN]*) echo "Aborted."; exit 0 ;;
     esac
 
     echo ""
-    remember_image
-    # Set now or by an earlier run, PAPRIKA_IMAGE may name a test image built on this host,
-    # which is in no registry
-    CUSTOM_IMAGE="${PAPRIKA_IMAGE:-$(grep "^PAPRIKA_IMAGE=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)}"
-    echo "Pulling image..."
-    if [ -z "$CUSTOM_IMAGE" ]; then
-        docker compose pull paprika
-    elif ! docker compose pull paprika; then
-        echo "Could not pull ${CUSTOM_IMAGE}, using the local image."
+    pin_version
+    if [ -n "$PINNED" ] && [ -z "$REQUESTED_VERSION" ]; then
+        echo "Staying on version ${PINNED} (PAPRIKA_VERSION in ${ENV_FILE}); --version changes it."
     fi
+    echo "Pulling image ${TARGET}..."
+    docker compose pull paprika
 
     echo "Restarting service..."
     docker compose up -d paprika
@@ -283,7 +312,7 @@ EOF
     echo ".env written."
 fi
 
-remember_image
+pin_version
 
 # ── Create data directories ───────────────────────────────────────────────────
 
@@ -292,7 +321,7 @@ mkdir -p storage mongodb
 # ── Download compose file ─────────────────────────────────────────────────────
 
 echo ""
-echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE} (${PAPRIKA_REF})..."
+echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE} (${REQUESTED_VERSION:-main})..."
 curl -fsSL -o "$COMPOSE_FILE" "${GITHUB_RAW}/${COMPOSE_FILE}"
 curl -fsSL -o "$MONGO_INIT_FILE" "${GITHUB_RAW}/${MONGO_INIT_FILE}"
 

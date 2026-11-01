@@ -105,6 +105,15 @@ cd /opt/paprika
 curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh | sudo bash -s -- --version 0.44.0
 ```
 
+A pre-release such as `1.0.0-Beta1` installs the same way, from the `.deb` of its GitHub release. Take the script from the same tag, as the one on `main` belongs to the latest release:
+
+```bash
+cd /opt/paprika
+curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/install-or-update.sh | sudo bash -s -- --version 1.0.0-Beta1
+```
+
+A pre-release counts as older than its release, so `1.0.0` updates `1.0.0-Beta1`. While the installed pre-release is newer than the latest release, an update without `--version` changes nothing.
+
 Installing a version older than the installed one is possible, but not supported: data written by a newer version may be unreadable for an older one. Back up your database first.
 
 ## Service management
@@ -154,23 +163,6 @@ The script:
 
 ```bash
 rm -rf /opt/paprika/storage
-```
-
-## Testing an unreleased version
-
-`--deb` installs or updates from a local package instead of a GitHub release — everything else, from the secrets to the systemd unit, runs as for a release. The package names its version, so `--deb` does not combine with `--version`, and it has to match the architecture of the machine. There is no published checksum to verify a local package against.
-
-Build the package on Linux from a checkout of the branch, with the profile of the target architecture (`package-deb-x86` or `package-deb-arm64`):
-
-```bash
-mvn -P package-deb-x86 -DskipTests package
-```
-
-Then run the script of the same checkout from the install directory:
-
-```bash
-cd /opt/paprika
-sudo bash ~/paprika/install-or-update.sh --deb ~/paprika/target/dist/<package>.deb
 ```
 
 ## Moving secrets from .env to files

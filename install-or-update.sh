@@ -11,19 +11,16 @@ set -euo pipefail
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
 #         | sudo bash
 #
-#  Install / update to a specific version (non-interactive):
+#  Install / update to a specific version (non-interactive), also a pre-release; take the script
+#  of that version:
 #    cd /opt/paprika
-#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
-#         | sudo bash -s -- --version 0.44.0
+#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/install-or-update.sh \
+#         | sudo bash -s -- --version 1.0.0-Beta1
 #
 #  Uninstall:
 #    cd /opt/paprika
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
 #         | sudo bash -s -- --uninstall
-#
-#  Install / update from a local package, e.g. to test an unreleased version:
-#    cd /opt/paprika
-#    sudo bash install-or-update.sh --deb /path/to/paprika_1.0.0_amd64.deb
 # ─────────────────────────────────────────────────────────────────────────────
 
 GITHUB_REPO="svenkubiak/paprika"
@@ -74,7 +71,6 @@ fi
 
 UNINSTALL=false
 REQUESTED_VERSION=""
-LOCAL_DEB=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -84,7 +80,7 @@ while [ $# -gt 0 ]; do
             ;;
         --version)
             if [ $# -lt 2 ] || [ -z "$2" ]; then
-                echo "Error: --version requires a version, e.g. --version 0.44.0" >&2
+                echo "Error: --version requires a version, e.g. --version 1.0.0 or --version 1.0.0-Beta1" >&2
                 exit 1
             fi
             REQUESTED_VERSION="$2"
@@ -94,40 +90,31 @@ while [ $# -gt 0 ]; do
             REQUESTED_VERSION="${1#*=}"
             shift
             ;;
-        --deb)
-            if [ $# -lt 2 ] || [ -z "$2" ]; then
-                echo "Error: --deb requires a package file, e.g. --deb ./paprika_1.0.0_amd64.deb" >&2
-                exit 1
-            fi
-            LOCAL_DEB="$2"
-            shift 2
-            ;;
-        --deb=*)
-            LOCAL_DEB="${1#*=}"
-            shift
-            ;;
         *)
             echo "Error: Unknown option: $1" >&2
-            echo "       Usage: $0 [--uninstall] [--version <x.y.z>] [--deb <file>]" >&2
+            echo "       Usage: $0 [--uninstall] [--version <x.y.z[-suffix]>]" >&2
             exit 1
             ;;
     esac
 done
 
-if [ -n "$LOCAL_DEB" ] && [ -n "$REQUESTED_VERSION" ]; then
-    echo "Error: --deb and --version exclude each other; the package names its version." >&2
+if [ -n "$REQUESTED_VERSION" ] && ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    echo "Error: '${REQUESTED_VERSION}' is not a valid version (expected x.y.z or x.y.z-suffix, e.g. 1.0.0-Beta1)." >&2
     exit 1
 fi
 
-if [ -n "$LOCAL_DEB" ] && [ ! -r "$LOCAL_DEB" ]; then
-    echo "Error: Package not found or not readable: ${LOCAL_DEB}" >&2
-    exit 1
-fi
-
-if [ -n "$REQUESTED_VERSION" ] && ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: '${REQUESTED_VERSION}' is not a valid version (expected x.y.z)." >&2
-    exit 1
-fi
+# True if $1 is older than $2. A pre-release (1.0.0-Beta1) comes before its release (1.0.0), which
+# sort -V alone gets the wrong way round; pre-releases of one release compare by their suffix.
+version_older() {
+    local a="$1" b="$2" a_base="${1%%-*}" b_base="${2%%-*}"
+    if [ "$a_base" != "$b_base" ]; then
+        [ "$(printf '%s\n%s\n' "$a_base" "$b_base" | sort -V | head -n1)" = "$a_base" ]
+        return
+    fi
+    [ "$a" = "$a_base" ] && return 1
+    [ "$b" = "$b_base" ] && return 0
+    [ "$a" != "$b" ] && [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -n1)" = "$a" ]
+}
 
 # ── Interactive input ─────────────────────────────────────────────────────────
 # This script is usually run as "curl ... | sudo bash", so stdin is the script
@@ -264,139 +251,120 @@ if [ "$IS_UPDATE" = true ] && [ ! -f "${SECRETS_DIR}/application.secret" ]; then
 fi
 
 # ── Determine which version to install ────────────────────────────────────────
-# A local package names its own version; otherwise the release comes from GitHub.
+echo ""
+echo "🔍 Fetching release information from GitHub..."
 
-if [ -n "$LOCAL_DEB" ]; then
+LATEST_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
 
-    SELECTED_VERSION=$(dpkg-deb -f "$LOCAL_DEB" Version 2>/dev/null || true)
-    PACKAGE_ARCH=$(dpkg-deb -f "$LOCAL_DEB" Architecture 2>/dev/null || true)
+if echo "$LATEST_JSON" | grep -q '"message".*"Not Found"'; then
+    echo "Error: No releases found for ${GITHUB_REPO}." >&2
+    echo "       Check https://github.com/${GITHUB_REPO}/releases for available releases." >&2
+    exit 1
+fi
 
-    if [ -z "$SELECTED_VERSION" ]; then
-        echo "Error: ${LOCAL_DEB} is not a .deb package." >&2
-        exit 1
-    fi
-    if [ "$PACKAGE_ARCH" != "$DEB_ARCH" ]; then
-        echo "Error: ${LOCAL_DEB} is built for ${PACKAGE_ARCH}, this machine needs ${DEB_ARCH}." >&2
+LATEST_VERSION=$(echo "$LATEST_JSON" | grep -m1 '"tag_name"' | cut -d '"' -f 4)
+
+if [ -z "$LATEST_VERSION" ]; then
+    echo "Error: Could not determine the latest release version." >&2
+    exit 1
+fi
+
+# Prints all released versions, newest first.
+list_versions() {
+    curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100" \
+        | grep '"tag_name"' \
+        | cut -d '"' -f 4
+}
+
+# Lets the user pick from all released versions. Sets SELECTED_VERSION.
+select_version() {
+    local versions=() marker choice index version
+    while IFS= read -r version; do
+        [ -n "$version" ] && versions+=("$version")
+    done < <(list_versions)
+
+    if [ "${#versions[@]}" -eq 0 ]; then
+        echo "Error: Could not fetch the list of available versions." >&2
         exit 1
     fi
 
     echo ""
-    echo "📦 Local package: ${LOCAL_DEB}"
+    echo "Available versions:"
+    index=1
+    for version in "${versions[@]}"; do
+        marker=""
+        [ "$version" = "$LATEST_VERSION" ]  && marker="${marker}  (latest)"
+        [ "$version" = "$CURRENT_VERSION" ] && marker="${marker}  (installed)"
+        printf "  %2d) %s%s\n" "$index" "$version" "$marker"
+        index=$((index + 1))
+    done
+    echo ""
+
+    while true; do
+        ask choice "Select a version by number (Enter to abort): "
+        if [ -z "$choice" ]; then
+            echo "Aborted."
+            exit 0
+        fi
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#versions[@]}" ]; then
+            SELECTED_VERSION="${versions[$((choice - 1))]}"
+            return
+        fi
+        echo "  Invalid selection: ${choice}"
+    done
+}
+
+SELECTED_VERSION=""
+
+if [ -n "$REQUESTED_VERSION" ]; then
+
+    SELECTED_VERSION="$REQUESTED_VERSION"
     [ "$IS_UPDATE" = true ] && echo "  Installed version : ${CURRENT_VERSION}"
-    echo "  Package version   : ${SELECTED_VERSION}"
+    echo "  Requested version : ${SELECTED_VERSION}"
+
+elif [ "$IS_UPDATE" = false ]; then
+
+    SELECTED_VERSION="$LATEST_VERSION"
+    echo "  No existing installation found – installing the latest version (${LATEST_VERSION})."
 
 else
 
+    echo "  Installed version : ${CURRENT_VERSION}"
+    echo "  Latest version    : ${LATEST_VERSION}"
     echo ""
-    echo "🔍 Fetching release information from GitHub..."
 
-    LATEST_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")
+    if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+        echo "✅ Paprika is already on the latest version – nothing to do."
+        echo "   To reinstall or switch to another version, run with --version <x.y.z>."
+        exit 0
+    fi
 
-    if echo "$LATEST_JSON" | grep -q '"message".*"Not Found"'; then
-        echo "Error: No releases found for ${GITHUB_REPO}." >&2
-        echo "       Check https://github.com/${GITHUB_REPO}/releases for available releases." >&2
+    # A pre-release newer than the latest release: the latest release would be a downgrade
+    if version_older "$LATEST_VERSION" "$CURRENT_VERSION"; then
+        echo "✅ The installed version is newer than the latest release – nothing to do."
+        echo "   To switch to another version, e.g. a newer pre-release, run with --version <version>."
+        exit 0
+    fi
+
+    if [ "$INTERACTIVE" = false ]; then
+        echo "Error: A newer version is available, but this script is running non-interactively." >&2
+        echo "       Re-run it from a terminal, or pick a version explicitly:" >&2
+        echo "         --version ${LATEST_VERSION}" >&2
         exit 1
     fi
 
-    LATEST_VERSION=$(echo "$LATEST_JSON" | grep -m1 '"tag_name"' | cut -d '"' -f 4)
-
-    if [ -z "$LATEST_VERSION" ]; then
-        echo "Error: Could not determine the latest release version." >&2
-        exit 1
-    fi
-
-    # Prints all released versions, newest first.
-    list_versions() {
-        curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100" \
-            | grep '"tag_name"' \
-            | cut -d '"' -f 4
-    }
-
-    # Lets the user pick from all released versions. Sets SELECTED_VERSION.
-    select_version() {
-        local versions=() marker choice index version
-        while IFS= read -r version; do
-            [ -n "$version" ] && versions+=("$version")
-        done < <(list_versions)
-
-        if [ "${#versions[@]}" -eq 0 ]; then
-            echo "Error: Could not fetch the list of available versions." >&2
-            exit 1
-        fi
-
-        echo ""
-        echo "Available versions:"
-        index=1
-        for version in "${versions[@]}"; do
-            marker=""
-            [ "$version" = "$LATEST_VERSION" ]  && marker="${marker}  (latest)"
-            [ "$version" = "$CURRENT_VERSION" ] && marker="${marker}  (installed)"
-            printf "  %2d) %s%s\n" "$index" "$version" "$marker"
-            index=$((index + 1))
-        done
-        echo ""
-
-        while true; do
-            ask choice "Select a version by number (Enter to abort): "
-            if [ -z "$choice" ]; then
-                echo "Aborted."
-                exit 0
-            fi
-            if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#versions[@]}" ]; then
-                SELECTED_VERSION="${versions[$((choice - 1))]}"
-                return
-            fi
-            echo "  Invalid selection: ${choice}"
-        done
-    }
-
-    SELECTED_VERSION=""
-
-    if [ -n "$REQUESTED_VERSION" ]; then
-
-        SELECTED_VERSION="$REQUESTED_VERSION"
-        [ "$IS_UPDATE" = true ] && echo "  Installed version : ${CURRENT_VERSION}"
-        echo "  Requested version : ${SELECTED_VERSION}"
-
-    elif [ "$IS_UPDATE" = false ]; then
-
-        SELECTED_VERSION="$LATEST_VERSION"
-        echo "  No existing installation found – installing the latest version (${LATEST_VERSION})."
-
-    else
-
-        echo "  Installed version : ${CURRENT_VERSION}"
-        echo "  Latest version    : ${LATEST_VERSION}"
-        echo ""
-
-        if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
-            echo "✅ Paprika is already on the latest version – nothing to do."
-            echo "   To reinstall or switch to another version, run with --version <x.y.z>."
-            exit 0
-        fi
-
-        if [ "$INTERACTIVE" = false ]; then
-            echo "Error: A newer version is available, but this script is running non-interactively." >&2
-            echo "       Re-run it from a terminal, or pick a version explicitly:" >&2
-            echo "         --version ${LATEST_VERSION}" >&2
-            exit 1
-        fi
-
-        ask confirm "Install the latest version (${LATEST_VERSION})? [Y/n] "
-        case "$confirm" in
-            [nN]*) select_version ;;
-            *)     SELECTED_VERSION="$LATEST_VERSION" ;;
-        esac
-
-    fi
+    ask confirm "Install the latest version (${LATEST_VERSION})? [Y/n] "
+    case "$confirm" in
+        [nN]*) select_version ;;
+        *)     SELECTED_VERSION="$LATEST_VERSION" ;;
+    esac
 
 fi
 
 # ── Downgrade guard ───────────────────────────────────────────────────────────
 
 if [ "$IS_UPDATE" = true ] && [ "$SELECTED_VERSION" != "$CURRENT_VERSION" ]; then
-    OLDER=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$SELECTED_VERSION" | sort -V | head -n1)
-    if [ "$OLDER" = "$SELECTED_VERSION" ]; then
+    if version_older "$SELECTED_VERSION" "$CURRENT_VERSION"; then
         echo ""
         echo "⚠️  ${SELECTED_VERSION} is older than the installed version ${CURRENT_VERSION}."
         echo "    Downgrades are not supported – data written by a newer version may"
@@ -413,70 +381,60 @@ fi
 
 # ── Download selected release ─────────────────────────────────────────────────
 
+if [ "$SELECTED_VERSION" = "$LATEST_VERSION" ]; then
+    RELEASE_JSON="$LATEST_JSON"
+else
+    RELEASE_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${SELECTED_VERSION}")
+
+    if echo "$RELEASE_JSON" | grep -q '"message".*"Not Found"'; then
+        echo "Error: No release found for version ${SELECTED_VERSION}." >&2
+        echo "       Check https://github.com/${GITHUB_REPO}/releases for available releases." >&2
+        exit 1
+    fi
+fi
+
+DOWNLOAD_URL=$(echo "$RELEASE_JSON" \
+    | grep '"browser_download_url"' \
+    | grep "${DEB_ARCH}\.deb\"" \
+    | head -n1 \
+    | cut -d '"' -f 4 \
+    || true)
+
+CHECKSUM_URL=$(echo "$RELEASE_JSON" \
+    | grep '"browser_download_url"' \
+    | grep "${DEB_ARCH}\.deb\.sha256\"" \
+    | head -n1 \
+    | cut -d '"' -f 4 \
+    || true)
+
+if [ -z "$DOWNLOAD_URL" ]; then
+    echo "Error: Release ${SELECTED_VERSION} has no .deb asset for architecture ${DEB_ARCH}." >&2
+    echo "       Check https://github.com/${GITHUB_REPO}/releases for available assets." >&2
+    exit 1
+fi
+
 DEB_FILE=$(mktemp /tmp/paprika-XXXXXX.deb)
 EXTRACT_TMP=$(mktemp -d /tmp/paprika-extract-XXXXXX)
 trap 'rm -rf "$DEB_FILE" "$EXTRACT_TMP"' EXIT
 
-if [ -n "$LOCAL_DEB" ]; then
+echo "⬇️  Downloading: ${DOWNLOAD_URL}"
+curl -fsSL --progress-bar -o "$DEB_FILE" "$DOWNLOAD_URL"
 
-    # A copy, so the cleanup on exit never removes the file that was passed in
-    cp "$LOCAL_DEB" "$DEB_FILE"
-    echo "Warning: Local package – there is no published checksum to verify it against." >&2
+# ── Checksum verification ─────────────────────────────────────────────────────
 
-else
-
-    if [ "$SELECTED_VERSION" = "$LATEST_VERSION" ]; then
-        RELEASE_JSON="$LATEST_JSON"
-    else
-        RELEASE_JSON=$(curl -sSL "https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${SELECTED_VERSION}")
-
-        if echo "$RELEASE_JSON" | grep -q '"message".*"Not Found"'; then
-            echo "Error: No release found for version ${SELECTED_VERSION}." >&2
-            echo "       Check https://github.com/${GITHUB_REPO}/releases for available releases." >&2
-            exit 1
-        fi
-    fi
-
-    DOWNLOAD_URL=$(echo "$RELEASE_JSON" \
-        | grep '"browser_download_url"' \
-        | grep "${DEB_ARCH}\.deb\"" \
-        | head -n1 \
-        | cut -d '"' -f 4 \
-        || true)
-
-    CHECKSUM_URL=$(echo "$RELEASE_JSON" \
-        | grep '"browser_download_url"' \
-        | grep "${DEB_ARCH}\.deb\.sha256\"" \
-        | head -n1 \
-        | cut -d '"' -f 4 \
-        || true)
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        echo "Error: Release ${SELECTED_VERSION} has no .deb asset for architecture ${DEB_ARCH}." >&2
-        echo "       Check https://github.com/${GITHUB_REPO}/releases for available assets." >&2
+if [ -n "$CHECKSUM_URL" ]; then
+    echo "🔒 Verifying checksum..."
+    EXPECTED=$(curl -fsSL "$CHECKSUM_URL" | awk '{print $1}')
+    ACTUAL=$(sha256sum "$DEB_FILE" | awk '{print $1}')
+    if [ "$EXPECTED" != "$ACTUAL" ]; then
+        echo "Error: Checksum mismatch – download may be corrupted or tampered with." >&2
+        echo "  Expected: ${EXPECTED}" >&2
+        echo "  Actual:   ${ACTUAL}" >&2
         exit 1
     fi
-
-    echo "⬇️  Downloading: ${DOWNLOAD_URL}"
-    curl -fsSL --progress-bar -o "$DEB_FILE" "$DOWNLOAD_URL"
-
-    # ── Checksum verification ─────────────────────────────────────────────────────
-
-    if [ -n "$CHECKSUM_URL" ]; then
-        echo "🔒 Verifying checksum..."
-        EXPECTED=$(curl -fsSL "$CHECKSUM_URL" | awk '{print $1}')
-        ACTUAL=$(sha256sum "$DEB_FILE" | awk '{print $1}')
-        if [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "Error: Checksum mismatch – download may be corrupted or tampered with." >&2
-            echo "  Expected: ${EXPECTED}" >&2
-            echo "  Actual:   ${ACTUAL}" >&2
-            exit 1
-        fi
-        echo "✅ Checksum OK."
-    else
-        echo "Warning: No .sha256 file found in this release – skipping integrity check." >&2
-    fi
-
+    echo "✅ Checksum OK."
+else
+    echo "Warning: No .sha256 file found in this release – skipping integrity check." >&2
 fi
 
 NEW_VERSION=$(dpkg-deb -f "$DEB_FILE" Version 2>/dev/null || echo "unknown")
