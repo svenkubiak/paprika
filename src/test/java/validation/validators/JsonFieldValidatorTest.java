@@ -1,11 +1,11 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import enums.FieldType;
 import io.mangoo.utils.JsonUtils;
 import models.FieldDefinition;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import validation.ValidationContext;
 import validation.ValidationResult;
 
@@ -42,7 +42,7 @@ class JsonFieldValidatorTest {
         FieldDefinition field = new FieldDefinition("metadata", FieldType.JSON, false, true, null);
         ValidationResult result = new ValidationResult();
 
-        validator.validate(field, JsonUtils.getMapper().getNodeFactory().textNode("{}"), result, ValidationContext.empty());
+        validator.validate(field, JsonUtils.getMapper().getNodeFactory().stringNode("{}"), result, ValidationContext.empty());
 
         assertThat(result.isValid(), is(false));
         assertThat(result.errors().getFirst().message(), is("Expected JSON object or array"));

@@ -1,12 +1,12 @@
 package services;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import constants.SystemFields;
 import enums.FieldType;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import models.CollectionDefinition;
 import models.FieldDefinition;
+import tools.jackson.databind.JsonNode;
 import utils.UserRecordUtils;
 import validation.ValidationContext;
 import validation.ValidationResult;
@@ -143,7 +143,7 @@ public class ValidationService {
 
             // Virtual and write-only: proves the current password on a credential change, never stored.
             if (UserRecordUtils.isUsers(collection.name()) && UserRecordUtils.OLD_PASSWORD.equals(fieldName)) {
-                if (value != null && !value.isNull() && !value.isTextual()) {
+                if (value != null && !value.isNull() && !value.isString()) {
                     result.add(fieldName, "Expected string");
                 }
                 return;

@@ -2,8 +2,6 @@ package filters.api;
 
 import auth.TenantContext;
 import auth.TenantContextHolder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import hooks.HookRequestUtils;
 import io.mangoo.interfaces.filters.PerRequestFilter;
 import io.mangoo.routing.Response;
@@ -14,6 +12,8 @@ import jakarta.inject.Inject;
 import models.CollectionDefinition;
 import services.TenantCollectionService;
 import services.ValidationService;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import utils.FieldDefaults;
 import utils.MultipartSupport;
 import validation.ValidationContext;
@@ -82,7 +82,7 @@ public class ApiValidationFilter implements PerRequestFilter {
             }
 
             return Response.badRequest().bodyJson(validationResult.errors()).end();
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return Response.badRequest().end();
         }
     }

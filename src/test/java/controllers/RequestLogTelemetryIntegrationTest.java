@@ -1,7 +1,6 @@
 package controllers;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import constants.SettingKeys;
 import constants.SystemCollections;
@@ -20,6 +19,7 @@ import services.SettingsService;
 import services.TenantCollectionService;
 import services.TenantDatabaseResolver;
 import services.TenantService;
+import tools.jackson.databind.JsonNode;
 import utils.ClientIps;
 import utils.DbUtils;
 import utils.TenantTestUtils;
@@ -262,7 +262,7 @@ class RequestLogTelemetryIntegrationTest {
         assertThat(list.getStatusCode(), equalTo(StatusCodes.OK));
         try {
             JsonNode items = JsonUtils.getMapper().readTree(list.getContent()).get("items");
-            items.forEach(item -> assertThat(item.get("type").asText(), equalTo("request")));
+            items.forEach(item -> assertThat(item.get("type").asString(), equalTo("request")));
         } catch (Exception e) {
             throw new AssertionError("Unreadable request log response: " + list.getContent(), e);
         }
@@ -290,8 +290,8 @@ class RequestLogTelemetryIntegrationTest {
             assertThat(body.has("total"), equalTo(false));
             assertThat(body.get("limit").asInt(), equalTo(20));
             body.get("items").forEach(item ->
-                    assertThat(item.get("timestamp").asText(), greaterThanOrEqualTo(cursor)));
-            assertThat(body.get("items").findValuesAsText("id"), hasItem(older.getString("id")));
+                    assertThat(item.get("timestamp").asString(), greaterThanOrEqualTo(cursor)));
+            assertThat(body.get("items").findValuesAsString("id"), hasItem(older.getString("id")));
         } catch (Exception e) {
             throw new AssertionError("Unreadable request log response: " + list.getContent(), e);
         }

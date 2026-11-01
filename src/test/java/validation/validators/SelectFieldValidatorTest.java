@@ -1,11 +1,11 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import enums.FieldType;
 import io.mangoo.utils.JsonUtils;
 import models.FieldDefinition;
 import models.FieldOptions;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.ArrayNode;
 import validation.ValidationContext;
 import validation.ValidationResult;
 
@@ -22,7 +22,7 @@ class SelectFieldValidatorTest {
         FieldDefinition field = selectField(List.of("draft", "published"), 1);
         ValidationResult result = new ValidationResult();
 
-        validator.validate(field, JsonUtils.getMapper().getNodeFactory().textNode("draft"), result, ValidationContext.empty());
+        validator.validate(field, JsonUtils.getMapper().getNodeFactory().stringNode("draft"), result, ValidationContext.empty());
 
         assertThat(result.isValid(), is(true));
     }
@@ -32,7 +32,7 @@ class SelectFieldValidatorTest {
         FieldDefinition field = selectField(List.of("draft", "published"), 1);
         ValidationResult result = new ValidationResult();
 
-        validator.validate(field, JsonUtils.getMapper().getNodeFactory().textNode("archived"), result, ValidationContext.empty());
+        validator.validate(field, JsonUtils.getMapper().getNodeFactory().stringNode("archived"), result, ValidationContext.empty());
 
         assertThat(result.isValid(), is(false));
         assertThat(result.errors().getFirst().message(), is("Value is not an allowed option"));

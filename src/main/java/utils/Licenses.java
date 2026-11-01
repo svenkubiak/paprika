@@ -1,11 +1,11 @@
 package utils;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.mangoo.utils.JsonUtils;
 import models.License;
 import org.apache.commons.lang3.StringUtils;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
@@ -73,10 +73,10 @@ public final class Licenses {
             }
 
             JsonNode payload = JsonUtils.getMapper().readTree(Base64.getUrlDecoder().decode(parts[1]));
-            String licenseId = StringUtils.trimToNull(payload.path("licenseId").asText(null));
-            String licensee = StringUtils.trimToNull(payload.path("licensee").asText(null));
+            String licenseId = StringUtils.trimToNull(payload.path("licenseId").asString(null));
+            String licensee = StringUtils.trimToNull(payload.path("licensee").asString(null));
             JsonNode installations = payload.path("installations");
-            String expiresAt = payload.path("expiresAt").asText(null);
+            String expiresAt = payload.path("expiresAt").asString(null);
             if (licenseId == null || licensee == null || !installations.isInt()
                     || installations.intValue() < 1 || expiresAt == null) {
                 return License.invalid();
@@ -85,7 +85,7 @@ public final class Licenses {
             LocalDate expiryDate = LocalDate.parse(expiresAt);
             License.Status status = today.isAfter(expiryDate) ? License.Status.EXPIRED : License.Status.VALID;
             return new License(status, licenseId, licensee, installations.intValue(), expiryDate);
-        } catch (IllegalArgumentException | IOException | GeneralSecurityException | DateTimeParseException e) {
+        } catch (IllegalArgumentException | JacksonException | GeneralSecurityException | DateTimeParseException e) {
             return License.invalid();
         }
     }

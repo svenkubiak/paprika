@@ -1,9 +1,9 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import models.FieldDefinition;
 import models.FieldOptions;
+import tools.jackson.databind.JsonNode;
 import validation.FieldConstraintUtils;
 import validation.ValidationContext;
 import validation.ValidationResult;
@@ -22,13 +22,13 @@ public class StringFieldValidator implements FieldValidator {
             ValidationResult result,
             ValidationContext context) {
 
-        if (!value.isTextual()) {
+        if (!value.isString()) {
             result.add(field.name(), "Expected string");
             return;
         }
 
         FieldOptions options = field.optionsOrDefault();
-        String text = value.asText();
+        String text = value.asString();
 
         // Length first: no regex runs over a value the schema already rejects, which an
         // unauthenticated caller could otherwise use to schedule work.

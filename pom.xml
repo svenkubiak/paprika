@@ -9,7 +9,7 @@
 	<packaging>jar</packaging>
 	<url>https://github.com/svenkubiak/paprika</url>
 	<properties>
-		<mangooio.version>10.15.1</mangooio.version>
+		<mangooio.version>11.0.0-SNAPSHOT</mangooio.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<jdk.version>25</jdk.version>
 		<node.version>v24.22.1</node.version>
@@ -388,7 +388,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-enforcer-plugin</artifactId>
-				<version>3.6.3</version>
+				<version>3.7.0</version>
 				<configuration>
 					<rules>
 						<DependencyConvergence>

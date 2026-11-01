@@ -1,7 +1,6 @@
 package hooks;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import io.mangoo.routing.bindings.Request;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
@@ -11,6 +10,7 @@ import org.apache.commons.lang3.StringUtils;
 import services.AuthService;
 import services.TenantService;
 import services.TenantUserService;
+import tools.jackson.databind.JsonNode;
 
 import java.util.List;
 import java.util.Objects;
@@ -70,7 +70,7 @@ public class HookTenantContextResolver {
     private TenantContext tenantFromBody(Request request, boolean defaultWithoutSlug) {
         try {
             JsonNode body = JsonUtils.getMapper().readTree(StringUtils.defaultString(request.getBody()));
-            String slug = body.hasNonNull("tenant") ? body.get("tenant").asText() : null;
+            String slug = body.hasNonNull("tenant") ? body.get("tenant").asString("") : null;
             if (StringUtils.isBlank(slug) && !defaultWithoutSlug) {
                 return null;
             }
@@ -90,7 +90,7 @@ public class HookTenantContextResolver {
                 return fallback;
             }
 
-            Optional<auth.AuthContext> auth = authService.userFromRefreshToken(body.get("refreshToken").asText())
+            Optional<auth.AuthContext> auth = authService.userFromRefreshToken(body.get("refreshToken").asString(""))
                     .flatMap(tenantUserService::resolveActiveUser);
             if (auth.isEmpty()) {
                 return null;

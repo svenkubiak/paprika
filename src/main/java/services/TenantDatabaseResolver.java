@@ -6,7 +6,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import constants.CollectionName;
 import exceptions.NoTenantContextException;
-import io.mangoo.persistence.interfaces.Datastore;
+import io.mangoo.interfaces.persistence.Datastore;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.bson.Document;

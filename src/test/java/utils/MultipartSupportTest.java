@@ -1,6 +1,5 @@
 package utils;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import enums.FieldType;
 import io.mangoo.routing.bindings.Request;
 import models.CollectionDefinition;
@@ -8,6 +7,7 @@ import models.CollectionRules;
 import models.FieldDefinition;
 import models.FieldOptions;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 import java.util.Map;
@@ -77,7 +77,7 @@ class MultipartSupportTest {
 
         ObjectNode body = MultipartSupport.buildJsonBody(definition, multipart);
 
-        assertThat(body.get("title").isTextual(), is(true));
+        assertThat(body.get("title").isString(), is(true));
         assertThat(body.get("count").isNumber(), is(true));
         assertThat(body.get("count").asInt(), is(42));
         assertThat(body.get("published").isBoolean(), is(true));

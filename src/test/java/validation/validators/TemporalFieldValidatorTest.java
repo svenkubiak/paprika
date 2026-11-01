@@ -101,7 +101,7 @@ class TemporalFieldValidatorTest {
             default -> new DateTimeFieldValidator();
         };
         ValidationResult result = new ValidationResult();
-        validator.validate(field, JsonUtils.getMapper().getNodeFactory().textNode(value), result,
+        validator.validate(field, JsonUtils.getMapper().getNodeFactory().stringNode(value), result,
                 ValidationContext.empty());
         return result;
     }

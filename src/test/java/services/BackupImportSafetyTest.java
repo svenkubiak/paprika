@@ -1,7 +1,6 @@
 package services;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.mongodb.client.MongoDatabase;
 import constants.CollectionName;
 import io.mangoo.core.Application;
@@ -13,6 +12,7 @@ import org.bson.Document;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import tools.jackson.core.type.TypeReference;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 

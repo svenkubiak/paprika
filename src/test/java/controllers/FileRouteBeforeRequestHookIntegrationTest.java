@@ -1,7 +1,6 @@
 package controllers;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import constants.GlobalHooks;
 import constants.SystemCollections;
@@ -17,6 +16,7 @@ import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.*;
+import tools.jackson.databind.JsonNode;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
@@ -61,14 +61,14 @@ class FileRouteBeforeRequestHookIntegrationTest {
                     calls.get(), equalTo(1));
 
             JsonNode envelope = JsonUtils.getMapper().readTree(payload.get());
-            assertThat(envelope.get("paprika").get("event").asText(), equalTo("beforeRequest"));
-            assertThat(envelope.get("context").get("collection").asText(), equalTo(fixture.collection()));
-            assertThat(envelope.get("context").get("recordId").asText(), equalTo(fixture.recordId()));
-            assertThat(envelope.get("context").get("http").get("method").asText(), equalTo("GET"));
-            assertThat(envelope.get("context").get("auth").get("id").asText(),
+            assertThat(envelope.get("paprika").get("event").asString(), equalTo("beforeRequest"));
+            assertThat(envelope.get("context").get("collection").asString(), equalTo(fixture.collection()));
+            assertThat(envelope.get("context").get("recordId").asString(), equalTo(fixture.recordId()));
+            assertThat(envelope.get("context").get("http").get("method").asString(), equalTo("GET"));
+            assertThat(envelope.get("context").get("auth").get("id").asString(),
                     equalTo(record(fixture.collection(), fixture.recordId()).getString("owner")));
-            assertThat(envelope.get("context").get("auth").get("role").asText(), not(emptyString()));
-            assertThat(envelope.get("context").get("http").get("path").asText(),
+            assertThat(envelope.get("context").get("auth").get("role").asString(), not(emptyString()));
+            assertThat(envelope.get("context").get("http").get("path").asString(),
                     equalTo(downloadUrl(fixture)));
             assertThat(envelope.get("data").get("body").isNull(), equalTo(true));
             assertThat(envelope.get("data").get("record").isNull(), equalTo(true));

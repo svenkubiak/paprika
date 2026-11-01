@@ -4,8 +4,6 @@ import auth.AuthContext;
 import auth.AuthorizationDecision;
 import auth.TenantContext;
 import auth.TenantContextHolder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.mongodb.MongoException;
 import com.mongodb.MongoExecutionTimeoutException;
 import com.mongodb.client.MongoCollection;
@@ -29,6 +27,8 @@ import org.bson.Document;
 import org.bson.conversions.Bson;
 import rules.ListFilterParser;
 import rules.ListSortParser;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import utils.*;
 
 import java.io.IOException;
@@ -291,6 +291,12 @@ public class CollectionRecordService {
     }
 
     // Write responses go through here too, so they match a subsequent read exactly (incl. credential projection)
+    // For an event too large to travel between instances, so each reads the same record the event would carry
+    Document readRecordForRealtime(TenantContext ctx, String collection, String id) {
+        CollectionDefinition definition = tenantCollections.findDefinition(ctx, collection);
+        return definition == null ? null : readRecord(ctx, definition, collection, id);
+    }
+
     private Document readRecord(TenantContext ctx, CollectionDefinition definition, String collection, String id) {
         Document document = tenantCollections.dataCollection(ctx, collection)
                 .find(eq("id", id))
@@ -432,7 +438,7 @@ public class CollectionRecordService {
         } catch (IllegalArgumentException e) {
             rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
             return RecordResult.badRequest(e.getMessage());
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             rollbackPendingUploads(ctx, uploadChanges, updatePersisted);
             return RecordResult.badRequest(null);
         } catch (IOException e) {

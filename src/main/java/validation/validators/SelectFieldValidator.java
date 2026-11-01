@@ -1,9 +1,9 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import models.FieldDefinition;
 import models.FieldOptions;
+import tools.jackson.databind.JsonNode;
 import validation.ValidationContext;
 import validation.ValidationResult;
 
@@ -48,12 +48,12 @@ public class SelectFieldValidator implements FieldValidator {
             Set<String> allowedValues,
             ValidationResult result) {
 
-        if (!value.isTextual()) {
+        if (!value.isString()) {
             result.add(field.name(), "Expected string");
             return;
         }
 
-        if (!allowedValues.contains(value.asText())) {
+        if (!allowedValues.contains(value.asString())) {
             result.add(field.name(), "Value is not an allowed option");
         }
     }
@@ -77,11 +77,11 @@ public class SelectFieldValidator implements FieldValidator {
 
         Set<String> seen = new HashSet<>();
         for (JsonNode item : value) {
-            if (!item.isTextual()) {
+            if (!item.isString()) {
                 result.add(field.name(), "Expected array of strings");
                 return;
             }
-            String selected = item.asText();
+            String selected = item.asString();
             if (!allowedValues.contains(selected)) {
                 result.add(field.name(), "Value is not an allowed option");
                 return;

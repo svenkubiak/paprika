@@ -1,9 +1,9 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import models.FieldDefinition;
 import models.FieldOptions;
+import tools.jackson.databind.JsonNode;
 import validation.FieldConstraintUtils;
 import validation.ValidationContext;
 import validation.ValidationResult;

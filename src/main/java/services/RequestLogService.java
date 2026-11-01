@@ -2,8 +2,6 @@ package services;
 
 import auth.TenantContext;
 import auth.TenantContextHolder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import constants.RequestAttributes;
 import constants.SettingKeys;
 import constants.SystemCollections;
@@ -21,6 +19,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import utils.ApiKeys;
 import utils.ClientIps;
 import utils.DbUtils;
@@ -438,18 +438,18 @@ public class RequestLogService {
         try {
             JsonNode node = JsonUtils.getMapper().readTree(body);
             if (node.has("error")) {
-                return node.get("error").asText();
+                return node.get("error").asString("");
             }
             if (node.has("message")) {
-                return node.get("message").asText();
+                return node.get("message").asString("");
             }
             if (node.isArray() && !node.isEmpty()) {
                 JsonNode first = node.get(0);
                 if (first.has("message")) {
-                    return first.get("message").asText();
+                    return first.get("message").asString("");
                 }
             }
-        } catch (JsonProcessingException ignored) {
+        } catch (JacksonException ignored) {
             return body.length() > 200 ? body.substring(0, 200) : body;
         }
 

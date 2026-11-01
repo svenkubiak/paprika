@@ -4,8 +4,6 @@ import auth.AuthContext;
 import auth.AuthorizationDecision;
 import auth.TenantContext;
 import auth.TenantContextHolder;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import filters.TenantContextFilter;
 import io.mangoo.interfaces.filters.PerRequestFilter;
 import io.mangoo.routing.Response;
@@ -24,6 +22,8 @@ import rules.RuleOperation;
 import rules.RuleService;
 import services.AuthService;
 import services.TenantCollectionService;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import utils.ApiKeys;
 import utils.MultipartSupport;
 
@@ -290,7 +290,7 @@ public class ApiAuthFilter implements PerRequestFilter {
             Map<String, Object> map = new HashMap<>();
             node.properties().forEach(entry -> map.put(entry.getKey(), jsonToValue(entry.getValue())));
             return map;
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return Map.of();
         }
     }
@@ -305,6 +305,6 @@ public class ApiAuthFilter implements PerRequestFilter {
         if (node.isNumber()) {
             return node.numberValue();
         }
-        return node.asText();
+        return node.asString("");
     }
 }

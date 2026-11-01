@@ -1,7 +1,6 @@
 package validation.validators;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -11,6 +10,7 @@ import models.FieldOptions;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import services.TenantCollectionService;
+import tools.jackson.databind.JsonNode;
 import validation.ValidationContext;
 import validation.ValidationResult;
 
@@ -56,12 +56,12 @@ public class RelationFieldValidator implements FieldValidator {
             ValidationResult result,
             ValidationContext context) {
 
-        if (!value.isTextual()) {
+        if (!value.isString()) {
             result.add(field.name(), "Expected relation id string");
             return;
         }
 
-        validateRelationId(field, value.asText(), result, context);
+        validateRelationId(field, value.asString(), result, context);
     }
 
     private void validateMultiple(
@@ -83,11 +83,11 @@ public class RelationFieldValidator implements FieldValidator {
 
         Set<String> seen = new HashSet<>();
         for (JsonNode item : value) {
-            if (!item.isTextual()) {
+            if (!item.isString()) {
                 result.add(field.name(), "Expected array of relation ids");
                 return;
             }
-            String relatedId = item.asText();
+            String relatedId = item.asString();
             if (!seen.add(relatedId)) {
                 result.add(field.name(), "Duplicate relation id");
                 return;

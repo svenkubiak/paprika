@@ -71,12 +71,12 @@ public class ApiHookFilter implements PerRequestFilter {
             Response response) {
 
         String recordId = utils.DbUtils.id();
-        com.fasterxml.jackson.databind.JsonNode body = hookService.parseBody(
+        tools.jackson.databind.JsonNode body = hookService.parseBody(
                 MultipartSupport.isMultipart(request)
                         ? MultipartSupport.effectiveJsonBody(request)
                         : request.getBody());
         if (body.isObject()) {
-            ((com.fasterxml.jackson.databind.node.ObjectNode) body).put("id", recordId);
+            ((tools.jackson.databind.node.ObjectNode) body).put("id", recordId);
         }
 
         HookExecutionResult result = hookService.runBefore(
@@ -104,7 +104,7 @@ public class ApiHookFilter implements PerRequestFilter {
         }
 
         request.addAttribute(HookRequestUtils.RECORD_SNAPSHOT_ATTRIBUTE, record);
-        com.fasterxml.jackson.databind.JsonNode body = hookService.parseBody(
+        tools.jackson.databind.JsonNode body = hookService.parseBody(
                 MultipartSupport.isMultipart(request)
                         ? MultipartSupport.effectiveJsonBody(request)
                         : request.getBody());

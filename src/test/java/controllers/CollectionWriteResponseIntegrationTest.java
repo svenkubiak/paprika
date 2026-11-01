@@ -1,7 +1,6 @@
 package controllers;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import io.mangoo.core.Application;
 import io.mangoo.test.TestRunner;
@@ -17,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.TenantCollectionService;
 import services.UserService;
+import tools.jackson.databind.JsonNode;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
@@ -44,10 +44,10 @@ class CollectionWriteResponseIntegrationTest {
         assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
 
         JsonNode body = json(create);
-        assertThat(body.path("id").asText().isBlank(), equalTo(false));
-        assertThat(body.path("title").asText(), equalTo("created record"));
-        assertThat(body.path("createdAt").asText().isBlank(), equalTo(false));
-        assertThat(body.path("updatedAt").asText().isBlank(), equalTo(false));
+        assertThat(body.path("id").asString().isBlank(), equalTo(false));
+        assertThat(body.path("title").asString(), equalTo("created record"));
+        assertThat(body.path("createdAt").asString().isBlank(), equalTo(false));
+        assertThat(body.path("updatedAt").asString().isBlank(), equalTo(false));
     }
 
     @Test
@@ -60,12 +60,12 @@ class CollectionWriteResponseIntegrationTest {
                 .execute();
         assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
 
-        String id = json(create).path("id").asText();
+        String id = json(create).path("id").asString();
 
         TestResponse read = TestRequest.get("/api/collections/" + collection + "/" + id).execute();
 
         assertThat(read.getStatusCode(), equalTo(StatusCodes.OK));
-        assertThat(json(read).path("title").asText(), equalTo("follow up"));
+        assertThat(json(read).path("title").asString(), equalTo("follow up"));
     }
 
     @Test
@@ -79,7 +79,7 @@ class CollectionWriteResponseIntegrationTest {
         assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
 
         JsonNode created = json(create);
-        TestResponse read = TestRequest.get("/api/collections/" + collection + "/" + created.path("id").asText())
+        TestResponse read = TestRequest.get("/api/collections/" + collection + "/" + created.path("id").asString())
                 .execute();
 
         assertThat(read.getStatusCode(), equalTo(StatusCodes.OK));
@@ -95,7 +95,7 @@ class CollectionWriteResponseIntegrationTest {
                 .withContentType("application/json")
                 .execute();
         JsonNode created = json(create);
-        String id = created.path("id").asText();
+        String id = created.path("id").asString();
 
         TestResponse update = TestRequest.patch("/api/collections/" + collection + "/" + id)
                 .withStringBody("{\"title\":\"after\"}")
@@ -105,11 +105,11 @@ class CollectionWriteResponseIntegrationTest {
         assertThat(update.getStatusCode(), equalTo(StatusCodes.OK));
 
         JsonNode updated = json(update);
-        assertThat(updated.path("id").asText(), equalTo(id));
-        assertThat(updated.path("title").asText(), equalTo("after"));
-        assertThat(updated.path("createdAt").asText(), equalTo(created.path("createdAt").asText()));
+        assertThat(updated.path("id").asString(), equalTo(id));
+        assertThat(updated.path("title").asString(), equalTo("after"));
+        assertThat(updated.path("createdAt").asString(), equalTo(created.path("createdAt").asString()));
         assertThat(
-                updated.path("updatedAt").asText().compareTo(created.path("updatedAt").asText()) >= 0,
+                updated.path("updatedAt").asString().compareTo(created.path("updatedAt").asString()) >= 0,
                 equalTo(true));
 
         TestResponse read = TestRequest.get("/api/collections/" + collection + "/" + id).execute();
@@ -138,7 +138,7 @@ class CollectionWriteResponseIntegrationTest {
             assertThat(create.getContent(), not(containsString("passwordHash")));
             assertThat(create.getContent(), not(containsString("passwordSalt")));
 
-            String id = json(create).path("id").asText();
+            String id = json(create).path("id").asString();
 
             // Not the email: an anonymous caller may never change a credential, whatever the rule
             TestResponse update = TestRequest.patch("/api/collections/users/" + id)
@@ -212,9 +212,9 @@ class CollectionWriteResponseIntegrationTest {
         JsonNode created = json(create);
         JsonNode attachment = created.path("attachment");
         assertThat(attachment.isObject(), equalTo(true));
-        assertThat(attachment.path("url").asText().isBlank(), equalTo(false));
+        assertThat(attachment.path("url").asString().isBlank(), equalTo(false));
 
-        TestResponse read = TestRequest.get("/api/collections/" + collection + "/" + created.path("id").asText())
+        TestResponse read = TestRequest.get("/api/collections/" + collection + "/" + created.path("id").asString())
                 .withHeader("Authorization", "Bearer " + token)
                 .execute();
 
@@ -264,7 +264,7 @@ class CollectionWriteResponseIntegrationTest {
                 .execute();
 
         try {
-            return JsonUtils.getMapper().readTree(login.getContent()).path("accessToken").asText();
+            return JsonUtils.getMapper().readTree(login.getContent()).path("accessToken").asString();
         } catch (Exception e) {
             throw new IllegalStateException("Login failed: " + login.getContent(), e);
         }

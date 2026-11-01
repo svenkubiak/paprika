@@ -1,7 +1,5 @@
 package rules;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.mongodb.client.model.Filters;
 import constants.SystemFields;
 import enums.FieldType;
@@ -9,6 +7,8 @@ import io.mangoo.utils.JsonUtils;
 import models.CollectionDefinition;
 import models.FieldDefinition;
 import org.bson.conversions.Bson;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import utils.Timestamps;
 
 import java.time.format.DateTimeParseException;
@@ -213,7 +213,7 @@ public final class ListFilterParser {
         JsonNode node;
         try {
             node = JsonUtils.getMapper().readTree(raw.value());
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             node = null;
         }
         if (node == null || !node.isArray()) {
@@ -256,11 +256,11 @@ public final class ListFilterParser {
                 yield entry.booleanValue();
             }
             default -> {
-                if (!entry.isTextual()) {
+                if (!entry.isString()) {
                     throw invalid(raw.label(), where + " is not a JSON string");
                 }
-                checkLength(raw.label(), entry.textValue());
-                yield toScalar(raw, type, definition, entry.textValue());
+                checkLength(raw.label(), entry.stringValue());
+                yield toScalar(raw, type, definition, entry.stringValue());
             }
         };
     }

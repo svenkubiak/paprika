@@ -1,6 +1,5 @@
 package services;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
@@ -17,6 +16,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -133,7 +134,7 @@ public class ImportService {
 
         try {
             return JsonUtils.getMapper().readValue(manifestBytes, new TypeReference<>() {});
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException("Invalid backup: " + MANIFEST + " could not be read: " + e.getMessage());
         }
     }
