@@ -265,14 +265,20 @@ for name in "${SMTP_SETTINGS[@]}"; do
 done
 chmod 440 "$MONGO_ROOT_PASSWORD_FILE"
 
-SECRET_PATHS=("$SECRETS_DIR" "$SECRETS_DIR"/* "$MONGO_SECRETS_DIR" "$MONGO_SECRETS_DIR"/*)
-if ! chgrp "$CONTAINER_GID" "${SECRET_PATHS[@]}" 2>/dev/null; then
+# Paprika writes the uploads as group 1000 too; the directory alone, as files the container
+# created in an earlier run belong to it already
+mkdir -p storage
+
+SHARED_PATHS=(storage "$SECRETS_DIR" "$SECRETS_DIR"/* "$MONGO_SECRETS_DIR" "$MONGO_SECRETS_DIR"/*)
+if ! { chgrp "$CONTAINER_GID" "${SHARED_PATHS[@]}" && chmod 770 storage; } 2>/dev/null; then
     echo ""
-    echo "The containers read the secrets as group ${CONTAINER_GID}. Setting that group"
-    echo "needs root, so sudo may ask for your password."
-    if ! command -v sudo &>/dev/null || ! sudo chgrp "$CONTAINER_GID" "${SECRET_PATHS[@]}"; then
-        echo "Error: Could not set group ${CONTAINER_GID} on the secrets. Run as root:" >&2
+    echo "The containers read the secrets and write the uploads as group ${CONTAINER_GID}."
+    echo "Setting that group needs root, so sudo may ask for your password."
+    if ! command -v sudo &>/dev/null \
+            || ! { sudo chgrp "$CONTAINER_GID" "${SHARED_PATHS[@]}" && sudo chmod 770 storage; }; then
+        echo "Error: Could not set group ${CONTAINER_GID}. Run as root:" >&2
         echo "       chgrp -R ${CONTAINER_GID} $(pwd)/${SECRETS_DIR} $(pwd)/${MONGO_SECRETS_DIR}" >&2
+        echo "       chgrp ${CONTAINER_GID} $(pwd)/storage && chmod 770 $(pwd)/storage" >&2
         echo "       and start the script again." >&2
         exit 1
     fi
@@ -316,7 +322,7 @@ pin_version
 
 # ── Create data directories ───────────────────────────────────────────────────
 
-mkdir -p storage mongodb
+mkdir -p mongodb
 
 # ── Download compose file ─────────────────────────────────────────────────────
 
@@ -325,26 +331,28 @@ echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE} (${REQUESTED_VERSION:-m
 curl -fsSL -o "$COMPOSE_FILE" "${GITHUB_RAW}/${COMPOSE_FILE}"
 curl -fsSL -o "$MONGO_INIT_FILE" "${GITHUB_RAW}/${MONGO_INIT_FILE}"
 
-# ── Start stack ───────────────────────────────────────────────────────────────
-
-echo ""
-echo "Starting stack..."
-docker compose up -d
+# ── Done: the stack is started by hand ────────────────────────────────────────
+# Not started here, so the settings can be reviewed and SMTP filled in before the first start.
 
 HOST_PORT=$(grep "^HOST_PORT=" "$ENV_FILE" | cut -d= -f2)
 
 echo ""
 echo "────────────────────────────────────────────"
-echo " Installation complete."
-echo ""
-echo " Paprika is starting at http://localhost:${HOST_PORT}"
-echo " MongoDB is initialising – first start may take ~30 seconds."
+echo " Installation complete. The stack is NOT started yet."
 echo ""
 echo " Secrets:  $(pwd)/${SECRETS_DIR}"
 echo "           $(pwd)/${MONGO_SECRETS_DIR} (MongoDB root password)"
-echo " SMTP is optional and off. To send mail, fill in the smtp.*"
-echo " files in ./${SECRETS_DIR} and run: docker compose restart paprika"
 echo ""
-echo " Check logs:"
-echo "   docker compose logs -f"
+echo " Before the first start, if needed:"
+echo "   - SMTP is optional and off. To send mail, fill in the"
+echo "     smtp.* files in ./${SECRETS_DIR}."
+echo "   - Paprika answers on port ${HOST_PORT}; change HOST_PORT in ${ENV_FILE}."
+echo ""
+echo " Start the stack:"
+echo "   docker compose up -d"
+echo ""
+echo " Paprika is available at http://localhost:${HOST_PORT} once MongoDB"
+echo " is ready; the first start may take ~30 seconds. Find the one-time"
+echo " setup link for the first superadmin in the log:"
+echo "   docker compose logs -f paprika | grep --line-buffered setup"
 echo "────────────────────────────────────────────"

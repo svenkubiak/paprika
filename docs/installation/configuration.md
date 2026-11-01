@@ -47,7 +47,7 @@ Each file holds one value as it is, without quotes or encoding; a trailing line 
 
 Who may read the files:
 
-- **Docker**: Compose mounts `secrets/` as a whole into both containers, to `/run/secrets`, and `mongodb-secrets/` only into the `mongodb` container. A mount keeps the owner and mode the files and directories have on the host, so both directories and their files belong to group `1000`, which both containers run with: the directories `0750`, the files `0440` (the SMTP files `0640`, so the owner can fill them in), nothing for anyone else. Setting group `1000` needs root unless you are a member, so the installer asks for `sudo` if necessary. A new file in `secrets/` needs the same group and mode.
+- **Docker**: `storage/` belongs to group `1000` as well, with `0770`, as Paprika writes the uploads there. Compose mounts `secrets/` as a whole into both containers, to `/run/secrets`, and `mongodb-secrets/` only into the `mongodb` container. A mount keeps the owner and mode the files and directories have on the host, so both directories and their files belong to group `1000`, which both containers run with: the directories `0750`, the files `0440` (the SMTP files `0640`, so the owner can fill them in), nothing for anyone else. Setting group `1000` needs root unless you are a member, so the installer asks for `sudo` if necessary. A new file in `secrets/` needs the same group and mode.
 - **Standalone**: `root:paprika`, `0640`, in a directory with `0750` — like `.env`, Paprika can read them but not change them.
 
 ## What gets auto-generated, and what doesn't

@@ -1,6 +1,6 @@
 # Docker
 
-The Docker setup runs Paprika and MongoDB together via Docker Compose. It's the fastest way to get an instance running: one command downloads a `compose.yml`, generates all application secrets as files, and brings the stack up. No separate database installation, no manual configuration.
+The Docker setup runs Paprika and MongoDB together via Docker Compose. It's the fastest way to get an instance running: one command downloads a `compose.yml` and generates all application secrets as files, and a second one brings the stack up. No separate database installation, no manual configuration.
 
 ## Prerequisites
 
@@ -18,15 +18,25 @@ curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-doc
 The script runs a set of preflight checks (`curl`, `openssl`, `docker`, and `docker compose` must all be present and the Docker daemon reachable), detects whether a `paprika` container is already running in the current directory, and branches into either a fresh install or an update (see below). On a **fresh install**, it:
 
 1. Generates all application secrets as files in a `secrets/` directory (see [Configuration](./configuration#secret-files) for what each file does), including the scoped application password Paprika authenticates with to MongoDB. The SMTP settings are prepared as empty files. The MongoDB root password, used only to bootstrap the `mongodb` container, goes into a directory of its own, `mongodb-secrets/` (see [What the stack looks like](#what-the-stack-looks-like) below).
-2. Gives both directories and their files group `1000`, which both containers run with: `0750` for the directories, `0440` for the files (`0640` for the SMTP files you fill in yourself). Setting that group needs root unless you are a member of it, so the script may ask for your password through `sudo`.
-3. Writes a `.env` with the settings that are not secret: the host port and the two MongoDB usernames
-4. Creates a `storage/` directory next to the `.env` file for persistent file uploads
+2. Creates a `storage/` directory for persistent file uploads
+3. Gives `storage/`, both secret directories and their files group `1000`, which both containers run with: `0770` for `storage/`, which Paprika writes to, `0750` for the secret directories, `0440` for the secret files (`0640` for the SMTP files you fill in yourself). Setting that group needs root unless you are a member of it, so the script may ask for your password through `sudo`.
+4. Writes a `.env` with the settings that are not secret: the host port and the two MongoDB usernames
 5. Downloads `compose.yml` and `mongo-init.js` from this repository
-6. Runs `docker compose up -d` to start both containers
+6. Stops there: the stack is **not** started, so you can review the settings and fill in SMTP first. The script ends with the commands for the next steps.
 
 `.env` is written with `chmod 600` and only if it doesn't already exist. Running the script again on top of an existing install will not silently overwrite your secrets: it asks first, and keeps them when it cannot ask. A directory whose `.env` still holds the secrets is an installation from before secret files; the script stops there instead of setting it up anew, see [Moving secrets from .env to files](#moving-secrets-from-env-to-files).
 
-Paprika is available at `http://localhost:8080` once MongoDB reports healthy, which usually takes about 30 seconds on first start. Change the exposed port by setting `HOST_PORT` in `.env` before starting the stack.
+Start the stack when you are ready:
+
+```bash
+docker compose up -d
+```
+
+Paprika is available at `http://localhost:8080` once MongoDB reports healthy, which usually takes about 30 seconds on first start. Change the exposed port by setting `HOST_PORT` in `.env` before starting the stack. The one-time setup link for the first superadmin is in the log:
+
+```bash
+docker compose logs -f paprika | grep --line-buffered setup
+```
 
 If you'd rather review the files before running anything:
 
@@ -152,7 +162,7 @@ curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/inst
   | bash -s -- --version 1.0.0-Beta1
 ```
 
-The script keeps the version in `.env` as `PAPRIKA_VERSION`, so `compose.yml` and every later `docker compose` command use it. An update without `--version` stays on it — running a newer pre-release, the latest release could be older — and an update with `--version` moves to another one. Remove the line from `.env` to follow the latest release again.
+The script keeps the version in `.env` as `PAPRIKA_VERSION`, so `compose.yml` and every later `docker compose` command use it. An update without `--version` stays on it — running a newer pre-release, the latest release could be older — and an update with `--version` moves to another one. Remove the line from `.env` to follow the latest release again. For trying a pre-release, see [Pre-releases](./pre-releases).
 
 ## Next steps
 
