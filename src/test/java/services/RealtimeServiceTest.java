@@ -8,10 +8,13 @@ import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import rules.RuleService;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -173,6 +176,36 @@ class RealtimeServiceTest {
         assertThat(service.revokeUser("tenant-1", "user-1"), is(1));
         assertThat(connection.isOpen(), is(false));
         assertThat(service.revokeUser("tenant-1", "user-1"), is(0));
+    }
+
+    @Test
+    void closingAllStreamsAtShutdownLeavesTheRegistrationsToExpire() throws Exception {
+        RealtimeCluster registry = RealtimeCluster.singleInstance();
+        List<String> unregistered = new CopyOnWriteArrayList<>();
+        RealtimeCluster cluster = (RealtimeCluster) Proxy.newProxyInstance(
+                RealtimeCluster.class.getClassLoader(), new Class<?>[] {RealtimeCluster.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("unregister")) {
+                        unregistered.add((String) args[0]);
+                    }
+                    try {
+                        return method.invoke(registry, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        RealtimeService service = new RealtimeService(ruleService, cluster);
+        RecordingConnection first = new RecordingConnection();
+        RecordingConnection second = new RecordingConnection();
+        service.onConnect(first);
+        service.onConnect(second);
+
+        service.closeAll();
+
+        assertThat(first.isOpen(), is(false));
+        assertThat(second.isOpen(), is(false));
+        assertThat(unregistered, is(empty()));
+        assertThat(service.revokeUserEverywhere("user-1"), is(0));
     }
 
     @Test

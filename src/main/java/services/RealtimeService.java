@@ -77,9 +77,20 @@ public class RealtimeService {
         return clientId;
     }
 
-    /** Closes every open stream. Called once, when the process stops. */
+    /**
+     * Closes every open stream. Called once, when the process stops.
+     *
+     * The registrations are left to expire, as after a crash: the database may be gone already, and
+     * each removal would then hold up the shutdown until the driver gives up, 30 seconds per stream.
+     */
     public void closeAll() {
-        int closed = revoke(client -> true);
+        int closed = 0;
+        for (RealtimeClient client : clients.values()) {
+            if (clients.remove(client.clientId(), client)) {
+                closed++;
+                close(client);
+            }
+        }
         if (closed > 0) {
             LOG.info("Closed {} realtime client(s)", closed);
         }
@@ -142,17 +153,21 @@ public class RealtimeService {
             if (clients.remove(client.clientId(), client)) {
                 removed++;
                 cluster.unregister(client.clientId());
-                RealtimeConnection connection = client.connection();
-                if (connection != null) {
-                    try {
-                        connection.close();
-                    } catch (IOException e) {
-                        LOG.debug("Failed to close revoked realtime client {}: {}", client.clientId(), e.getMessage());
-                    }
-                }
+                close(client);
             }
         }
         return removed;
+    }
+
+    private static void close(RealtimeClient client) {
+        RealtimeConnection connection = client.connection();
+        if (connection != null) {
+            try {
+                connection.close();
+            } catch (IOException e) {
+                LOG.debug("Failed to close realtime client {}: {}", client.clientId(), e.getMessage());
+            }
+        }
     }
 
     @Run(at = PURGE_INTERVAL)
