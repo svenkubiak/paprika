@@ -121,7 +121,7 @@ public class SuperadminProfileService {
                 if (!profile.emailVerified()) {
                     return AdminSettingsResult.badRequest("Confirm your email address first");
                 }
-                if (StringUtils.isBlank(config.getSmtpHost())) {
+                if (!MailService.isConfigured(config)) {
                     return AdminSettingsResult.badRequest("SMTP is not configured on this instance");
                 }
 
@@ -322,7 +322,7 @@ public class SuperadminProfileService {
         SuperadminProfile profile = systemUserService.findProfile(userId).orElseThrow();
         Map<String, Object> payload = toPayload(profile);
 
-        boolean smtpConfigured = StringUtils.isNotBlank(config.getSmtpHost());
+        boolean smtpConfigured = MailService.isConfigured(config);
         String link = token
                 .map(value -> InstanceLinks.absolute(
                         request.getHeader(Headers.HOST),
@@ -352,7 +352,7 @@ public class SuperadminProfileService {
         payload.put("emailVerificationPending", profile.emailVerificationPending());
         payload.put("loginAlertEnabled", profile.loginAlertEnabled());
         payload.put("twoFactorEnabled", profile.twoFactorEnabled());
-        payload.put("smtpConfigured", StringUtils.isNotBlank(config.getSmtpHost()));
+        payload.put("smtpConfigured", MailService.isConfigured(config));
         payload.put("avatarUrl", avatarUrl(profile));
 
         return payload;

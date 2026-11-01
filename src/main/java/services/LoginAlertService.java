@@ -53,7 +53,7 @@ public class LoginAlertService {
                     .filter(profile -> profile.loginAlertEnabled()
                             && profile.emailVerified()
                             && StringUtils.isNotBlank(profile.email())
-                            && StringUtils.isNotBlank(config.getSmtpHost()))
+                            && MailService.isConfigured(config))
                     .ifPresent(profile -> mailService.sendSuperadminLoginAlert(
                             profile.email(),
                             profile.username(),

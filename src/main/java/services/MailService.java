@@ -1,5 +1,6 @@
 package services;
 
+import io.mangoo.constants.Key;
 import io.mangoo.core.Config;
 import io.mangoo.email.Mail;
 import jakarta.inject.Inject;
@@ -20,6 +21,14 @@ public class MailService {
 
     // Underscore, not hyphen: mangoo maps only dots to underscores, and SMTP_FROM-NAME cannot be set in a shell.
     public static final String SMTP_FROM_NAME_KEY = "smtp.from_name";
+
+    /**
+     * Read without mangoo's default: an unset smtp.host means no mail is sent, while getSmtpHost()
+     * would answer localhost and have Paprika send to a server nobody configured.
+     */
+    public static boolean isConfigured(Config config) {
+        return StringUtils.isNotBlank(config.getString(Key.SMTP_HOST));
+    }
 
     private final Config config;
 
@@ -151,8 +160,8 @@ public class MailService {
         if (StringUtils.isBlank(toEmail)) {
             return;
         }
-        if (StringUtils.isBlank(config.getSmtpHost())) {
-            LOG.warn("SMTP is not configured (smtp.host is empty); skipping '{}' email", subject);
+        if (!isConfigured(config)) {
+            LOG.warn("SMTP is not configured (smtp.host is not set); skipping '{}' email", subject);
             return;
         }
 
