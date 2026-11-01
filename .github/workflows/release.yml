@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+      # Pre-releases such as 1.0.0-Beta1, published as GitHub pre-releases
+      - '[0-9]+.[0-9]+.[0-9]+-*'
 
 jobs:
   package-x86:
@@ -67,8 +69,16 @@ jobs:
           fetch-depth: 0
 
       - name: Generate release notes
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -2 | tail -1)
+          # versionsort.suffix sorts 1.0.0-Beta1 before 1.0.0. A pre-release lists the changes since
+          # the tag right before it, a release those since the previous release, its pre-releases included.
+          TAGS=$(git -c versionsort.suffix=- tag --sort=-v:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$')
+          if [[ "$TAG" != *-* ]]; then
+            TAGS=$(echo "$TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          fi
+          PREV_TAG=$(echo "$TAGS" | grep -x -F -A1 "$TAG" | sed -n 2p || true)
           RANGE="${PREV_TAG:+${PREV_TAG}..}HEAD"
 
           changelog() {
@@ -109,9 +119,14 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" \
+          # A pre-release is never the latest release, so installations without --version skip it
+          PRERELEASE=()
+          if [[ "$TAG" == *-* ]]; then PRERELEASE=(--prerelease); fi
+          gh release create "$TAG" \
             --repo "${{ github.repository }}" \
-            --title "${{ github.ref_name }}" \
+            --title "$TAG" \
             --notes-file release-notes.md \
+            "${PRERELEASE[@]}" \
             dist/*.deb dist/*.sha256
