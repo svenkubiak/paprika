@@ -21,6 +21,16 @@ step "1/9  Checking working tree"
 if ! git diff --quiet || ! git diff --cached --quiet; then
     fail "Uncommitted changes detected. Commit or stash them first."
 fi
+
+# The release commit and the next SNAPSHOT land on the branch the release is made from
+BRANCH="$(git symbolic-ref --quiet --short HEAD)" || fail "Not on a branch (detached HEAD)."
+if [[ "$BRANCH" != "main" ]]; then
+    echo -e "${YELLOW}Releasing from branch '${BRANCH}', not from main.${NC}"
+    read -rp "Continue? [y/N]: " CONTINUE_BRANCH
+    if [[ ! "$CONTINUE_BRANCH" =~ ^[yY]$ ]]; then
+        fail "Release aborted."
+    fi
+fi
 ok
 
 # ─── 2. Maven build ───────────────────────────────────────────────────────────
@@ -60,17 +70,27 @@ fi
 
 RELEASE_VERSION="${CURRENT_VERSION%-SNAPSHOT}"
 
-if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+# MAJOR.MINOR.PATCH, or a pre-release of it such as 1.0.0-Beta1
+VERSION_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+
+if [[ ! "$RELEASE_VERSION" =~ $VERSION_PATTERN ]]; then
     fail "Version '${RELEASE_VERSION}' is not valid SemVer 2.0.0 (MAJOR.MINOR.PATCH)."
 fi
 
 echo -e "Current  : ${YELLOW}${CURRENT_VERSION}${NC}"
-echo -e "Proposed : ${YELLOW}${RELEASE_VERSION}${NC}"
+echo -e "Proposed : ${YELLOW}${RELEASE_VERSION}${NC} (enter e.g. ${RELEASE_VERSION}-Beta1 for a pre-release)"
 read -rp "Confirm release version [${RELEASE_VERSION}]: " INPUT_VERSION
 RELEASE_VERSION="${INPUT_VERSION:-$RELEASE_VERSION}"
 
-if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    fail "Version '${RELEASE_VERSION}' is not valid SemVer 2.0.0 (MAJOR.MINOR.PATCH)."
+if [[ ! "$RELEASE_VERSION" =~ $VERSION_PATTERN ]] || [[ "$RELEASE_VERSION" == *-SNAPSHOT ]]; then
+    fail "Version '${RELEASE_VERSION}' is not valid SemVer 2.0.0 (MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-suffix)."
+fi
+
+# A pre-release is published like a release, but never as the latest one
+RELEASE_BASE="${RELEASE_VERSION%%-*}"
+PRERELEASE=false
+if [[ "$RELEASE_VERSION" != "$RELEASE_BASE" ]]; then
+    PRERELEASE=true
 fi
 
 # ─── 5. Set Maven version ─────────────────────────────────────────────────────
@@ -89,7 +109,7 @@ step "7/9  Committing, tagging and pushing"
 git add pom.xml
 git commit -m "Release ${RELEASE_VERSION}"
 git tag -a "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
-git push origin main
+git push origin "${BRANCH}"
 git push origin "${RELEASE_VERSION}"
 ok
 
@@ -100,6 +120,12 @@ git checkout "${RELEASE_VERSION}"
 IMAGE="${REGISTRY}:${RELEASE_VERSION}"
 IMAGE_LATEST="${REGISTRY}:latest"
 BUILDER="paprika-release"
+
+# latest is what every installation without a pinned version pulls, so a pre-release never gets it
+IMAGE_TAGS=(-t "${IMAGE}")
+if [[ "$PRERELEASE" == false ]]; then
+    IMAGE_TAGS+=(-t "${IMAGE_LATEST}")
+fi
 
 # The default docker driver builds one platform. A container builder publishes
 # both architectures under the same tag as one manifest list.
@@ -114,18 +140,22 @@ docker buildx build \
     --no-cache \
     --platform linux/arm64,linux/amd64 \
     -f Dockerfile \
-    -t "${IMAGE}" \
-    -t "${IMAGE_LATEST}" \
+    "${IMAGE_TAGS[@]}" \
     --push \
     .
 
-git checkout main
+git checkout "${BRANCH}"
 ok
 
 # ─── 9. Prepare next SNAPSHOT ────────────────────────────────────────────────
 step "9/9  Preparing next SNAPSHOT"
-IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
-NEXT_SNAPSHOT="${MAJOR}.${MINOR}.$((PATCH + 1))-SNAPSHOT"
+# After a pre-release, development continues towards its release
+if [[ "$PRERELEASE" == true ]]; then
+    NEXT_SNAPSHOT="${RELEASE_BASE}-SNAPSHOT"
+else
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
+    NEXT_SNAPSHOT="${MAJOR}.${MINOR}.$((PATCH + 1))-SNAPSHOT"
+fi
 
 echo -e "Proposed : ${YELLOW}${NEXT_SNAPSHOT}${NC}"
 read -rp "Confirm next SNAPSHOT version [${NEXT_SNAPSHOT}]: " INPUT_NEXT
@@ -138,10 +168,14 @@ fi
 mvn versions:set -DnewVersion="$NEXT_SNAPSHOT" -DgenerateBackupPoms=false -q
 git add pom.xml
 git commit -m "Prepare ${NEXT_SNAPSHOT}"
-git push origin main
+git push origin "${BRANCH}"
 ok
 
 echo -e "\n${GREEN}${BOLD}Release ${RELEASE_VERSION} complete.${NC}"
-echo -e "  Docker : ${IMAGE} (linux/arm64, linux/amd64)"
+if [[ "$PRERELEASE" == true ]]; then
+    echo -e "  Docker : ${IMAGE} (linux/arm64, linux/amd64), pre-release, latest unchanged"
+else
+    echo -e "  Docker : ${IMAGE} and latest (linux/arm64, linux/amd64)"
+fi
 echo -e "  Tag    : ${RELEASE_VERSION}"
 echo -e "  Next   : ${NEXT_SNAPSHOT}"
