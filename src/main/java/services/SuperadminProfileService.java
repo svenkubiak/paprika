@@ -247,7 +247,7 @@ public class SuperadminProfileService {
                 return AdminSettingsResult.badRequest("No pending 2FA setup");
             }
 
-            if (!twoFactorService.verifyCode(pendingSecret.orElseThrow(), dto.code())) {
+            if (!twoFactorService.verifyCode(userId, pendingSecret.orElseThrow(), dto.code())) {
                 return AdminSettingsResult.badRequest("Invalid verification code");
             }
 
@@ -281,7 +281,7 @@ public class SuperadminProfileService {
                 return AdminSettingsResult.badRequest("Verification code is required");
             }
 
-            if (codeProvided && secret.isPresent() && !twoFactorService.verifyCode(secret.orElseThrow(), dto.code())) {
+            if (codeProvided && secret.isPresent() && !twoFactorService.verifyCode(userId, secret.orElseThrow(), dto.code())) {
                 return AdminSettingsResult.badRequest("Invalid verification code");
             }
 

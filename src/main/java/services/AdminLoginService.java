@@ -185,7 +185,7 @@ public class AdminLoginService {
         }
 
         boolean matchesTotp = systemUserService.findTotpSecret(userId)
-                .filter(secret -> twoFactorService.verifyCode(secret, code))
+                .filter(secret -> twoFactorService.verifyCode(userId, secret, code))
                 .isPresent();
 
         if (matchesTotp) {
