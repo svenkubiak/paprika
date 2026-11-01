@@ -54,15 +54,15 @@ Strip any inbound `X-Forwarded-*` headers a client might send before you set you
 
 ## Secrets
 
-For a standard install there's nothing to do here: both install scripts generate a fresh set of secrets into `.env` on first run, and in production every secret is read from those environment variables. The placeholder values in the bundled `config.yaml` (`defaultTokenSecretForLocalDevOnly...`) are for local development only and are never used when `APPLICATION_MODE=prod`, since the prod config pulls each one from the environment.
+For a standard install there's nothing to do here: both install scripts generate a fresh set of secrets on first run, as files in a `secrets/` directory, one per value and named like its config key. In production Paprika reads every secret from those files — from `/run/secrets`, where Compose mounts them, or from the directory in `APPLICATION_SECRETS_PATH`. They never pass through the environment, so neither `docker inspect` nor a child process sees them. The placeholder values in the bundled `config.yaml` (`defaultTokenSecretForLocalDevOnly...`) are for local development only and are never used when `APPLICATION_MODE=prod`.
 
-You only need to touch this if you install Paprika outside the scripts and set the environment yourself. In that case generate each secret separately:
+You only need to touch this if you install Paprika outside the scripts. In that case generate each secret separately into its file:
 
 ```bash
-openssl rand -hex 32
+openssl rand -hex 32 > /run/secrets/application.secret
 ```
 
-That produces 64 hex characters, which is the minimum length Paprika enforces. It covers `APPLICATION_SECRET`, `TOKEN_SECRET` / `TOKEN_KEY`, `SESSION_COOKIE_SECRET` / `SESSION_COOKIE_KEY`, `AUTHENTICATION_COOKIE_SECRET` / `AUTHENTICATION_COOKIE_KEY`, and `FLASH_COOKIE_SECRET` / `FLASH_COOKIE_KEY`. Don't reuse a secret across instances, don't commit them, and keep `.env` readable only by the Paprika process. See the [configuration table in the README](https://github.com/svenkubiak/paprika#%EF%B8%8F-configuration) for the full list.
+That produces 64 hex characters, which is the minimum length Paprika enforces. It covers `application.secret`, `token.secret` / `token.key`, `session.cookie.secret` / `session.cookie.key`, `authentication.cookie.secret` / `authentication.cookie.key`, and `flash.cookie.secret` / `flash.cookie.key`. Don't reuse a secret across instances, don't commit them, and keep the files readable only by the Paprika process. See [Configuration](/installation/configuration#secret-files) for the full list.
 
 ## Rate limit the auth endpoints
 
@@ -573,17 +573,17 @@ Caddy gets you automatic Let's Encrypt certificates out of the box, so there's n
 
 ## Email (SMTP)
 
-Paprika sends the tenant-user recovery emails (password reset, email verification) itself, over a single instance-wide SMTP configuration. If you don't enable those features for any tenant, you can skip this. If you do, configure SMTP through environment variables:
+Paprika sends the tenant-user recovery emails (password reset, email verification) itself, over a single instance-wide SMTP configuration. If you don't enable those features for any tenant, you can skip this. If you do, fill in the SMTP files in `secrets/`, which both install scripts prepare empty, and restart Paprika:
 
-| Variable | Description |
+| File | Description |
 |---|---|
-| `SMTP_HOST` | SMTP server hostname. Leave it unset or empty to disable sending (tokens are still issued, no email goes out). |
-| `SMTP_PORT` | SMTP port (defaults to `587` for STARTTLS; `465` for SMTPS). |
-| `SMTP_USERNAME` / `SMTP_PASSWORD` | Credentials, if the server requires auth. |
-| `SMTP_AUTHENTICATION` | `true` when the server requires authentication (defaults to `false`). |
-| `SMTP_PROTOCOL` | `smtp` or `smtps` (defaults to `smtp`). |
-| `SMTP_FROM` | The From address (for example `no-reply@example.com`; defaults to `no-reply@localhost`). |
-| `SMTP_FROM_NAME` | Display name for the sender (defaults to `Paprika`). |
+| `smtp.host` | SMTP server hostname. Leave it empty to disable sending (tokens are still issued, no email goes out). |
+| `smtp.port` | SMTP port (empty: `587` for STARTTLS; `465` for SMTPS). |
+| `smtp.username` / `smtp.password` | Credentials, if the server requires auth. |
+| `smtp.authentication` | `true` when the server requires authentication (empty: `false`). |
+| `smtp.protocol` | `smtp` or `smtps` (empty: `smtp`). |
+| `smtp.from` | The From address (for example `no-reply@example.com`; empty: `no-reply@localhost`). |
+| `smtp.from_name` | Display name for the sender (empty: `Paprika`). |
 
 There is one sender identity for the whole instance, so make sure the From domain's SPF and DKIM records allow this server to send, or the mails will land in spam. The link inside each email points at the tenant's own app, configured per tenant on the [Tenants](/admin-ui/tenants) editor, not at Paprika. Recovery is best-effort: a failed send is logged and never blocks the API response, which is also why the request endpoints always answer `200`.
 
@@ -636,7 +636,7 @@ The Docker setup includes a healthcheck on the `paprika` container that requests
 Several Paprika instances can serve the same data behind a load balancer. A request may reach any of them; no sticky sessions are needed. What they share:
 
 - **One MongoDB.** Every instance points at the same database, a replica set through `PERSISTENCE_MONGO_URL`. Leave the read preference at its default, `primary`: with reads from a secondary, a record written through one instance may not be visible yet when the next request reaches another. Login lockouts, used 2FA codes, revoked sessions, the realtime client registry and the messages between instances all live there.
-- **The same secrets.** `APPLICATION_SECRET`, `TOKEN_SECRET`, `TOKEN_KEY` and the cookie secrets and keys have to be identical on every instance, or a token issued by one is rejected by the next.
+- **The same secrets.** `application.secret`, `token.secret`, `token.key` and the cookie secrets and keys have to be identical on every instance, or a token issued by one is rejected by the next. Give every instance the same secret files.
 - **One storage volume.** Uploaded files and their image variants are files under `PAPRIKA_STORAGE`, so every instance mounts the same volume at that path, for example an NFS export or Amazon EFS. Paprika writes each file under a temporary name and renames it into place, so another instance reads the old file or the new one, never a half-written one. A new image variant can take a few seconds to show up on the other instances while their NFS client still caches the directory listing; until then a download falls back to a wider variant or the original.
 - **Synchronized clocks.** Tokens are checked against the clock of the instance that receives them. Run NTP on every host.
 
@@ -703,7 +703,7 @@ A 502 (not 503) during the first seconds after a start is different and harmless
 - **Lock down MongoDB.** The production config runs with authentication on (`auth: true`). Keep the database on a private network the outside can't reach, use a dedicated user with access to just the Paprika databases, and never publish the Mongo port. Everything a tenant stores lives here, one database per tenant.
 - **Protect the storage directory.** `PAPRIKA_STORAGE` holds uploaded files. Put it on a volume only the Paprika process can read and write, and include it in your backups.
 - **Take backups.** Use the [Backup & Restore](/admin-ui/backup-restore) tooling, and back up MongoDB and the storage directory on the infrastructure side too. Test a restore once in a while so you know it works before you need it.
-- **Keep it updated.** Re-running the install script updates an existing installation while leaving your `.env` and `storage/` alone. Stay current for security fixes. What an upgrade is allowed to change is the [compatibility contract](/operations/compatibility).
+- **Keep it updated.** Re-running the install script updates an existing installation while leaving your `.env`, `secrets/` and `storage/` alone. Stay current for security fixes. What an upgrade is allowed to change is the [compatibility contract](/operations/compatibility).
 - **Mind the setup link.** The one-time superadmin setup token is printed to the application log and expires after 30 minutes. Complete setup promptly, and don't leave that log where others can read it.
 - **Set a log retention.** API request logs are kept according to the retention you configure under [Settings](/admin-ui/settings#request-logs). Pick a window that fits your needs instead of keeping everything forever.
 

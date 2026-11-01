@@ -16,7 +16,7 @@ A security fix that has to break the surface ships as a breaking release, not as
 ## What is covered
 
 - **HTTP API.** Paths, methods, authentication and the documented success and error behavior of `/api/auth/**`, `/api/collections/**`, `/api/realtime`, `/api/realtime/subscribe`, `/health`, `/api/admin/**` and `/api/meta/**`.
-- **Environment variables** listed in [Configuration](/installation/configuration). Renaming one, or changing what an existing variable means, is a breaking change. Adding a variable is not.
+- **Environment variables and secret files** listed in [Configuration](/installation/configuration). Renaming one, or changing what an existing one means, is a breaking change. Adding one is not, as long as Paprika starts without it.
 - **Request body limit.** `undertow.maxentitysize` and `form.maxfilesize` are 64 MiB (67,108,864 bytes). Raising or lowering that ceiling is a breaking change.
 - **Backup archives.** Export writes manifest version 3. Import reads versions 1, 2 and 3. Versions 2 and 3 contain `system/api_keys.json`; version 1 does not, and restoring one leaves the API keys on the target as they are. Version 2 also contains `system/token_revocations.json`, which is not restored: revocations of admin sessions are kept by mangoo I/O and describe the sessions in circulation now, so a restore leaves them as they are. Dropping support for a manifest version the importer still accepts is a breaking change. The archive replaces tenant files: a file that is not in the archive is deleted.
 - **Records Paprika writes.** `id`, `createdAt` and `updatedAt` on collection records, one MongoDB database per tenant (`tenant_<id>`), and the system collections `tenants`, `users`, `settings` and `api_keys`.

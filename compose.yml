@@ -13,27 +13,13 @@ services:
       PAPRIKA_STORAGE: /app/storage
       PERSISTENCE_MONGO_HOST: mongodb
       PERSISTENCE_MONGO_PORT: "27017"
-      APPLICATION_SECRET: ${APPLICATION_SECRET}
-      TOKEN_SECRET: ${TOKEN_SECRET}
-      TOKEN_KEY: ${TOKEN_KEY}
-      SESSION_COOKIE_SECRET: ${SESSION_COOKIE_SECRET}
-      SESSION_COOKIE_KEY: ${SESSION_COOKIE_KEY}
-      FLASH_COOKIE_SECRET: ${FLASH_COOKIE_SECRET}
-      FLASH_COOKIE_KEY: ${FLASH_COOKIE_KEY}
-      AUTHENTICATION_COOKIE_SECRET: ${AUTHENTICATION_COOKIE_SECRET}
-      AUTHENTICATION_COOKIE_KEY: ${AUTHENTICATION_COOKIE_KEY}
       PERSISTENCE_MONGO_USERNAME: ${MONGO_USERNAME}
-      PERSISTENCE_MONGO_PASSWORD: ${MONGO_PASSWORD}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_AUTHENTICATION: ${SMTP_AUTHENTICATION:-}
-      SMTP_PROTOCOL: ${SMTP_PROTOCOL:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+    # Secrets and SMTP settings are files in ./secrets, named like their config key, where Paprika
+    # reads them. They stay out of the environment, so they show up neither in docker inspect nor in
+    # child processes.
     volumes:
       - ./storage:/app/storage
+      - ./secrets:/run/secrets:ro
     # mangoo's readiness probe: 503 during startup and shutdown, no database check. Plain HTTP over
     # bash's /dev/tcp, because bash is already in the image and curl is not.
     healthcheck:
@@ -55,18 +41,21 @@ services:
     environment:
       # Bootstrap-only root credential: creates the database and runs mongo-init.js on first
       # start, but is never handed to the paprika container. mongo-init.js creates the scoped
-      # MONGO_USERNAME/MONGO_PASSWORD user paprika actually authenticates as (readWriteAnyDatabase
-      # + dbAdminAnyDatabase — everything Paprika's per-tenant database provisioning needs, without
+      # MONGO_USERNAME user paprika actually authenticates as (readWriteAnyDatabase +
+      # dbAdminAnyDatabase — everything Paprika's per-tenant database provisioning needs, without
       # the user-management or server-administration rights a root account would also carry).
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/mongodb-secrets/mongo.root.password
       MONGO_APP_USERNAME: ${MONGO_USERNAME}
-      MONGO_APP_PASSWORD: ${MONGO_PASSWORD}
+    # ./secrets for mongo-init.js, which reads the password of the scoped user from the file Paprika
+    # reads it from. The root password has a directory of its own that only this container mounts.
     volumes:
       - mongodb-data:/data/db
       - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - ./secrets:/run/secrets:ro
+      - ./mongodb-secrets:/run/mongodb-secrets:ro
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand({ping:1})'"]
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$(cat /run/mongodb-secrets/mongo.root.password)\" --authenticationDatabase admin --eval 'db.adminCommand({ping:1})'"]
       interval: 10s
       timeout: 5s
       retries: 5

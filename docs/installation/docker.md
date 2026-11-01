@@ -1,6 +1,6 @@
 # Docker
 
-The Docker setup runs Paprika and MongoDB together via Docker Compose. It's the fastest way to get an instance running: one command downloads a `compose.yml`, generates a `.env` with all application secrets, and brings the stack up. No separate database installation, no manual configuration.
+The Docker setup runs Paprika and MongoDB together via Docker Compose. It's the fastest way to get an instance running: one command downloads a `compose.yml`, generates all application secrets as files, and brings the stack up. No separate database installation, no manual configuration.
 
 ## Prerequisites
 
@@ -17,12 +17,14 @@ curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-doc
 
 The script runs a set of preflight checks (`curl`, `openssl`, `docker`, and `docker compose` must all be present and the Docker daemon reachable), detects whether a `paprika` container is already running in the current directory, and branches into either a fresh install or an update (see below). On a **fresh install**, it:
 
-1. Generates a `.env` file with all application secrets (see [Configuration](./configuration) for what each variable does) and two separate MongoDB credentials — a root password used only to bootstrap the `mongodb` container, and a scoped application password Paprika itself authenticates with (see [What the stack looks like](#what-the-stack-looks-like) below)
-2. Creates a `storage/` directory next to the `.env` file for persistent file uploads
-3. Downloads `compose.yml` and `mongo-init.js` from this repository
-4. Runs `docker compose up -d` to start both containers
+1. Generates all application secrets as files in a `secrets/` directory (see [Configuration](./configuration#secret-files) for what each file does), including the scoped application password Paprika authenticates with to MongoDB. The SMTP settings are prepared as empty files. The MongoDB root password, used only to bootstrap the `mongodb` container, goes into a directory of its own, `mongodb-secrets/` (see [What the stack looks like](#what-the-stack-looks-like) below).
+2. Gives both directories and their files group `1000`, which both containers run with: `0750` for the directories, `0440` for the files (`0640` for the SMTP files you fill in yourself). Setting that group needs root unless you are a member of it, so the script may ask for your password through `sudo`.
+3. Writes a `.env` with the settings that are not secret: the host port and the two MongoDB usernames
+4. Creates a `storage/` directory next to the `.env` file for persistent file uploads
+5. Downloads `compose.yml` and `mongo-init.js` from this repository
+6. Runs `docker compose up -d` to start both containers
 
-`.env` is written with `chmod 600` and only if it doesn't already exist — running the script again on top of an existing install will not silently overwrite your secrets; it asks first.
+`.env` is written with `chmod 600` and only if it doesn't already exist. Running the script again on top of an existing install will not silently overwrite your secrets: it asks first, and keeps them when it cannot ask. A directory whose `.env` still holds the secrets is an installation from before secret files; the script stops there instead of setting it up anew, see [Moving secrets from .env to files](#moving-secrets-from-env-to-files).
 
 Paprika is available at `http://localhost:8080` once MongoDB reports healthy, which usually takes about 30 seconds on first start. Change the exposed port by setting `HOST_PORT` in `.env` before starting the stack.
 
@@ -40,10 +42,10 @@ bash install-docker.sh
 
 `compose.yml` defines two services:
 
-- **`paprika`** — the application container, built from the published image, reading all configuration from `.env`. Its `storage/` volume for file uploads is bind-mounted from the host so it survives container recreation. The HTTP port is bound to `127.0.0.1` only, so it is not reachable from the network directly.
+- **`paprika`** — the application container, built from the published image, reading its settings from `.env` and its secrets from the files in `secrets/`, a directory Compose mounts to `/run/secrets` inside the container. The secrets never appear in the container's environment, so `docker inspect` doesn't show them. Its `storage/` volume for file uploads is bind-mounted from the host so it survives container recreation. The HTTP port is bound to `127.0.0.1` only, so it is not reachable from the network directly.
 - **`mongodb`** — `mongodb/mongodb-community-server`, with its data stored in a named Docker volume managed by the daemon. `paprika` waits for MongoDB's healthcheck to pass before starting.
 
-`paprika` does **not** authenticate as the MongoDB root user. `MONGO_INITDB_ROOT_USERNAME`/`MONGO_INITDB_ROOT_PASSWORD` only bootstrap the `mongodb` container and back its healthcheck — they're never passed into the `paprika` container. On first start (when the data volume is empty), MongoDB runs the bind-mounted `mongo-init.js`, which creates the scoped user Paprika actually connects as, with `readWriteAnyDatabase` and `dbAdminAnyDatabase` — enough to create, read, write, and drop the per-tenant databases Paprika provisions dynamically, but without the root account's ability to create other users or administer the server itself. This limits the blast radius if the `paprika` application container is ever compromised: an attacker who obtains its MongoDB credentials cannot create a backdoor account or reconfigure the server, though — since tenant isolation lives entirely in the application layer, not in MongoDB roles — they could still read and write every tenant's data.
+`paprika` does **not** authenticate as the MongoDB root user. The root user and `mongodb-secrets/mongo.root.password` only bootstrap the `mongodb` container and back its healthcheck — `mongodb-secrets/` is mounted into the `mongodb` container only, never into `paprika`. On first start (when the data volume is empty), MongoDB runs the bind-mounted `mongo-init.js`, which creates the scoped user Paprika actually connects as, with the password from `secrets/persistence.mongo.password` — the same file Paprika reads, as `secrets/` is mounted into both containers, with `readWriteAnyDatabase` and `dbAdminAnyDatabase` — enough to create, read, write, and drop the per-tenant databases Paprika provisions dynamically, but without the root account's ability to create other users or administer the server itself. This limits the blast radius if the `paprika` application container is ever compromised: an attacker who obtains its MongoDB credentials cannot create a backdoor account or reconfigure the server, though — since tenant isolation lives entirely in the application layer, not in MongoDB roles — they could still read and write every tenant's data.
 
 Both containers restart automatically (`unless-stopped`) if the host reboots or a container crashes.
 
@@ -71,7 +73,7 @@ Running the same install command again on an existing installation shows the cur
 curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-docker.sh | bash
 ```
 
-On update, the script does **not** touch `.env`, `storage/`, `mongodb/`, or your local `compose.yml`/`mongo-init.js` — it only runs `docker compose pull paprika` and `docker compose up -d paprika` against whatever is already in the current directory. This matters if you've hand-edited `compose.yml` after the initial setup — to put it behind a reverse-proxy network, add resource limits, pin a specific image tag, and so on — since those changes are preserved across updates. Only a *fresh* install (no running `paprika` container found) re-downloads `compose.yml` and `mongo-init.js` from this repository and would overwrite local copies of those names.
+On update, the script does **not** touch `.env`, `secrets/`, `mongodb-secrets/`, `storage/`, `mongodb/`, or your local `compose.yml`/`mongo-init.js` — it only runs `docker compose pull paprika` and `docker compose up -d paprika` against whatever is already in the current directory. This matters if you've hand-edited `compose.yml` after the initial setup — to put it behind a reverse-proxy network, add resource limits, pin a specific image tag, and so on — since those changes are preserved across updates. Only a *fresh* install (no running `paprika` container found) re-downloads `compose.yml` and `mongo-init.js` from this repository and would overwrite local copies of those names.
 
 If you want to intentionally pick up changes to the published `compose.yml` (for example after a MongoDB version bump), fetch it again by hand and re-apply your customizations:
 
@@ -95,8 +97,50 @@ db.getSiblingDB("admin").createUser({
 })'
 ```
 
-Then set `PERSISTENCE_MONGO_USERNAME=paprika` and `PERSISTENCE_MONGO_PASSWORD=<a-new-strong-password>` in `.env` and run `docker compose up -d paprika`.
+Then set `MONGO_USERNAME=paprika` in `.env`, write the password into `secrets/persistence.mongo.password` and run `docker compose up -d paprika`.
 :::
+
+## Moving secrets from .env to files
+
+Installations from before secret files keep their secrets in `.env`. The install script does not migrate them: on such an installation it stops with a pointer to this section and changes nothing. Move the values once by hand — they stay the same, so nobody is signed out and MongoDB keeps working with its existing users:
+
+```bash
+cd /srv/paprika
+docker compose down
+
+mkdir -m 750 secrets mongodb-secrets
+set -a; . ./.env; set +a
+put() { printf '%s' "$2" > "secrets/$1"; }
+put application.secret "$APPLICATION_SECRET"
+put token.secret "$TOKEN_SECRET"
+put token.key "$TOKEN_KEY"
+put session.cookie.secret "$SESSION_COOKIE_SECRET"
+put session.cookie.key "$SESSION_COOKIE_KEY"
+put flash.cookie.secret "$FLASH_COOKIE_SECRET"
+put flash.cookie.key "$FLASH_COOKIE_KEY"
+put authentication.cookie.secret "$AUTHENTICATION_COOKIE_SECRET"
+put authentication.cookie.key "$AUTHENTICATION_COOKIE_KEY"
+put persistence.mongo.password "$MONGO_PASSWORD"
+printf '%s' "$MONGO_ROOT_PASSWORD" > mongodb-secrets/mongo.root.password
+put smtp.host "${SMTP_HOST:-}"
+put smtp.port "${SMTP_PORT:-}"
+put smtp.username "${SMTP_USERNAME:-}"
+put smtp.password "${SMTP_PASSWORD:-}"
+put smtp.authentication "${SMTP_AUTHENTICATION:-}"
+put smtp.protocol "${SMTP_PROTOCOL:-}"
+put smtp.from "${SMTP_FROM:-}"
+put smtp.from_name "${SMTP_FROM_NAME:-}"
+chmod 440 secrets/* mongodb-secrets/* && chmod 640 secrets/smtp.*
+sudo chgrp -R 1000 secrets mongodb-secrets
+
+sed -i -E '/^(APPLICATION_SECRET|TOKEN_(SECRET|KEY)|(SESSION|FLASH|AUTHENTICATION)_COOKIE_(SECRET|KEY)|MONGO_(ROOT_)?PASSWORD|#?SMTP_[A-Z_]+)=/d' .env
+
+curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/compose.yml -o compose.yml
+curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/mongo-init.js -o mongo-init.js
+docker compose up -d
+```
+
+`. ./.env` reads `.env` as shell code: if an SMTP value contains spaces or quotes, check the `smtp.*` files afterwards. The new `compose.yml` replaces your local copy — re-apply your own changes to it, as described under [Update](#update).
 
 ## Next steps
 
