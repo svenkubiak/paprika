@@ -22,13 +22,13 @@
   'use strict'
 
   var RELOAD_KEY = 'paprika:reload-attempt'
-  /** Attempts inside the window below. Two, because the first one can hit a server that is still
-   *  coming up even though /health answered. */
+  /** Attempts inside the window below. Two, because behind a load balancer the reload can reach
+   *  another instance than the one that answered the readiness probe. */
   var MAX_ATTEMPTS = 2
   var WINDOW_MS = 120000
   /** How long the app gets to put something into #app before this counts as a failed boot. */
   var WATCHDOG_MS = 12000
-  /** How long to wait for the server to answer /health before giving up on reloading. */
+  /** How long to wait for the server to report ready before giving up on reloading. */
   var HEALTH_BUDGET_MS = 30000
   var HEALTH_INTERVAL_MS = 1000
 
@@ -83,13 +83,14 @@
 
   /**
    * Reloading while the server is still restarting would just swap the empty page for the
-   * browser's "site can't be reached" and burn an attempt, so the reload waits for /health.
+   * browser's "site can't be reached" and burn an attempt, so the reload waits for mangoo's
+   * readiness probe, which stays 503 until the startup is complete.
    */
   function whenServerIsUp(onUp, onTimeout) {
     var deadline = Date.now() + HEALTH_BUDGET_MS
 
     function probe() {
-      fetch('/health', { cache: 'no-store', credentials: 'same-origin' }).then(
+      fetch('/@health/ready', { cache: 'no-store', credentials: 'same-origin' }).then(
         function (response) {
           if (response.ok) {
             onUp()
