@@ -36,6 +36,41 @@ if ! docker info &>/dev/null; then
     exit 1
 fi
 
+# Image user (Dockerfile: useradd --uid 33 --gid 1000 appuser). The bind-mounted
+# storage directory is created on the host, so it keeps the installing user's
+# owner and umask, often root:root and 700. Paprika then refuses to start,
+# because that user can neither read nor write /app/storage. Keep these two
+# values in sync with the Dockerfile.
+CONTAINER_UID=33
+CONTAINER_GID=1000
+
+ensure_storage_writable() {
+    mkdir -p storage
+
+    # Skip the chown on later updates once the directory is already the
+    # container user. chown -R walks every uploaded file.
+    local owner
+    owner="$(stat -c '%u' storage 2>/dev/null || true)"
+    if [ "$owner" = "$CONTAINER_UID" ]; then
+        return 0
+    fi
+
+    echo "Making storage/ readable and writable for the container user (${CONTAINER_UID}:${CONTAINER_GID})..."
+
+    if [ "$(id -u)" -eq 0 ]; then
+        chown -R "${CONTAINER_UID}:${CONTAINER_GID}" storage
+        chmod 750 storage
+    elif command -v sudo >/dev/null 2>&1 && { [ -t 0 ] || sudo -n true >/dev/null 2>&1; }; then
+        sudo chown -R "${CONTAINER_UID}:${CONTAINER_GID}" storage
+        sudo chmod 750 storage
+    else
+        echo "Error: storage/ is not accessible by uid ${CONTAINER_UID}, and this script cannot chown it." >&2
+        echo "Re-run as root, or run:" >&2
+        echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_GID} storage && sudo chmod 750 storage" >&2
+        exit 1
+    fi
+}
+
 # ── Determine install or update ───────────────────────────────────────────────
 
 IS_UPDATE=false
@@ -61,6 +96,10 @@ if [ "$IS_UPDATE" = true ]; then
     echo ""
     echo "Pulling latest image..."
     docker compose pull paprika
+
+    # A directory left owned by root (the usual result of the first install)
+    # still makes the restarted container exit. Correct the owner, not the files.
+    ensure_storage_writable
 
     echo "Restarting service..."
     docker compose up -d paprika
@@ -177,6 +216,7 @@ fi
 # ── Create data directories ───────────────────────────────────────────────────
 
 mkdir -p storage mongodb
+ensure_storage_writable
 
 # ── Download compose file ─────────────────────────────────────────────────────
 

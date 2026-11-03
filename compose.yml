@@ -33,6 +33,9 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
     volumes:
+      # Host path must be readable and writable by uid 33 (image user appuser).
+      # install-docker.sh chowns it; a directory you created yourself needs
+      # `sudo chown -R 33:1000 storage && sudo chmod 750 storage`.
       - ./storage:/app/storage
     # Same check as nc -z. Bash is already in the image; nc and curl are not.
     healthcheck:

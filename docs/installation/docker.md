@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-doc
 The script runs a set of preflight checks (`curl`, `openssl`, `docker`, and `docker compose` must all be present and the Docker daemon reachable), detects whether a `paprika` container is already running in the current directory, and branches into either a fresh install or an update (see below). On a **fresh install**, it:
 
 1. Generates a `.env` file with all application secrets (see [Configuration](./configuration) for what each variable does) and two separate MongoDB credentials — a root password used only to bootstrap the `mongodb` container, and a scoped application password Paprika itself authenticates with (see [What the stack looks like](#what-the-stack-looks-like) below)
-2. Creates a `storage/` directory next to the `.env` file for persistent file uploads
+2. Creates a `storage/` directory next to the `.env` file for persistent file uploads, and gives it to the user the image runs as (`appuser`, uid 33 / gid 1000, mode `750`). Paprika exits at startup if that directory is not readable and writable. A directory created as `root` with a restrictive umask is neither, so the script runs `chown` before the container starts.
 3. Downloads `compose.yml` and `mongo-init.js` from this repository
 4. Runs `docker compose up -d` to start both containers
 
@@ -71,7 +71,7 @@ Running the same install command again on an existing installation shows the cur
 curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-docker.sh | bash
 ```
 
-On update, the script does **not** touch `.env`, `storage/`, `mongodb/`, or your local `compose.yml`/`mongo-init.js` — it only runs `docker compose pull paprika` and `docker compose up -d paprika` against whatever is already in the current directory. This matters if you've hand-edited `compose.yml` after the initial setup — to put it behind a reverse-proxy network, add resource limits, pin a specific image tag, and so on — since those changes are preserved across updates. Only a *fresh* install (no running `paprika` container found) re-downloads `compose.yml` and `mongo-init.js` from this repository and would overwrite local copies of those names.
+On update, the script does **not** modify `.env`, the files inside `storage/`, `mongodb/`, or your local `compose.yml`/`mongo-init.js` — it runs `docker compose pull paprika` and `docker compose up -d paprika` against whatever is already in the current directory. It does correct the ownership of `storage/` when the directory is not owned by uid 33, so a container restarted after the first install can still read and write its uploads. File contents are left as they are. This matters if you've hand-edited `compose.yml` after the initial setup — to put it behind a reverse-proxy network, add resource limits, pin a specific image tag, and so on — since those changes are preserved across updates. Only a *fresh* install (no running `paprika` container found) re-downloads `compose.yml` and `mongo-init.js` from this repository and would overwrite local copies of those names.
 
 If you want to intentionally pick up changes to the published `compose.yml` (for example after a MongoDB version bump), fetch it again by hand and re-apply your customizations:
 

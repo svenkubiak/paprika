@@ -3,6 +3,9 @@ FROM amazoncorretto:25-headless
 # AL2023 locks dnf to the base image release (system-release). A plain yum update
 # stays on that snapshot, so security fixes published in a newer release never
 # get installed. --releasever=latest moves the image to the current AL2023 repo.
+#
+# uid 33 / gid 1000 is the user install-docker.sh chowns the storage bind mount
+# to. Change both together.
 RUN yum update -y --releasever=latest \
     && yum install -y shadow-utils \
     && yum clean all \
