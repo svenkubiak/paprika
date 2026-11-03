@@ -157,13 +157,15 @@ if [ ! -f "$ENV_FILE" ]; then
 #  Paprika – Docker Environment Configuration
 #  Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 #
-#  All secrets are auto-generated.
+#  All secrets are auto-generated. compose.yml loads this file into
+#  the paprika container and then clears MONGO_ROOT_* and HOST_PORT,
+#  so the root password never reaches the app.
 #  MONGO_ROOT_USERNAME / MONGO_ROOT_PASSWORD bootstrap the MongoDB
 #  container only (mongo-init.js uses them to create the scoped
-#  user below); they are never passed to the Paprika app.
-#  MONGO_USERNAME / MONGO_PASSWORD are the scoped user
-#  (readWriteAnyDatabase + dbAdminAnyDatabase, no user/server
-#  administration rights) the Paprika app actually authenticates as.
+#  user below).
+#  PERSISTENCE_MONGO_USERNAME / PERSISTENCE_MONGO_PASSWORD are the
+#  scoped user (readWriteAnyDatabase + dbAdminAnyDatabase, no
+#  user/server administration rights) the Paprika app authenticates as.
 # ─────────────────────────────────────────────────────────────
 
 # ── Host port (external) ──────────────────────────────────────
@@ -191,8 +193,8 @@ AUTHENTICATION_COOKIE_KEY=$(gen_key)
 # ── MongoDB ───────────────────────────────────────────────────
 MONGO_ROOT_USERNAME=root
 MONGO_ROOT_PASSWORD=$(gen_secret)
-MONGO_USERNAME=paprika
-MONGO_PASSWORD=$(gen_secret)
+PERSISTENCE_MONGO_USERNAME=paprika
+PERSISTENCE_MONGO_PASSWORD=$(gen_secret)
 
 # ── Email (SMTP) ──────────────────────────────────────────────
 #  Optional. Only needed if you enable password reset or email

@@ -6,32 +6,32 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:${HOST_PORT:-8080}:8080"
+    # Every Paprika setting, including the signing secrets and SMTP, comes from .env.
+    # Compose also reads that file for ${} interpolation (HOST_PORT, the mongodb service).
+    env_file:
+      - path: .env
+        required: true
     environment:
+      # Fixed by this stack. They override .env, so a host path or a loopback
+      # bind in the file cannot point the process at the wrong place.
       APPLICATION_MODE: prod
       CONNECTOR_HTTP_HOST: "0.0.0.0"
       CONNECTOR_HTTP_PORT: "8080"
       PAPRIKA_STORAGE: /app/storage
       PERSISTENCE_MONGO_HOST: mongodb
       PERSISTENCE_MONGO_PORT: "27017"
-      APPLICATION_SECRET: ${APPLICATION_SECRET}
-      TOKEN_SECRET: ${TOKEN_SECRET}
-      TOKEN_KEY: ${TOKEN_KEY}
-      SESSION_COOKIE_SECRET: ${SESSION_COOKIE_SECRET}
-      SESSION_COOKIE_KEY: ${SESSION_COOKIE_KEY}
-      FLASH_COOKIE_SECRET: ${FLASH_COOKIE_SECRET}
-      FLASH_COOKIE_KEY: ${FLASH_COOKIE_KEY}
-      AUTHENTICATION_COOKIE_SECRET: ${AUTHENTICATION_COOKIE_SECRET}
-      AUTHENTICATION_COOKIE_KEY: ${AUTHENTICATION_COOKIE_KEY}
-      PERSISTENCE_MONGO_USERNAME: ${MONGO_USERNAME}
-      PERSISTENCE_MONGO_PASSWORD: ${MONGO_PASSWORD}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_AUTHENTICATION: ${SMTP_AUTHENTICATION:-}
-      SMTP_PROTOCOL: ${SMTP_PROTOCOL:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+      # Older .env files named the scoped user MONGO_USERNAME/MONGO_PASSWORD.
+      PERSISTENCE_MONGO_USERNAME: ${PERSISTENCE_MONGO_USERNAME:-${MONGO_USERNAME}}
+      PERSISTENCE_MONGO_PASSWORD: ${PERSISTENCE_MONGO_PASSWORD:-${MONGO_PASSWORD}}
+      # The same .env holds the MongoDB root password and HOST_PORT for Compose
+      # itself. An empty value overrides env_file, so those secrets stay on
+      # the mongodb service and are not readable in this container. Compose
+      # treats null as "unset" and would keep the env_file value.
+      MONGO_ROOT_USERNAME: ""
+      MONGO_ROOT_PASSWORD: ""
+      MONGO_USERNAME: ""
+      MONGO_PASSWORD: ""
+      HOST_PORT: ""
     volumes:
       # Host path must be readable and writable by uid 33 (image user appuser).
       # install-docker.sh chowns it; a directory you created yourself needs
@@ -57,13 +57,14 @@ services:
     environment:
       # Bootstrap-only root credential: creates the database and runs mongo-init.js on first
       # start, but is never handed to the paprika container. mongo-init.js creates the scoped
-      # MONGO_USERNAME/MONGO_PASSWORD user paprika actually authenticates as (readWriteAnyDatabase
-      # + dbAdminAnyDatabase — everything Paprika's per-tenant database provisioning needs, without
-      # the user-management or server-administration rights a root account would also carry).
+      # PERSISTENCE_MONGO_USERNAME/PERSISTENCE_MONGO_PASSWORD user paprika authenticates as
+      # (readWriteAnyDatabase + dbAdminAnyDatabase — everything Paprika's per-tenant database
+      # provisioning needs, without the user-management or server-administration rights a root
+      # account would also carry). Older .env files used MONGO_USERNAME/MONGO_PASSWORD.
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-      MONGO_APP_USERNAME: ${MONGO_USERNAME}
-      MONGO_APP_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_APP_USERNAME: ${PERSISTENCE_MONGO_USERNAME:-${MONGO_USERNAME}}
+      MONGO_APP_PASSWORD: ${PERSISTENCE_MONGO_PASSWORD:-${MONGO_PASSWORD}}
     volumes:
       - mongodb-data:/data/db
       - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
