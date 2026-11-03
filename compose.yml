@@ -19,6 +19,9 @@ services:
     # reads them. They stay out of the environment, so they show up neither in docker inspect nor in
     # child processes.
     volumes:
+      # Host path must be readable and writable by uid 33 (image user appuser).
+      # install-docker.sh chowns it; a directory you created yourself needs
+      # `sudo chown -R 33:1000 storage && sudo chmod 750 storage`.
       - ./storage:/app/storage
       - ./secrets:/run/secrets:ro
     # mangoo's readiness probe: 503 during startup and shutdown, no database check. Plain HTTP over
