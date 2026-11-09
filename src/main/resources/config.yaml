@@ -177,6 +177,8 @@ environments:
       http:
         host: env{}
         port: env{}
+    metrics:
+      enable: env{}
     session:
       cookie:
         secure: true
