@@ -168,9 +168,10 @@ environments:
       parameter:
         strict: true
       admin:
-        enable: env{}
-        username: env{}
-        password: env{}
+        enable: env{false}
+        username: env{?}
+        password: env{?}
+        secret: file{?}
     connector:
       http:
         host: env{}
