@@ -158,8 +158,6 @@ environments:
         package: models
 
   prod:
-    # Secrets come from files named like their key, in /run/secrets or the directory set by
-    # APPLICATION_SECRETS_PATH; the install scripts generate them. The rest stays in the environment.
     paprika:
       storage: env{}
     token:
