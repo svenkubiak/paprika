@@ -177,7 +177,7 @@ environments:
         host: env{}
         port: env{}
     metrics:
-      enable: env{}
+      enable: env{false}
     session:
       cookie:
         secure: true
@@ -198,12 +198,12 @@ environments:
     # as fallback. The install scripts prepare these files empty.
     smtp:
       host: file{?}
-      port: file{587}
+      port: file{465}
       username: file{?}
       password: file{?}
       from: file{no-reply@localhost}
       from_name: file{Paprika}
-      protocol: file{smtp}
+      protocol: file{smtps}
       authentication: file{false}
     persistence:
       mongo:

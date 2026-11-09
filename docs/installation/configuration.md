@@ -37,11 +37,11 @@ Each file holds one value as it is, without quotes or encoding; a trailing line 
 | `persistence.mongo.password` | MongoDB password of `PERSISTENCE_MONGO_USERNAME`, as it is — not percent-encoded. See [Standalone → MongoDB setup](./standalone#mongodb-setup). | Docker: yes, a random password for the scoped application user; the `mongodb` container creates that user with it. Standalone: **no** — prepared empty, Paprika does not start until you fill it in. |
 | `mongo.root.password` | Docker only: password of the MongoDB root user that bootstraps the `mongodb` container. It lives in a directory of its own, `mongodb-secrets/`, which only the `mongodb` container mounts: Paprika never sees it. | Yes, by the Docker install script. |
 | `smtp.host` | SMTP host for tenant-user recovery emails. Empty: no mail is sent. | No — prepared empty by both install scripts. SMTP is entirely optional and only needed if you enable password reset or email verification for a tenant. |
-| `smtp.port` | SMTP port (empty: `587`; `465` for SMTPS). | No — prepared empty. |
+| `smtp.port` | SMTP port (empty: `465` for SMTPS; `587` for STARTTLS). | No — prepared empty. |
 | `smtp.username` | SMTP username (if the server requires auth). | No — prepared empty. |
 | `smtp.password` | SMTP password (if the server requires auth). | No — prepared empty. |
 | `smtp.authentication` | `true` when the SMTP server requires authentication (empty: `false`). | No — prepared empty. |
-| `smtp.protocol` | `smtp` or `smtps` (empty: `smtp`). | No — prepared empty. |
+| `smtp.protocol` | `smtps` or `smtptls` (empty: `smtps`). Production refuses cleartext `smtp`. | No — prepared empty. |
 | `smtp.from` | From address for outgoing emails (empty: `no-reply@localhost`, so set it once you send mail). | No — prepared empty. |
 | `smtp.from_name` | Sender display name (empty: `Paprika`). | No — prepared empty. |
 

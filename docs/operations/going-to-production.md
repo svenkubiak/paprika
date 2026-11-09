@@ -578,10 +578,10 @@ Paprika sends the tenant-user recovery emails (password reset, email verificatio
 | File | Description |
 |---|---|
 | `smtp.host` | SMTP server hostname. Leave it empty to disable sending (tokens are still issued, no email goes out). |
-| `smtp.port` | SMTP port (empty: `587` for STARTTLS; `465` for SMTPS). |
+| `smtp.port` | SMTP port (empty: `465` for SMTPS; `587` for STARTTLS). |
 | `smtp.username` / `smtp.password` | Credentials, if the server requires auth. |
 | `smtp.authentication` | `true` when the server requires authentication (empty: `false`). |
-| `smtp.protocol` | `smtp` or `smtps` (empty: `smtp`). |
+| `smtp.protocol` | `smtps` or `smtptls` (empty: `smtps`). Production refuses cleartext `smtp`. |
 | `smtp.from` | The From address (for example `no-reply@example.com`; empty: `no-reply@localhost`). |
 | `smtp.from_name` | Display name for the sender (empty: `Paprika`). |
 
