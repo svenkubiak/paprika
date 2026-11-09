@@ -12,7 +12,6 @@ import jakarta.inject.Singleton;
 import models.InstanceWarnings;
 import models.Stats;
 import models.TenantDefinition;
-import org.apache.commons.lang3.StringUtils;
 import session.AdminTenantSession;
 import utils.AppVersion;
 
@@ -55,7 +54,7 @@ public class AdminBootstrapService {
         boolean defaultTenantApplied = applyDefaultTenantIfMissing(request, auth);
         TenantContext ctx = resolveContext(request, auth);
         boolean hasActiveTenant = ctx.hasTenantContext();
-        boolean smtpConfigured = StringUtils.isNotBlank(config.getSmtpHost());
+        boolean smtpConfigured = MailService.isConfigured(config);
         // Loaded once and shared by payload, stats and warnings
         List<TenantDefinition> tenants = auth.isSuperAdmin() ? tenantService.listAll() : List.of();
 

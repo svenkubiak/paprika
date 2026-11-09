@@ -1,16 +1,16 @@
 package utils;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import io.mangoo.utils.CommonUtils;
 import org.bson.Document;
+import tools.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public final class DbUtils {
     public static Object toMongoValue(JsonNode value) {
-        if (value.isTextual()) {
-            return value.asText();
+        if (value.isString()) {
+            return value.asString();
         }
 
         if (value.isBoolean()) {

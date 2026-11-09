@@ -1,9 +1,9 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import models.FieldDefinition;
 import models.FieldOptions;
+import tools.jackson.databind.JsonNode;
 import validation.FieldConstraintUtils;
 import validation.ValidationContext;
 import validation.ValidationResult;
@@ -24,12 +24,12 @@ public class UrlFieldValidator implements FieldValidator {
             ValidationResult result,
             ValidationContext context) {
 
-        if (!value.isTextual()) {
+        if (!value.isString()) {
             result.add(field.name(), "Expected URL");
             return;
         }
 
-        String url = value.asText();
+        String url = value.asString();
         try {
             URI uri = URI.create(url);
             if (uri.getScheme() == null || uri.getHost() == null) {

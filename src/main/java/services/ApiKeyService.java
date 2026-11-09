@@ -15,10 +15,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
-import utils.ApiKeys;
-import utils.Cidrs;
-import utils.DbUtils;
-import utils.Timestamps;
+import utils.*;
 
 import java.net.InetAddress;
 import java.time.Duration;
@@ -107,17 +104,7 @@ public class ApiKeyService {
     public record CreatedApiKey(Map<String, Object> key, String plaintext) {}
 
     public void ensureApiKeysCollection() {
-        var database = resolver.system();
-        boolean exists = false;
-        for (String name : database.listCollectionNames()) {
-            if (ApiKeyDefinition.COLLECTION.equals(name)) {
-                exists = true;
-                break;
-            }
-        }
-        if (!exists) {
-            database.createCollection(ApiKeyDefinition.COLLECTION);
-        }
+        DbWrites.createCollectionIfMissing(resolver.system(), ApiKeyDefinition.COLLECTION);
 
         var collection = keys();
         ensureIndex(collection, LOOKUP_INDEX, Indexes.ascending("lookup"), true);

@@ -22,6 +22,7 @@ export default defineConfig({
         items: [
           { text: 'Docker', link: '/installation/docker' },
           { text: 'Standalone (.deb)', link: '/installation/standalone' },
+          { text: 'Pre-releases', link: '/installation/pre-releases' },
           { text: 'Initial Setup', link: '/installation/initial-setup' },
           { text: 'Configuration', link: '/installation/configuration' }
         ]

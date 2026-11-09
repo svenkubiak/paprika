@@ -1,7 +1,5 @@
 package utils;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import enums.FieldType;
 import io.mangoo.routing.Attachment;
 import io.mangoo.routing.bindings.Form;
@@ -15,6 +13,8 @@ import io.undertow.util.HeaderValues;
 import io.undertow.util.Headers;
 import models.CollectionDefinition;
 import models.FieldDefinition;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -81,7 +81,7 @@ public final class MultipartSupport {
             if (field != null && usesJsonValue(field)) {
                 try {
                     node.set(entry.getKey(), JsonUtils.getMapper().readTree(entry.getValue()));
-                } catch (JsonProcessingException e) {
+                } catch (JacksonException e) {
                     node.put(entry.getKey(), entry.getValue());
                 }
                 continue;
@@ -99,7 +99,7 @@ public final class MultipartSupport {
             if (JsonUtils.getMapper().readTree(value) instanceof ObjectNode object) {
                 return object.deepCopy();
             }
-        } catch (JsonProcessingException ignored) {
+        } catch (JacksonException ignored) {
             // Validation handles missing required fields from malformed structured data.
         }
         return JsonUtils.getMapper().createObjectNode();

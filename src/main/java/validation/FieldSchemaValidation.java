@@ -1,11 +1,11 @@
 package validation;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import io.mangoo.utils.JsonUtils;
 import models.FieldDefinition;
 import models.FieldOptions;
 import org.apache.commons.lang3.StringUtils;
+import tools.jackson.databind.JsonNode;
 import utils.Timestamps;
 
 import java.time.format.DateTimeParseException;
@@ -104,7 +104,7 @@ public final class FieldSchemaValidation {
         ValidationResult result = new ValidationResult();
         switch (field.type()) {
             case STRING, EMAIL, URL, DATE, TIME, DATETIME -> {
-                if (!value.isTextual()) {
+                if (!value.isString()) {
                     throw new IllegalArgumentException("Default for " + field.name() + " must be a string");
                 }
             }
@@ -132,9 +132,9 @@ public final class FieldSchemaValidation {
         // A default the field validator refuses would fail every create that relies on it
         String defaultLabel = "Default for " + field.name();
         switch (field.type()) {
-            case DATE -> validateIsoDate(value.asText(), defaultLabel);
-            case TIME -> validateIsoTime(value.asText(), defaultLabel);
-            case DATETIME -> validateIsoDateTime(value.asText(), defaultLabel);
+            case DATE -> validateIsoDate(value.asString(), defaultLabel);
+            case TIME -> validateIsoTime(value.asString(), defaultLabel);
+            case DATETIME -> validateIsoDateTime(value.asString(), defaultLabel);
             default -> {
             }
         }
@@ -142,8 +142,8 @@ public final class FieldSchemaValidation {
         if (field.type() == FieldType.STRING || field.type() == FieldType.EMAIL || field.type() == FieldType.URL) {
             // Same order as the runtime validators: a too-long default is not pattern-matched.
             if (FieldConstraintUtils.validateTextLength(
-                    field.name(), value.asText(), field.optionsOrDefault(), result)) {
-                FieldConstraintUtils.validatePattern(field.name(), value.asText(), field.optionsOrDefault(), result);
+                    field.name(), value.asString(), field.optionsOrDefault(), result)) {
+                FieldConstraintUtils.validatePattern(field.name(), value.asString(), field.optionsOrDefault(), result);
             }
         }
         if (field.type() == FieldType.NUMBER) {
@@ -162,7 +162,7 @@ public final class FieldSchemaValidation {
         List<String> allowed = normalizeValues(field.optionsOrDefault().valuesOrEmpty());
         int maxSelect = field.optionsOrDefault().maxSelectOrDefault();
         if (maxSelect <= 1) {
-            if (!value.isTextual() || !allowed.contains(value.asText())) {
+            if (!value.isString() || !allowed.contains(value.asString())) {
                 throw new IllegalArgumentException("Default for select field " + field.name() + " must be one of the allowed values");
             }
             return;
@@ -175,7 +175,7 @@ public final class FieldSchemaValidation {
         }
         Set<String> seen = new HashSet<>();
         for (JsonNode item : value) {
-            if (!item.isTextual() || !allowed.contains(item.asText()) || !seen.add(item.asText())) {
+            if (!item.isString() || !allowed.contains(item.asString()) || !seen.add(item.asString())) {
                 throw new IllegalArgumentException("Default for multi-select field " + field.name() + " must contain allowed unique values");
             }
         }
@@ -184,7 +184,7 @@ public final class FieldSchemaValidation {
     private static void validateRelationDefault(FieldDefinition field, JsonNode value) {
         int maxSelect = field.optionsOrDefault().maxSelectOrDefault();
         if (maxSelect <= 1) {
-            if (!value.isTextual() || StringUtils.isBlank(value.asText())) {
+            if (!value.isString() || StringUtils.isBlank(value.asString())) {
                 throw new IllegalArgumentException("Default for relation field " + field.name() + " must be a relation id string");
             }
             return;

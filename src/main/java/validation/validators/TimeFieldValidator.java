@@ -1,9 +1,9 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import enums.FieldType;
 import models.FieldDefinition;
 import models.FieldOptions;
+import tools.jackson.databind.JsonNode;
 import utils.Timestamps;
 import validation.FieldConstraintUtils;
 import validation.ValidationContext;
@@ -25,12 +25,12 @@ public class TimeFieldValidator implements FieldValidator {
             ValidationResult result,
             ValidationContext context) {
 
-        if (!value.isTextual()) {
+        if (!value.isString()) {
             result.add(field.name(), "Expected time");
             return;
         }
 
-        String text = value.asText();
+        String text = value.asString();
         try {
             Timestamps.parseTime(text);
         } catch (DateTimeParseException e) {

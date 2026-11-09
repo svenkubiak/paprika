@@ -4,11 +4,11 @@ import com.google.inject.AbstractModule;
 import filters.RequestLogFilter;
 import handlers.PaprikaResponseHandler;
 import io.mangoo.interfaces.MangooBootstrap;
-import io.mangoo.interfaces.TokenBlacklist;
 import io.mangoo.interfaces.filters.OncePerRequestFilter;
 import io.mangoo.routing.handlers.ResponseHandler;
 import jakarta.inject.Singleton;
-import services.MongoTokenBlacklist;
+import services.MongoRealtimeCluster;
+import services.RealtimeCluster;
 
 @Singleton
 public class Module extends AbstractModule {
@@ -19,7 +19,7 @@ public class Module extends AbstractModule {
         bind(OncePerRequestFilter.class).to(RequestLogFilter.class);
         // Every controller response passes the ResponseHandler, where the request log entry is written.
         bind(ResponseHandler.class).to(PaprikaResponseHandler.class);
-        // mangoo's default keeps cookie revocations in memory, where a restart would revive them.
-        bind(TokenBlacklist.class).to(MongoTokenBlacklist.class);
+        // Realtime streams stay on the instance that accepted them; this connects the instances.
+        bind(RealtimeCluster.class).to(MongoRealtimeCluster.class);
     }
 }

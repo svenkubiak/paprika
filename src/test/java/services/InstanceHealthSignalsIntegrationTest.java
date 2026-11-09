@@ -1,7 +1,6 @@
 package services;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import constants.CollectionName;
 import constants.SystemCollections;
 import io.mangoo.core.Application;
@@ -14,6 +13,7 @@ import models.TenantDefinition;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import tools.jackson.databind.JsonNode;
 import utils.AdminTestUtils;
 import utils.DbUtils;
 import utils.Timestamps;

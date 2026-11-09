@@ -27,10 +27,10 @@ db.createUser({
 })
 ```
 
-You'll enter this username and password into `.env` as `PERSISTENCE_MONGO_USERNAME` / `PERSISTENCE_MONGO_PASSWORD` further down.
+You'll enter the username into `.env` as `PERSISTENCE_MONGO_USERNAME` and the password into the file `secrets/persistence.mongo.password` further down.
 
 ::: tip Enter the password as it is
-Paprika hands username and password to the MongoDB driver separately, not inside a connection string, so characters like `:`, `@`, `/`, `?`, `#` or `%` need no encoding — and must not be percent-encoded, since `%40` would be taken as those three characters. Quotes and backslashes are interpreted by systemd when it reads `.env`, so leave those out. A long random password such as `openssl rand -hex 32` avoids the question entirely.
+Paprika hands username and password to the MongoDB driver separately, not inside a connection string, so characters like `:`, `@`, `/`, `?`, `#` or `%` need no encoding — and must not be percent-encoded, since `%40` would be taken as those three characters. The password file holds the password and nothing else: no quotes, no `KEY=` prefix; a trailing line break is ignored. A long random password such as `openssl rand -hex 32` avoids the question entirely.
 :::
 
 ::: warning This is still a broadly-scoped account
@@ -53,20 +53,23 @@ The script completes the full installation in a single run:
 2. Detects the CPU architecture and fetches the matching `.deb` asset from the latest GitHub release
 3. Verifies the download's SHA-256 checksum before touching anything else
 4. Extracts the package and installs it into the current directory
-5. Generates a `.env` file with all application secrets (see [Configuration](./configuration)) — **except the MongoDB connection**, which is left as `CHANGE_ME` placeholders
+5. Generates all application secrets as files in `secrets/` (see [Configuration](./configuration#secret-files)) and a `.env` with the remaining settings — **except the MongoDB connection**: the host and username are left as `CHANGE_ME` placeholders, the password file and the SMTP files are prepared empty
 6. Creates a dedicated, unprivileged `paprika` system user
-7. Locks down file ownership and permissions (`root:paprika`, `640`/`750`) so the app can read its own files but not modify them, with only `storage/` fully owned by the `paprika` user
+7. Locks down file ownership and permissions (`root:paprika`, `640`/`750`) so the app can read its own files and secrets but not modify them, with only `storage/` fully owned by the `paprika` user
 8. Installs and enables a systemd unit with sandboxing hardening (`ProtectSystem=strict`, `PrivateDevices`, capability dropping, etc.) applied out of the box
-9. Prints instructions to fill in `.env` and start the service — the service is **not** started automatically because MongoDB credentials are still required
+9. Prints instructions to fill in `.env` and the MongoDB password and to start the service — the service is **not** started automatically because MongoDB credentials are still required
 
 The script never starts the service automatically — that's always a manual step so you can finish any remaining configuration first.
 
-Once the script finishes, edit the generated `.env` and replace the `CHANGE_ME` placeholders with your MongoDB connection details. **Make sure MongoDB is running and reachable before starting Paprika.** Then start the service manually:
+Once the script finishes, edit the generated `.env` and replace the `CHANGE_ME` placeholders with your MongoDB connection details, and write the MongoDB password into its file. **Make sure MongoDB is running and reachable before starting Paprika.** Then start the service manually:
 
 ```bash
-nano /opt/paprika/.env   # fill in PERSISTENCE_MONGO_HOST, _USERNAME, _PASSWORD
+nano /opt/paprika/.env                               # fill in PERSISTENCE_MONGO_HOST and _USERNAME
+nano /opt/paprika/secrets/persistence.mongo.password # the password, nothing else
 systemctl start paprika
 ```
+
+To send mail, fill in the `smtp.*` files in `secrets/` the same way and restart the service; see [Configuration](./configuration#secret-files) for each file. With an empty `smtp.host`, no mail is sent.
 
 The service is registered to start automatically on server reboot (`systemctl enable`) — you only need to start it manually once after the initial setup or after an update.
 
@@ -87,7 +90,7 @@ Running the same command again from the install directory detects the currently 
 - Already on the latest version: the script reports it and exits without changing anything.
 - A newer version is available: it asks whether to install it. Declining opens a list of all released versions to pick from, so you can install an older one instead.
 
-`.env`, `.version`, and `storage/` are never touched by an update. After the script finishes, start the service manually:
+`.env`, `.version`, `secrets/`, and `storage/` are never touched by an update. An installation whose `.env` still holds the secrets is from before secret files: the script stops before downloading anything and points to [Moving secrets from .env to files](#moving-secrets-from-env-to-files). After the script finishes, start the service manually:
 
 ```bash
 cd /opt/paprika
@@ -101,6 +104,15 @@ To install a specific version without any prompts — for example to reinstall t
 cd /opt/paprika
 curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh | sudo bash -s -- --version 0.44.0
 ```
+
+A pre-release such as `1.0.0-Beta1` installs the same way, from the `.deb` of its GitHub release. Take the script from the same tag, as the one on `main` belongs to the latest release:
+
+```bash
+cd /opt/paprika
+curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/install-or-update.sh | sudo bash -s -- --version 1.0.0-Beta1
+```
+
+A pre-release counts as older than its release, so `1.0.0` updates `1.0.0-Beta1`. While the installed pre-release is newer than the latest release, an update without `--version` changes nothing. See [Pre-releases](./pre-releases) for the whole round trip.
 
 Installing a version older than the installed one is possible, but not supported: data written by a newer version may be unreadable for an older one. Back up your database first.
 
@@ -146,12 +158,49 @@ The script:
 1. Stops and disables the `paprika` systemd service
 2. Removes the service unit file and reloads systemd
 3. Removes the `paprika` system user
-4. Deletes the application files (`bin/`, `lib/`, `share/`, `logs/`, `.env`, `.version`)
+4. Deletes the application files (`bin/`, `lib/`, `share/`, `logs/`, `secrets/`, `.env`, `.version`)
 5. Asks whether to also delete the `storage/` directory — since this holds all application data, you're prompted to confirm. When run non-interactively (piped from `curl`), the storage directory is **not** removed automatically; delete it manually afterwards if no longer needed:
 
 ```bash
 rm -rf /opt/paprika/storage
 ```
+
+## Moving secrets from .env to files
+
+Installations from before secret files keep their secrets in `.env`. The install script does not migrate them: on such an installation it stops before downloading anything and changes nothing. Move the values once by hand — they stay the same, so nobody is signed out — and run the update afterwards:
+
+```bash
+cd /opt/paprika
+systemctl stop paprika
+
+mkdir -m 750 secrets
+set -a; . ./.env; set +a
+put() { printf '%s' "$2" > "secrets/$1"; }
+put application.secret "$APPLICATION_SECRET"
+put token.secret "$TOKEN_SECRET"
+put token.key "$TOKEN_KEY"
+put session.cookie.secret "$SESSION_COOKIE_SECRET"
+put session.cookie.key "$SESSION_COOKIE_KEY"
+put flash.cookie.secret "$FLASH_COOKIE_SECRET"
+put flash.cookie.key "$FLASH_COOKIE_KEY"
+put authentication.cookie.secret "$AUTHENTICATION_COOKIE_SECRET"
+put authentication.cookie.key "$AUTHENTICATION_COOKIE_KEY"
+put persistence.mongo.password "$PERSISTENCE_MONGO_PASSWORD"
+put smtp.host "${SMTP_HOST:-}"
+put smtp.port "${SMTP_PORT:-}"
+put smtp.username "${SMTP_USERNAME:-}"
+put smtp.password "${SMTP_PASSWORD:-}"
+put smtp.authentication "${SMTP_AUTHENTICATION:-}"
+put smtp.protocol "${SMTP_PROTOCOL:-}"
+put smtp.from "${SMTP_FROM:-}"
+put smtp.from_name "${SMTP_FROM_NAME:-}"
+chown -R root:paprika secrets && chmod 640 secrets/*
+
+sed -i -E '/^(APPLICATION_SECRET|TOKEN_(SECRET|KEY)|(SESSION|FLASH|AUTHENTICATION)_COOKIE_(SECRET|KEY)|PERSISTENCE_MONGO_PASSWORD|#?SMTP_[A-Z_]+)=/d' .env
+echo "APPLICATION_SECRETS_PATH=/opt/paprika/secrets" >> .env
+```
+
+Then run the [update](#update) as usual. `. ./.env` reads `.env` as shell code: if an SMTP value contains spaces or quotes, check the `smtp.*` files afterwards.
 
 ## Next steps
 

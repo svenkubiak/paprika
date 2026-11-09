@@ -1,6 +1,6 @@
 package hooks;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 
 public record HookExecutionResult(
         boolean continueOperation,

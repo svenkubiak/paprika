@@ -132,6 +132,7 @@ class LicensesTest {
                 "{\"licenseId\":\"PL-1\",\"licensee\":\"ACME GmbH\",\"installations\":1.5,\"expiresAt\":\"2027-10-31\"}",
                 "{\"licenseId\":\"PL-1\",\"licensee\":\"ACME GmbH\",\"installations\":1}",
                 "{\"licenseId\":\"PL-1\",\"licensee\":\"ACME GmbH\",\"installations\":1,\"expiresAt\":\"31.10.2027\"}",
+                "{\"licenseId\":{},\"licensee\":[\"ACME GmbH\"],\"installations\":1,\"expiresAt\":{}}",
                 "[]",
                 "not json")) {
             String key = LicenseTestKeys.sign(json, KEYS.getPrivate());

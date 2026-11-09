@@ -3,8 +3,6 @@ package services;
 import auth.AuthContext;
 import auth.TenantContext;
 import auth.TenantContextHolder;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import constants.GlobalHooks;
@@ -24,6 +22,8 @@ import models.TenantDefinition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import utils.DbUtils;
 import utils.Timestamps;
 
@@ -711,7 +711,7 @@ public class HookService {
                 if (hook.event() == HookEvent.beforeLogin) {
                     JsonNode issueTokenFor = root.get("issueTokenFor");
                     if (issueTokenFor != null && issueTokenFor.hasNonNull("userId")) {
-                        String userId = issueTokenFor.get("userId").asText();
+                        String userId = issueTokenFor.get("userId").asString("");
                         if (!userId.isBlank()) {
                             return HookExecutionResult.issueTokenFor(userId);
                         }
@@ -729,7 +729,7 @@ public class HookService {
                     errorBody = JsonUtils.getMapper().writeValueAsString(error);
                 } else if (error != null && error.isValueNode() && !error.isNull()) {
                     errorBody = JsonUtils.getMapper().writeValueAsString(
-                            JsonUtils.getMapper().createObjectNode().put("error", error.asText()));
+                            JsonUtils.getMapper().createObjectNode().put("error", error.asString()));
                 }
 
                 return HookExecutionResult.abortWithBody(status, errorBody);

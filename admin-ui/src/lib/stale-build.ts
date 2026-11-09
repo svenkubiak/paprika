@@ -64,13 +64,16 @@ function writeAttempt(count: number): void {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Reloading into a still-restarting server would show an error page and waste an attempt. */
+/**
+ * Reloading into a still-restarting server would show an error page and waste an attempt. mangoo's
+ * readiness probe stays 503 until the startup is complete, so the reload lands on a working server.
+ */
 async function waitForServer(): Promise<boolean> {
   const deadline = Date.now() + HEALTH_BUDGET_MS
 
   for (;;) {
     try {
-      const response = await fetch('/health', { cache: 'no-store', credentials: 'same-origin' })
+      const response = await fetch('/@health/ready', { cache: 'no-store', credentials: 'same-origin' })
       if (response.ok) {
         return true
       }

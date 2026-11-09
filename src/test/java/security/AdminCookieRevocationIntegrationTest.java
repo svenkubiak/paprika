@@ -72,7 +72,7 @@ class AdminCookieRevocationIntegrationTest {
             TestResponse setup = postJson("/api/admin/profile/2fa/setup", thisDevice,
                     "{\"password\":\"" + PASSWORD + "\"}");
             assertThat(setup.getContent(), setup.getStatusCode(), equalTo(StatusCodes.OK));
-            String secret = JsonUtils.getMapper().readTree(setup.getContent()).get("secret").asText();
+            String secret = JsonUtils.getMapper().readTree(setup.getContent()).get("secret").asString();
 
             TestResponse confirmed = TestRequest.post("/api/admin/profile/2fa/confirm")
                     .withCookie(thisDevice)

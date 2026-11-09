@@ -8,6 +8,7 @@ import jakarta.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import utils.AtomicFiles;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -80,7 +81,7 @@ public class FileStorageService {
         Objects.requireNonNull(data, "data must not be null");
         Path target = resolvePath(ctx, fileId);
         Files.createDirectories(target.getParent());
-        Files.write(target, data);
+        AtomicFiles.write(target, data);
     }
 
     public byte[] read(TenantContext ctx, String fileId) throws IOException {

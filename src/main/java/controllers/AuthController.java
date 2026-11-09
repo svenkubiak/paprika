@@ -3,8 +3,6 @@ package controllers;
 import auth.AuthContext;
 import auth.TenantContext;
 import auth.TenantContextHolder;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import dtos.*;
 import filters.TenantContextFilter;
 import filters.api.ApiBeforeRequestHookFilter;
@@ -29,6 +27,8 @@ import org.bson.Document;
 import results.TenantLoginResult;
 import results.TokenIssueResult;
 import services.*;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.Map;
 import java.util.Objects;
@@ -101,10 +101,10 @@ public class AuthController {
             JsonNode mutated = pre.body();
             if (mutated != null && mutated.isObject()) {
                 if (mutated.hasNonNull("username")) {
-                    username = mutated.get("username").asText();
+                    username = mutated.get("username").asString("");
                 }
                 if (mutated.has("email")) {
-                    email = mutated.get("email").isNull() ? null : mutated.get("email").asText();
+                    email = mutated.get("email").isNull() ? null : mutated.get("email").asString("");
                 }
             }
         }

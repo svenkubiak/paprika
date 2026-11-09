@@ -54,15 +54,15 @@ Strip any inbound `X-Forwarded-*` headers a client might send before you set you
 
 ## Secrets
 
-For a standard install there's nothing to do here: both install scripts generate a fresh set of secrets into `.env` on first run, and in production every secret is read from those environment variables. The placeholder values in the bundled `config.yaml` (`defaultTokenSecretForLocalDevOnly...`) are for local development only and are never used when `APPLICATION_MODE=prod`, since the prod config pulls each one from the environment.
+For a standard install there's nothing to do here: both install scripts generate a fresh set of secrets on first run, as files in a `secrets/` directory, one per value and named like its config key. In production Paprika reads every secret from those files — from `/run/secrets`, where Compose mounts them, or from the directory in `APPLICATION_SECRETS_PATH`. They never pass through the environment, so neither `docker inspect` nor a child process sees them. The placeholder values in the bundled `config.yaml` (`defaultTokenSecretForLocalDevOnly...`) are for local development only and are never used when `APPLICATION_MODE=prod`.
 
-You only need to touch this if you install Paprika outside the scripts and set the environment yourself. In that case generate each secret separately:
+You only need to touch this if you install Paprika outside the scripts. In that case generate each secret separately into its file:
 
 ```bash
-openssl rand -hex 32
+openssl rand -hex 32 > /run/secrets/application.secret
 ```
 
-That produces 64 hex characters, which is the minimum length Paprika enforces. It covers `APPLICATION_SECRET`, `TOKEN_SECRET` / `TOKEN_KEY`, `SESSION_COOKIE_SECRET` / `SESSION_COOKIE_KEY`, `AUTHENTICATION_COOKIE_SECRET` / `AUTHENTICATION_COOKIE_KEY`, and `FLASH_COOKIE_SECRET` / `FLASH_COOKIE_KEY`. Don't reuse a secret across instances, don't commit them, and keep `.env` readable only by the Paprika process. See the [configuration table in the README](https://github.com/svenkubiak/paprika#%EF%B8%8F-configuration) for the full list.
+That produces 64 hex characters, which is the minimum length Paprika enforces. It covers `application.secret`, `token.secret` / `token.key`, `session.cookie.secret` / `session.cookie.key`, `authentication.cookie.secret` / `authentication.cookie.key`, and `flash.cookie.secret` / `flash.cookie.key`. Don't reuse a secret across instances, don't commit them, and keep the files readable only by the Paprika process. See [Configuration](/installation/configuration#secret-files) for the full list.
 
 ## Rate limit the auth endpoints
 
@@ -573,23 +573,33 @@ Caddy gets you automatic Let's Encrypt certificates out of the box, so there's n
 
 ## Email (SMTP)
 
-Paprika sends the tenant-user recovery emails (password reset, email verification) itself, over a single instance-wide SMTP configuration. If you don't enable those features for any tenant, you can skip this. If you do, configure SMTP through environment variables:
+Paprika sends the tenant-user recovery emails (password reset, email verification) itself, over a single instance-wide SMTP configuration. If you don't enable those features for any tenant, you can skip this. If you do, fill in the SMTP files in `secrets/`, which both install scripts prepare empty, and restart Paprika:
 
-| Variable | Description |
+| File | Description |
 |---|---|
-| `SMTP_HOST` | SMTP server hostname. Leave empty to disable sending (tokens are still issued, no email goes out). |
-| `SMTP_PORT` | SMTP port (for example `587` for STARTTLS, `465` for SMTPS). |
-| `SMTP_USERNAME` / `SMTP_PASSWORD` | Credentials, if the server requires auth. |
-| `SMTP_AUTHENTICATION` | `true` when the server requires authentication. |
-| `SMTP_PROTOCOL` | `smtp` or `smtps`. |
-| `SMTP_FROM` | The From address (for example `no-reply@example.com`). |
-| `SMTP_FROM_NAME` | Display name for the sender (defaults to `Paprika`). |
+| `smtp.host` | SMTP server hostname. Leave it empty to disable sending (tokens are still issued, no email goes out). |
+| `smtp.port` | SMTP port (empty: `587` for STARTTLS; `465` for SMTPS). |
+| `smtp.username` / `smtp.password` | Credentials, if the server requires auth. |
+| `smtp.authentication` | `true` when the server requires authentication (empty: `false`). |
+| `smtp.protocol` | `smtp` or `smtps` (empty: `smtp`). |
+| `smtp.from` | The From address (for example `no-reply@example.com`; empty: `no-reply@localhost`). |
+| `smtp.from_name` | Display name for the sender (empty: `Paprika`). |
 
 There is one sender identity for the whole instance, so make sure the From domain's SPF and DKIM records allow this server to send, or the mails will land in spam. The link inside each email points at the tenant's own app, configured per tenant on the [Tenants](/admin-ui/tenants) editor, not at Paprika. Recovery is best-effort: a failed send is logged and never blocks the API response, which is also why the request endpoints always answer `200`.
 
-## Health endpoint
+## Health endpoints
 
-Paprika exposes a health endpoint at `/health` that your load balancer, uptime monitor, or orchestrator can poll. It checks whether the application is running and whether the database connection is healthy.
+Paprika answers three health paths. None of them needs authentication, and all of them return no data worth protecting.
+
+| Path | `200` | `503` | Use it for |
+|------|-------|-------|------------|
+| `/@health/live` | the process is running | - | liveness probes, restarting a hung process |
+| `/@health/ready` | the startup is complete | during startup and from the beginning of a shutdown | load balancers, readiness probes |
+| `/health` | the database answers | the database does not answer | uptime monitoring, alerting |
+
+Point load balancers and readiness probes at `/@health/ready`, not at `/health`. If MongoDB became unavailable, every instance would fail `/health` at the same moment and the load balancer would have no target left; a database outage is something to alert on, not a reason to take instances out of rotation. `/@health/live` and `/@health/ready` come from mangoo I/O and have no body.
+
+`/health` checks whether the application is running and whether the database connection is healthy.
 
 ```
 GET /health
@@ -607,15 +617,57 @@ If the database is not reachable, the endpoint returns HTTP 503:
 {"db": false, "status": "degraded"}
 ```
 
-The endpoint has no authentication. Keep it accessible only to internal systems; if you are using an IP restriction for the admin UI, make sure your monitoring can still reach it. A typical approach is to allow the health path through at the proxy before the IP gate:
+Keep the health paths accessible only to internal systems; if you are using an IP restriction for the admin UI, make sure your monitoring can still reach them. A typical approach is to allow them through at the proxy before the IP gate:
 
 ```nginx
 location /health {
     proxy_pass http://127.0.0.1:8080;
 }
+
+location /@health/ {
+    proxy_pass http://127.0.0.1:8080;
+}
 ```
 
-The Docker setup includes a healthcheck on the `paprika` container that opens a TCP connection to port 8080 every 30 seconds. It only checks that the process accepts connections. `/health` is there for a load balancer or uptime monitor that wants the database status as well.
+The Docker setup includes a healthcheck on the `paprika` container that requests `/@health/ready` every 30 seconds, so the container only reports healthy once the startup is complete.
+
+## Running several instances
+
+Several Paprika instances can serve the same data behind a load balancer. A request may reach any of them; no sticky sessions are needed. What they share:
+
+- **One MongoDB.** Every instance points at the same database, a replica set through `PERSISTENCE_MONGO_URL`. Leave the read preference at its default, `primary`: with reads from a secondary, a record written through one instance may not be visible yet when the next request reaches another. Login lockouts, used 2FA codes, revoked sessions, the realtime client registry and the messages between instances all live there.
+- **The same secrets.** `application.secret`, `token.secret`, `token.key` and the cookie secrets and keys have to be identical on every instance, or a token issued by one is rejected by the next. Give every instance the same secret files.
+- **One storage volume.** Uploaded files and their image variants are files under `PAPRIKA_STORAGE`, so every instance mounts the same volume at that path, for example an NFS export or Amazon EFS. Paprika writes each file under a temporary name and renames it into place, so another instance reads the old file or the new one, never a half-written one. A new image variant can take a few seconds to show up on the other instances while their NFS client still caches the directory listing; until then a download falls back to a wider variant or the original.
+- **Synchronized clocks.** Tokens are checked against the clock of the instance that receives them. Run NTP on every host.
+
+With Docker, mount the export as a named volume instead of the `./storage` directory, and give the export to the user the container runs as:
+
+```yaml
+services:
+  paprika:
+    volumes:
+      - paprika-storage:/app/storage
+
+volumes:
+  paprika-storage:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: addr=nfs.example.internal,nfsvers=4.1,rw
+      device: ":/exports/paprika"
+```
+
+The load balancer should take instances in and out by `/@health/ready` (see [Health endpoints](#health-endpoints)), list every instance in the upstream, and drain an instance before it stops. A stopping instance answers new requests with `503` while it finishes the open ones; with nginx, `proxy_next_upstream error timeout http_503;` sends such a request to another instance instead. Open realtime streams are closed at the start of the shutdown, and clients reconnect to another instance. The `max_fails=0` advice for the nginx upstream is for a single instance, where there is nothing to fail over to.
+
+What every instance does on its own:
+
+- **Realtime streams** stay on the instance that accepted them. Subscribing, record events and revocations reach them from any instance, see [Realtime (SSE)](/admin-ui/collection-api#realtime-sse). A connection limit set in the proxy counts per proxy, not for the whole setup.
+- **Scheduled cleanup** of the request log runs on every instance. It deletes the same expired entries, so the duplicate runs do no harm.
+- **Rate limits** in nginx count per nginx instance. With several proxies, an attacker gets each proxy's budget.
+- **The first start** against an empty database may happen on several instances at once. Each prints its own setup link, and every one of them works.
+- **Log lines** carry the instance id in brackets, so a central log shows which instance wrote them.
+
+A process that dies while writing a file leaves a temporary file behind, named `.<file>.<id>.tmp` next to where the file would have been. Writes finish within seconds, so such a file older than an hour can be deleted.
 
 ## Getting a 503 from the proxy after a restart or update
 
@@ -644,14 +696,14 @@ grep "no live upstreams" /var/log/nginx/error.log
 
 The fix is an explicit upstream with `max_fails=0` and an IP literal, as in the example above. For a single instance there is nothing to fail over to, so there is no reason for nginx to keep a "this one is dead" flag at all.
 
-A 502 (not 503) during the first seconds after a start is different and harmless: the app has not bound its port yet. The admin UI handles that case itself - `boot.js` polls `/health` and reloads once the server answers - so it resolves without a reload from you. Only an error page produced by the proxy can't be recovered from inside the browser, which is why the two items above have to be fixed in the proxy.
+A 502 (not 503) during the first seconds after a start is different and harmless: the app has not bound its port yet. The admin UI handles that case itself - `boot.js` polls `/@health/ready` and reloads once the server reports ready - so it resolves without a reload from you. Only an error page produced by the proxy can't be recovered from inside the browser, which is why the two items above have to be fixed in the proxy.
 
 ## A few more things worth doing
 
 - **Lock down MongoDB.** The production config runs with authentication on (`auth: true`). Keep the database on a private network the outside can't reach, use a dedicated user with access to just the Paprika databases, and never publish the Mongo port. Everything a tenant stores lives here, one database per tenant.
 - **Protect the storage directory.** `PAPRIKA_STORAGE` holds uploaded files. Put it on a volume only the Paprika process can read and write, and include it in your backups.
 - **Take backups.** Use the [Backup & Restore](/admin-ui/backup-restore) tooling, and back up MongoDB and the storage directory on the infrastructure side too. Test a restore once in a while so you know it works before you need it.
-- **Keep it updated.** Re-running the install script updates an existing installation while leaving your `.env` and `storage/` alone. Stay current for security fixes. What an upgrade is allowed to change is the [compatibility contract](/operations/compatibility).
+- **Keep it updated.** Re-running the install script updates an existing installation while leaving your `.env`, `secrets/` and `storage/` alone. Stay current for security fixes. What an upgrade is allowed to change is the [compatibility contract](/operations/compatibility).
 - **Mind the setup link.** The one-time superadmin setup token is printed to the application log and expires after 30 minutes. Complete setup promptly, and don't leave that log where others can read it.
 - **Set a log retention.** API request logs are kept according to the retention you configure under [Settings](/admin-ui/settings#request-logs). Pick a window that fits your needs instead of keeping everything forever.
 

@@ -5,17 +5,129 @@ set -euo pipefail
 #  Paprika – Docker Install / Update Script
 #
 #  Run this script from the directory where Paprika should be set up.
-#  It will create a .env file, download compose.yml, and start the stack.
+#  It will generate the secrets under ./secrets, create a .env file,
+#  download compose.yml, and start the stack.
 #
 #  Usage:
 #    mkdir /srv/paprika && cd /srv/paprika
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-docker.sh | bash
+#
+#  Install or update to a specific version, e.g. a pre-release; take the script of that version:
+#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/install-docker.sh \
+#         | bash -s -- --version 1.0.0-Beta1
+#
+#  The version is kept in .env as PAPRIKA_VERSION: later updates stay on it until --version names
+#  another one. Without it, the stack runs the latest release.
 # ─────────────────────────────────────────────────────────────────────────────
 
-GITHUB_RAW="https://raw.githubusercontent.com/svenkubiak/paprika/main"
+# ── Arguments ─────────────────────────────────────────────────────────────────
+
+REQUESTED_VERSION=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --version)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "Error: --version requires a version, e.g. --version 1.0.0 or --version 1.0.0-Beta1" >&2
+                exit 1
+            fi
+            REQUESTED_VERSION="$2"
+            shift 2
+            ;;
+        --version=*)
+            REQUESTED_VERSION="${1#*=}"
+            shift
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            echo "       Usage: $0 [--version <x.y.z[-suffix]>]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ -n "$REQUESTED_VERSION" ] && ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    echo "Error: '${REQUESTED_VERSION}' is not a valid version (expected x.y.z or x.y.z-suffix, e.g. 1.0.0-Beta1)." >&2
+    exit 1
+fi
+
+# The files of a version come from its tag, so compose.yml always matches the image it runs
+GITHUB_RAW="https://raw.githubusercontent.com/svenkubiak/paprika/${REQUESTED_VERSION:-main}"
+DOCS_URL="https://docs.getpaprika.dev/installation/docker"
 ENV_FILE=".env"
+SECRETS_DIR="secrets"
+MONGO_SECRETS_DIR="mongodb-secrets"
 COMPOSE_FILE="compose.yml"
 MONGO_INIT_FILE="mongo-init.js"
+
+# Both containers run with this group (Paprika as uid 33, MongoDB as uid 1000). Compose mounts the
+# secret directories with the owner and mode they have on the host, so the group is what lets them read.
+CONTAINER_GID=1000
+
+# Generated once, never edited by hand. ./secrets is mounted into both containers.
+GENERATED_SECRETS=(
+    application.secret
+    token.secret
+    token.key
+    session.cookie.secret
+    session.cookie.key
+    flash.cookie.secret
+    flash.cookie.key
+    authentication.cookie.secret
+    authentication.cookie.key
+    persistence.mongo.password
+)
+
+# The MongoDB root password, in a directory only the MongoDB container mounts: Paprika never sees it.
+MONGO_ROOT_PASSWORD_FILE="${MONGO_SECRETS_DIR}/mongo.root.password"
+
+# Prepared empty: SMTP is optional, an empty file counts as not set.
+SMTP_SETTINGS=(
+    smtp.host
+    smtp.port
+    smtp.username
+    smtp.password
+    smtp.authentication
+    smtp.protocol
+    smtp.from
+    smtp.from_name
+)
+
+# ── Interactive input ─────────────────────────────────────────────────────────
+# This script is usually run as "curl ... | bash", so stdin is the script
+# itself - reading a prompt from stdin would swallow the rest of the script.
+# Always talk to the controlling terminal instead.
+
+# ask <variable-name> <prompt>; without a terminal the answer is empty, i.e. the default
+ask() {
+    local __reply=""
+    if ! { true > /dev/tty; } 2>/dev/null; then
+        printf -v "$1" '%s' ""
+        return
+    fi
+    printf '%s' "$2" > /dev/tty
+    IFS= read -r __reply < /dev/tty || true
+    printf -v "$1" '%s' "$__reply"
+}
+
+# Writes the requested version into .env, replacing an earlier one; compose.yml runs its image tag
+pin_version() {
+    [ -n "$REQUESTED_VERSION" ] || return 0
+    local kept
+    kept=$(grep -v "^PAPRIKA_VERSION=" "$ENV_FILE" || true)
+    printf '%s\nPAPRIKA_VERSION=%s\n' "$kept" "$REQUESTED_VERSION" > "$ENV_FILE"
+    echo "Pinned to version ${REQUESTED_VERSION} (PAPRIKA_VERSION in ${ENV_FILE})."
+}
+
+# Installations before Paprika 1.0 kept their secrets in .env; there is no automatic migration.
+legacy_layout_abort() {
+    echo "" >&2
+    echo "Error: This installation keeps its secrets in ${ENV_FILE}." >&2
+    echo "       Paprika now reads them from files in ./${SECRETS_DIR}; this script does not" >&2
+    echo "       migrate an existing installation. Move the values by hand as described in:" >&2
+    echo "       ${DOCS_URL}#moving-secrets-from-env-to-files" >&2
+    exit 1
+}
 
 # ── Preflight checks ──────────────────────────────────────────────────────────
 
@@ -36,41 +148,6 @@ if ! docker info &>/dev/null; then
     exit 1
 fi
 
-# Image user (Dockerfile: useradd --uid 33 --gid 1000 appuser). The bind-mounted
-# storage directory is created on the host, so it keeps the installing user's
-# owner and umask, often root:root and 700. Paprika then refuses to start,
-# because that user can neither read nor write /app/storage. Keep these two
-# values in sync with the Dockerfile.
-CONTAINER_UID=33
-CONTAINER_GID=1000
-
-ensure_storage_writable() {
-    mkdir -p storage
-
-    # Skip the chown on later updates once the directory is already the
-    # container user. chown -R walks every uploaded file.
-    local owner
-    owner="$(stat -c '%u' storage 2>/dev/null || true)"
-    if [ "$owner" = "$CONTAINER_UID" ]; then
-        return 0
-    fi
-
-    echo "Making storage/ readable and writable for the container user (${CONTAINER_UID}:${CONTAINER_GID})..."
-
-    if [ "$(id -u)" -eq 0 ]; then
-        chown -R "${CONTAINER_UID}:${CONTAINER_GID}" storage
-        chmod 750 storage
-    elif command -v sudo >/dev/null 2>&1 && { [ -t 0 ] || sudo -n true >/dev/null 2>&1; }; then
-        sudo chown -R "${CONTAINER_UID}:${CONTAINER_GID}" storage
-        sudo chmod 750 storage
-    else
-        echo "Error: storage/ is not accessible by uid ${CONTAINER_UID}, and this script cannot chown it." >&2
-        echo "Re-run as root, or run:" >&2
-        echo "  sudo chown -R ${CONTAINER_UID}:${CONTAINER_GID} storage && sudo chmod 750 storage" >&2
-        exit 1
-    fi
-}
-
 # ── Determine install or update ───────────────────────────────────────────────
 
 IS_UPDATE=false
@@ -84,22 +161,30 @@ if [ "$IS_UPDATE" = true ]; then
 
     # ── Update ────────────────────────────────────────────────────────────────
 
+    if [ ! -f "${SECRETS_DIR}/application.secret" ]; then
+        legacy_layout_abort
+    fi
+
     CURRENT=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' paprika 2>/dev/null || echo "unknown")
+
+    # A version pinned by an earlier run stays until --version names another one
+    PINNED=$(grep "^PAPRIKA_VERSION=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
+    TARGET="${REQUESTED_VERSION:-${PINNED:-latest}}"
 
     echo ""
     echo "Running installation found (version: ${CURRENT})."
-    read -r -p "Pull latest image and restart? [Y/n] " confirm
+    ask confirm "Pull image ${TARGET} and restart? [Y/n] "
     case "$confirm" in
         [nN]*) echo "Aborted."; exit 0 ;;
     esac
 
     echo ""
-    echo "Pulling latest image..."
+    pin_version
+    if [ -n "$PINNED" ] && [ -z "$REQUESTED_VERSION" ]; then
+        echo "Staying on version ${PINNED} (PAPRIKA_VERSION in ${ENV_FILE}); --version changes it."
+    fi
+    echo "Pulling image ${TARGET}..."
     docker compose pull paprika
-
-    # A directory left owned by root (the usual result of the first install)
-    # still makes the restarted container exit. Correct the owner, not the files.
-    ensure_storage_writable
 
     echo "Restarting service..."
     docker compose up -d paprika
@@ -122,33 +207,86 @@ echo "No running installation found – performing fresh install."
 echo "Install location: $(pwd)"
 echo ""
 
-# ── Generate .env ─────────────────────────────────────────────────────────────
+if [ -f "$ENV_FILE" ] && grep -q "^APPLICATION_SECRET=" "$ENV_FILE"; then
+    legacy_layout_abort
+fi
 
 gen_secret() { openssl rand -hex 32; }  # 64 hex chars
-gen_key()    { openssl rand -hex 32; }  # 64 hex chars
 
-if [ -f "$ENV_FILE" ]; then
-    echo "Warning: ${ENV_FILE} already exists."
-    read -r -p "Overwrite and regenerate all secrets? [y/N] " confirm
-    if [[ ! "${confirm:-n}" =~ ^[yY] ]]; then
-        echo "Keeping existing .env."
-        if ! grep -q "^MONGO_ROOT_USERNAME=" "$ENV_FILE"; then
-            echo "Adding missing MONGO_ROOT_USERNAME/MONGO_ROOT_PASSWORD (MongoDB now bootstraps with a separate root user)..."
-            {
-                echo ""
-                echo "# ── MongoDB root bootstrap (added by installer on update) ─────"
-                echo "MONGO_ROOT_USERNAME=root"
-                echo "MONGO_ROOT_PASSWORD=$(gen_secret)"
-            } >> "$ENV_FILE"
-        fi
+# ── Generate secrets ──────────────────────────────────────────────────────────
+
+GENERATE_SECRETS=true
+if [ -n "$(ls -A "$SECRETS_DIR" 2>/dev/null)$(ls -A "$MONGO_SECRETS_DIR" 2>/dev/null)" ]; then
+    echo "Warning: ./${SECRETS_DIR} or ./${MONGO_SECRETS_DIR} already contains secrets."
+    echo "         Regenerating them signs everyone out, and MongoDB keeps the old"
+    echo "         password if its data volume already exists."
+    ask confirm "Regenerate all secrets? [y/N] "
+    if [[ "${confirm:-n}" =~ ^[yY] ]]; then
+        rm -rf "$SECRETS_DIR" "$MONGO_SECRETS_DIR"
     else
-        rm "$ENV_FILE"
+        echo "Keeping existing secrets."
+        GENERATE_SECRETS=false
     fi
 fi
 
-if [ ! -f "$ENV_FILE" ]; then
-    echo "Generating secure configuration..."
+if [ "$GENERATE_SECRETS" = true ]; then
+    echo "Generating secrets..."
 
+    old_umask=$(umask)
+    umask 077
+    mkdir -p "$SECRETS_DIR" "$MONGO_SECRETS_DIR"
+
+    for name in "${GENERATED_SECRETS[@]}"; do
+        printf '%s' "$(gen_secret)" > "${SECRETS_DIR}/${name}"
+    done
+    for name in "${SMTP_SETTINGS[@]}"; do
+        : > "${SECRETS_DIR}/${name}"
+    done
+    printf '%s' "$(gen_secret)" > "$MONGO_ROOT_PASSWORD_FILE"
+
+    umask "$old_umask"
+    echo "Secrets written to ./${SECRETS_DIR} and ./${MONGO_SECRETS_DIR}."
+fi
+
+# Files that do not exist yet, e.g. an SMTP setting added by a newer version, are prepared empty
+for name in "${SMTP_SETTINGS[@]}"; do
+    [ -f "${SECRETS_DIR}/${name}" ] || : > "${SECRETS_DIR}/${name}"
+done
+
+# Readable by the containers through their group and by the owner, by nobody else. The SMTP
+# settings stay writable for the owner, who fills them in. The directories need the group as well,
+# as Compose mounts them as a whole.
+chmod 750 "$SECRETS_DIR" "$MONGO_SECRETS_DIR"
+for name in "${GENERATED_SECRETS[@]}"; do
+    chmod 440 "${SECRETS_DIR}/${name}"
+done
+for name in "${SMTP_SETTINGS[@]}"; do
+    chmod 640 "${SECRETS_DIR}/${name}"
+done
+chmod 440 "$MONGO_ROOT_PASSWORD_FILE"
+
+# Paprika writes the uploads as group 1000 too; the directory alone, as files the container
+# created in an earlier run belong to it already
+mkdir -p storage
+
+SHARED_PATHS=(storage "$SECRETS_DIR" "$SECRETS_DIR"/* "$MONGO_SECRETS_DIR" "$MONGO_SECRETS_DIR"/*)
+if ! { chgrp "$CONTAINER_GID" "${SHARED_PATHS[@]}" && chmod 770 storage; } 2>/dev/null; then
+    echo ""
+    echo "The containers read the secrets and write the uploads as group ${CONTAINER_GID}."
+    echo "Setting that group needs root, so sudo may ask for your password."
+    if ! command -v sudo &>/dev/null \
+            || ! { sudo chgrp "$CONTAINER_GID" "${SHARED_PATHS[@]}" && sudo chmod 770 storage; }; then
+        echo "Error: Could not set group ${CONTAINER_GID}. Run as root:" >&2
+        echo "       chgrp -R ${CONTAINER_GID} $(pwd)/${SECRETS_DIR} $(pwd)/${MONGO_SECRETS_DIR}" >&2
+        echo "       chgrp ${CONTAINER_GID} $(pwd)/storage && chmod 770 $(pwd)/storage" >&2
+        echo "       and start the script again." >&2
+        exit 1
+    fi
+fi
+
+# ── Generate .env ─────────────────────────────────────────────────────────────
+
+if [ ! -f "$ENV_FILE" ]; then
     old_umask=$(umask)
     umask 077
 
@@ -157,57 +295,22 @@ if [ ! -f "$ENV_FILE" ]; then
 #  Paprika – Docker Environment Configuration
 #  Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 #
-#  All secrets are auto-generated. compose.yml loads this file into
-#  the paprika container and then clears MONGO_ROOT_* and HOST_PORT,
-#  so the root password never reaches the app.
-#  MONGO_ROOT_USERNAME / MONGO_ROOT_PASSWORD bootstrap the MongoDB
-#  container only (mongo-init.js uses them to create the scoped
-#  user below).
-#  PERSISTENCE_MONGO_USERNAME / PERSISTENCE_MONGO_PASSWORD are the
-#  scoped user (readWriteAnyDatabase + dbAdminAnyDatabase, no
-#  user/server administration rights) the Paprika app authenticates as.
+#  Secrets are not in this file: they are files in ./${SECRETS_DIR},
+#  one per value, named like the config key they set.
+#  MONGO_ROOT_USERNAME bootstraps the MongoDB container only
+#  (with ./${MONGO_SECRETS_DIR}/mongo.root.password); it is never
+#  passed to the Paprika app. MONGO_USERNAME is the scoped user
+#  (readWriteAnyDatabase + dbAdminAnyDatabase, no user/server
+#  administration rights) the Paprika app actually authenticates
+#  as, with ./${SECRETS_DIR}/persistence.mongo.password.
 # ─────────────────────────────────────────────────────────────
 
 # ── Host port (external) ──────────────────────────────────────
 HOST_PORT=8080
 
-# ── Application ───────────────────────────────────────────────
-APPLICATION_SECRET=$(gen_secret)
-
-# ── Token ─────────────────────────────────────────────────────
-TOKEN_SECRET=$(gen_secret)
-TOKEN_KEY=$(gen_key)
-
-# ── Session Cookie ────────────────────────────────────────────
-SESSION_COOKIE_SECRET=$(gen_secret)
-SESSION_COOKIE_KEY=$(gen_key)
-
-# ── Flash Cookie ──────────────────────────────────────────────
-FLASH_COOKIE_SECRET=$(gen_secret)
-FLASH_COOKIE_KEY=$(gen_key)
-
-# ── Authentication Cookie ─────────────────────────────────────
-AUTHENTICATION_COOKIE_SECRET=$(gen_secret)
-AUTHENTICATION_COOKIE_KEY=$(gen_key)
-
 # ── MongoDB ───────────────────────────────────────────────────
 MONGO_ROOT_USERNAME=root
-MONGO_ROOT_PASSWORD=$(gen_secret)
-PERSISTENCE_MONGO_USERNAME=paprika
-PERSISTENCE_MONGO_PASSWORD=$(gen_secret)
-
-# ── Email (SMTP) ──────────────────────────────────────────────
-#  Optional. Only needed if you enable password reset or email
-#  verification for a tenant. Leave SMTP_HOST unset to disable
-#  sending. Make sure SPF/DKIM allow the SMTP_FROM domain.
-#SMTP_HOST=smtp.example.com
-#SMTP_PORT=587
-#SMTP_USERNAME=
-#SMTP_PASSWORD=
-#SMTP_AUTHENTICATION=true
-#SMTP_PROTOCOL=smtp
-#SMTP_FROM=no-reply@example.com
-#SMTP_FROM_NAME=Paprika
+MONGO_USERNAME=paprika
 EOF
 
     umask "$old_umask"
@@ -215,33 +318,41 @@ EOF
     echo ".env written."
 fi
 
+pin_version
+
 # ── Create data directories ───────────────────────────────────────────────────
 
-mkdir -p storage mongodb
-ensure_storage_writable
+mkdir -p mongodb
 
 # ── Download compose file ─────────────────────────────────────────────────────
 
 echo ""
-echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE}..."
+echo "Downloading ${COMPOSE_FILE} and ${MONGO_INIT_FILE} (${REQUESTED_VERSION:-main})..."
 curl -fsSL -o "$COMPOSE_FILE" "${GITHUB_RAW}/${COMPOSE_FILE}"
 curl -fsSL -o "$MONGO_INIT_FILE" "${GITHUB_RAW}/${MONGO_INIT_FILE}"
 
-# ── Start stack ───────────────────────────────────────────────────────────────
-
-echo ""
-echo "Starting stack..."
-docker compose up -d
+# ── Done: the stack is started by hand ────────────────────────────────────────
+# Not started here, so the settings can be reviewed and SMTP filled in before the first start.
 
 HOST_PORT=$(grep "^HOST_PORT=" "$ENV_FILE" | cut -d= -f2)
 
 echo ""
 echo "────────────────────────────────────────────"
-echo " Installation complete."
+echo " Installation complete. The stack is NOT started yet."
 echo ""
-echo " Paprika is starting at http://localhost:${HOST_PORT}"
-echo " MongoDB is initialising – first start may take ~30 seconds."
+echo " Secrets:  $(pwd)/${SECRETS_DIR}"
+echo "           $(pwd)/${MONGO_SECRETS_DIR} (MongoDB root password)"
 echo ""
-echo " Check logs:"
-echo "   docker compose logs -f"
+echo " Before the first start, if needed:"
+echo "   - SMTP is optional and off. To send mail, fill in the"
+echo "     smtp.* files in ./${SECRETS_DIR}."
+echo "   - Paprika answers on port ${HOST_PORT}; change HOST_PORT in ${ENV_FILE}."
+echo ""
+echo " Start the stack:"
+echo "   docker compose up -d"
+echo ""
+echo " Paprika is available at http://localhost:${HOST_PORT} once MongoDB"
+echo " is ready; the first start may take ~30 seconds. Find the one-time"
+echo " setup link for the first superadmin in the log:"
+echo "   docker compose logs -f paprika | grep --line-buffered setup"
 echo "────────────────────────────────────────────"

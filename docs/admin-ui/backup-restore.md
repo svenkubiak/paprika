@@ -4,9 +4,11 @@ Part of the [Settings](/admin-ui/settings) page — instance-wide backup and res
 
 ## Export
 
-**Download backup** downloads a single ZIP archive containing **all tenants**: their collections, schemas, rules, hooks, records, and uploaded files, plus the instance's API keys and admin-session revocations. It's an all-tenant snapshot, not a per-tenant export — there's no way to back up or restore a single tenant in isolation from this page.
+**Download backup** downloads a single ZIP archive containing **all tenants**: their collections, schemas, rules, hooks, records, and uploaded files, plus the instance's API keys. It's an all-tenant snapshot, not a per-tenant export — there's no way to back up or restore a single tenant in isolation from this page.
 
-API keys are stored as hashes. The archive contains those hashes, not the plaintext, which Paprika never keeps. A restored key therefore keeps working for whoever already has it. Admin-session revocations are the `token_revocations` collection: a session that was revoked at the time of the export stays revoked after the restore.
+API keys are stored as hashes. The archive contains those hashes, not the plaintext, which Paprika never keeps. A restored key therefore keeps working for whoever already has it.
+
+Admin-session revocations are not part of the archive. They describe the sessions in circulation now, not data, so a restore leaves them as they are: a session that is revoked before the restore stays revoked after it.
 
 ## Restore
 
@@ -63,7 +65,7 @@ and because the snapshot is written before the first write, the state from befor
 either way. In Docker the JVM defaults to 25 % of the container memory unless you set
 `JAVA_OPTS`.
 
-**Older archives.** An export from before manifest version 2 has no `system/api_keys.json` and no `system/token_revocations.json`. Restoring one still brings back tenants, records and files, and it still deletes tenant files that are not in the archive. It does not replace API keys or admin-session revocations, because the archive never contained them. A current export is version 2, and a version 2 archive that is missing either file is refused before anything is written.
+**Older archives.** An export from before manifest version 2 has no `system/api_keys.json`. Restoring one still brings back tenants, records and files, and it still deletes tenant files that are not in the archive. It does not replace API keys, because the archive never contained them. A version 2 archive also contains `system/token_revocations.json`; it is restored without it, for the reason above. A current export is version 3, and a version 2 or 3 archive without `system/api_keys.json` is refused before anything is written.
 
 **Beyond that.** For an instance too large for this page, back up at the infrastructure level:
 `mongodump` (or your provider's snapshots) for the databases, and a file-level copy of

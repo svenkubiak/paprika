@@ -1,7 +1,6 @@
 package controllers;
 
 import auth.TenantContext;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import enums.FieldType;
 import io.mangoo.core.Application;
@@ -16,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import services.TenantCollectionService;
 import services.TenantService;
+import tools.jackson.databind.JsonNode;
 import utils.DbUtils;
 import utils.TenantTestUtils;
 
@@ -49,9 +49,9 @@ class CollectionTemporalValuesIntegrationTest {
                 {"title": "a", "day": "2026-10-03", "opensAt": "10:00", "startsAt": "2026-10-03T11:30:00+02:00"}
                 """));
 
-        assertThat(created.path("day").asText(), is("2026-10-03"));
-        assertThat(created.path("opensAt").asText(), is("10:00:00"));
-        assertThat(created.path("startsAt").asText(), is("2026-10-03T09:30:00.000Z"));
+        assertThat(created.path("day").asString(), is("2026-10-03"));
+        assertThat(created.path("opensAt").asString(), is("10:00:00"));
+        assertThat(created.path("startsAt").asString(), is("2026-10-03T09:30:00.000Z"));
         assertThat(stored(collection, created).getString("startsAt"), is("2026-10-03T09:30:00.000Z"));
     }
 
@@ -60,12 +60,12 @@ class CollectionTemporalValuesIntegrationTest {
         String collection = seed();
 
         JsonNode created = json(create(collection, "{\"title\": \"a\"}"));
-        assertThat(created.path("createdAt").asText().matches(FIXED_WIDTH_UTC), is(true));
-        assertThat(created.path("updatedAt").asText().matches(FIXED_WIDTH_UTC), is(true));
+        assertThat(created.path("createdAt").asString().matches(FIXED_WIDTH_UTC), is(true));
+        assertThat(created.path("updatedAt").asString().matches(FIXED_WIDTH_UTC), is(true));
 
         JsonNode updated = json(update(collection, created, "{\"title\": \"b\"}"));
-        assertThat(updated.path("updatedAt").asText().matches(FIXED_WIDTH_UTC), is(true));
-        assertThat(updated.path("createdAt").asText(), is(created.path("createdAt").asText()));
+        assertThat(updated.path("updatedAt").asString().matches(FIXED_WIDTH_UTC), is(true));
+        assertThat(updated.path("createdAt").asString(), is(created.path("createdAt").asString()));
     }
 
     @Test
@@ -77,8 +77,8 @@ class CollectionTemporalValuesIntegrationTest {
                 {"opensAt": "08:15", "startsAt": "2026-10-03T23:30:00-02:00"}
                 """));
 
-        assertThat(updated.path("opensAt").asText(), is("08:15:00"));
-        assertThat(updated.path("startsAt").asText(), is("2026-10-04T01:30:00.000Z"));
+        assertThat(updated.path("opensAt").asString(), is("08:15:00"));
+        assertThat(updated.path("startsAt").asString(), is("2026-10-04T01:30:00.000Z"));
     }
 
     @Test
@@ -118,8 +118,8 @@ class CollectionTemporalValuesIntegrationTest {
 
         JsonNode created = json(create(collection, "{\"title\": \"a\"}"));
 
-        assertThat(created.path("startsAt").asText(), is("2026-10-03T09:30:00.000Z"));
-        assertThat(created.path("opensAt").asText(), is("10:00:00"));
+        assertThat(created.path("startsAt").asString(), is("2026-10-03T09:30:00.000Z"));
+        assertThat(created.path("opensAt").asString(), is("10:00:00"));
     }
 
     @Test
@@ -139,10 +139,10 @@ class CollectionTemporalValuesIntegrationTest {
         try {
             JsonNode created = json(create(collection, "{\"title\": \"from client\"}"));
 
-            assertThat(created.path("title").asText(), is("from hook"));
-            assertThat(created.path("startsAt").asText(), is("2026-10-03T09:30:00.000Z"));
+            assertThat(created.path("title").asString(), is("from hook"));
+            assertThat(created.path("startsAt").asString(), is("2026-10-03T09:30:00.000Z"));
             // The hook envelope uses the same timestamp format as everything else
-            String sent = JsonUtils.getMapper().readTree(envelope.get()).path("paprika").path("timestamp").asText();
+            String sent = JsonUtils.getMapper().readTree(envelope.get()).path("paprika").path("timestamp").asString();
             assertThat(sent, sent.matches(FIXED_WIDTH_UTC), is(true));
         } finally {
             collections.deleteHook(ctx, hook.id());
@@ -181,12 +181,12 @@ class CollectionTemporalValuesIntegrationTest {
         String collection = seed();
         List<String> created = new ArrayList<>();
         for (int i = 0; i < 25; i++) {
-            created.add(json(create(collection, "{\"title\": \"r" + i + "\"}")).path("createdAt").asText());
+            created.add(json(create(collection, "{\"title\": \"r" + i + "\"}")).path("createdAt").asString());
         }
 
         List<String> sortedByServer = new ArrayList<>();
         list(collection, "sort=createdAt:asc&limit=100").path("items")
-                .forEach(item -> sortedByServer.add(item.path("createdAt").asText()));
+                .forEach(item -> sortedByServer.add(item.path("createdAt").asString()));
 
         // Records within the same millisecond share a timestamp, so compare the values, not titles
         assertThat(sortedByServer, is(created));
@@ -265,7 +265,7 @@ class CollectionTemporalValuesIntegrationTest {
     }
 
     private static TestResponse update(String collection, JsonNode record, String body) {
-        return TestRequest.patch("/api/collections/" + collection + "/" + record.path("id").asText())
+        return TestRequest.patch("/api/collections/" + collection + "/" + record.path("id").asString())
                 .withStringBody(body)
                 .withContentType("application/json")
                 .execute();
@@ -279,7 +279,7 @@ class CollectionTemporalValuesIntegrationTest {
 
     private static List<String> titles(JsonNode list) {
         List<String> titles = new ArrayList<>();
-        list.path("items").forEach(item -> titles.add(item.path("title").asText()));
+        list.path("items").forEach(item -> titles.add(item.path("title").asString()));
         return titles;
     }
 
@@ -292,7 +292,7 @@ class CollectionTemporalValuesIntegrationTest {
     private static Document stored(String collection, JsonNode record) {
         return Application.getInstance(TenantCollectionService.class)
                 .dataCollection(TenantTestUtils.defaultTenantContext(), collection)
-                .find(new Document("id", record.path("id").asText()))
+                .find(new Document("id", record.path("id").asString()))
                 .first();
     }
 

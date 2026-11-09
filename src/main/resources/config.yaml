@@ -13,8 +13,6 @@ default:
     language: en
     admin:
       enable: false
-    vault:
-      enable: false
     parameter:
       strict: true
     validation:
@@ -46,7 +44,7 @@ default:
     # link returns there after sign-in.
     origin: true
     # Revokes the admin UI cookie on logout, and every cookie of an account on a password or 2FA
-    # change. MongoTokenBlacklist keeps the revocations, so a restart does not revive them.
+    # change. mangoo keeps the revocations in MongoDB, shared by every instance and kept across restarts.
     blacklist: true
     cookie:
       name: paprika-authentication
@@ -163,48 +161,60 @@ environments:
     paprika:
       storage: env{}
     token:
-      secret: env{}
-      key: env{}
+      secret: file{}
+      key: file{}
     application:
-      secret: env{}
+      secret: file{}
       parameter:
         strict: true
+      admin:
+        enable: env{false}
+        username: env{?}
+        password: env{?}
+        secret: file{?}
     connector:
       http:
         host: env{}
         port: env{}
+    metrics:
+      enable: env{}
     session:
       cookie:
         secure: true
-        secret: env{}
-        key: env{}
+        secret: file{}
+        key: file{}
     flash:
       cookie:
         secure: true
-        secret: env{}
-        key: env{}
+        secret: file{}
+        key: file{}
     authentication:
       cookie:
         secure: true
-        secret: env{}
-        key: env{}
+        secret: file{}
+        key: file{}
+    # Optional: with an empty or missing smtp.host no mail is sent. file{?} leaves a key unset, which
+    # brings back mangoo's defaults (port 25, smtps), so the keys that need Paprika's values carry them
+    # as fallback. The install scripts prepare these files empty.
     smtp:
-      host: env{}
-      port: env{}
-      username: env{}
-      password: env{}
-      from: env{}
-      from_name: env{}
-      protocol: env{}
-      authentication: env{}
+      host: file{?}
+      port: file{587}
+      username: file{?}
+      password: file{?}
+      from: file{no-reply@localhost}
+      from_name: file{Paprika}
+      protocol: file{smtp}
+      authentication: file{false}
     persistence:
       mongo:
         embedded: false
-        host: env{}
-        port: env{}
+        # A connection string (replica set, sharded cluster, SRV) replaces host and port
+        url: env{?}
+        host: env{?}
+        port: env{?}
         dbname: paprika
         username: env{}
-        password: env{}
+        password: file{}
         authdb: admin
         auth: true
         package: models

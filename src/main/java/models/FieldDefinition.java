@@ -3,10 +3,10 @@ package models;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import enums.FieldType;
 import io.mangoo.utils.JsonUtils;
 import org.bson.codecs.pojo.annotations.BsonProperty;
+import tools.jackson.core.JacksonException;
 
 public record FieldDefinition(
         String name,
@@ -57,7 +57,7 @@ public record FieldDefinition(
         }
         try {
             return JsonUtils.getMapper().readValue(defaultValueEncoded, Object.class);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Invalid encoded default for field " + name, e);
         }
     }
@@ -72,7 +72,7 @@ public record FieldDefinition(
         }
         try {
             return JsonUtils.getMapper().writeValueAsString(defaultValue);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException("Invalid default value", e);
         }
     }

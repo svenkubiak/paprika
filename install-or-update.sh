@@ -11,10 +11,11 @@ set -euo pipefail
 #    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
 #         | sudo bash
 #
-#  Install / update to a specific version (non-interactive):
+#  Install / update to a specific version (non-interactive), also a pre-release; take the script
+#  of that version:
 #    cd /opt/paprika
-#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/main/install-or-update.sh \
-#         | sudo bash -s -- --version 0.44.0
+#    curl -fsSL https://raw.githubusercontent.com/svenkubiak/paprika/1.0.0-Beta1/install-or-update.sh \
+#         | sudo bash -s -- --version 1.0.0-Beta1
 #
 #  Uninstall:
 #    cd /opt/paprika
@@ -27,7 +28,36 @@ APP_NAME="paprika"
 TARGET_DIR="$(pwd)"
 INSTALL_DIR="${TARGET_DIR}"
 ENV_FILE="${INSTALL_DIR}/.env"
+SECRETS_DIR="${INSTALL_DIR}/secrets"
 VERSION_FILE="${INSTALL_DIR}/.version"
+DOCS_URL="https://docs.getpaprika.dev/installation/standalone"
+
+# Generated once, never edited by hand.
+GENERATED_SECRETS=(
+    application.secret
+    token.secret
+    token.key
+    session.cookie.secret
+    session.cookie.key
+    flash.cookie.secret
+    flash.cookie.key
+    authentication.cookie.secret
+    authentication.cookie.key
+)
+
+# Prepared empty for the administrator. persistence.mongo.password is required; the SMTP settings
+# are optional, an empty file counts as not set.
+PREPARED_SECRETS=(
+    persistence.mongo.password
+    smtp.host
+    smtp.port
+    smtp.username
+    smtp.password
+    smtp.authentication
+    smtp.protocol
+    smtp.from
+    smtp.from_name
+)
 SERVICE_FILE="/lib/systemd/system/${APP_NAME}.service"
 
 # ── Root check ────────────────────────────────────────────────────────────────
@@ -50,7 +80,7 @@ while [ $# -gt 0 ]; do
             ;;
         --version)
             if [ $# -lt 2 ] || [ -z "$2" ]; then
-                echo "Error: --version requires a version, e.g. --version 0.44.0" >&2
+                echo "Error: --version requires a version, e.g. --version 1.0.0 or --version 1.0.0-Beta1" >&2
                 exit 1
             fi
             REQUESTED_VERSION="$2"
@@ -62,16 +92,29 @@ while [ $# -gt 0 ]; do
             ;;
         *)
             echo "Error: Unknown option: $1" >&2
-            echo "       Usage: $0 [--uninstall] [--version <x.y.z>]" >&2
+            echo "       Usage: $0 [--uninstall] [--version <x.y.z[-suffix]>]" >&2
             exit 1
             ;;
     esac
 done
 
-if [ -n "$REQUESTED_VERSION" ] && ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: '${REQUESTED_VERSION}' is not a valid version (expected x.y.z)." >&2
+if [ -n "$REQUESTED_VERSION" ] && ! [[ "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    echo "Error: '${REQUESTED_VERSION}' is not a valid version (expected x.y.z or x.y.z-suffix, e.g. 1.0.0-Beta1)." >&2
     exit 1
 fi
+
+# True if $1 is older than $2. A pre-release (1.0.0-Beta1) comes before its release (1.0.0), which
+# sort -V alone gets the wrong way round; pre-releases of one release compare by their suffix.
+version_older() {
+    local a="$1" b="$2" a_base="${1%%-*}" b_base="${2%%-*}"
+    if [ "$a_base" != "$b_base" ]; then
+        [ "$(printf '%s\n%s\n' "$a_base" "$b_base" | sort -V | head -n1)" = "$a_base" ]
+        return
+    fi
+    [ "$a" = "$a_base" ] && return 1
+    [ "$b" = "$b_base" ] && return 0
+    [ "$a" != "$b" ] && [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -n1)" = "$a" ]
+}
 
 # ── Interactive input ─────────────────────────────────────────────────────────
 # This script is usually run as "curl ... | sudo bash", so stdin is the script
@@ -126,7 +169,8 @@ if [ "$UNINSTALL" = true ]; then
     # be recreated, so there is nothing here worth asking about.
     rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/share" "${INSTALL_DIR}/logs"
     rm -f "${INSTALL_DIR}/.env" "${INSTALL_DIR}/.version"
-    echo "✅ Application files and logs removed."
+    rm -rf "$SECRETS_DIR"
+    echo "✅ Application files, secrets and logs removed."
 
     if [ -d "${INSTALL_DIR}/storage" ]; then
         DELETE_STORAGE=false
@@ -195,8 +239,18 @@ if [ -f "$VERSION_FILE" ]; then
     CURRENT_VERSION=$(cat "$VERSION_FILE")
 fi
 
-# ── Determine which version to install ────────────────────────────────────────
+# Installations before Paprika 1.0 kept their secrets in .env; there is no automatic migration
+if [ "$IS_UPDATE" = true ] && [ ! -f "${SECRETS_DIR}/application.secret" ]; then
+    echo "" >&2
+    echo "Error: This installation keeps its secrets in ${ENV_FILE}." >&2
+    echo "       Paprika now reads them from files in ${SECRETS_DIR}; this script does not" >&2
+    echo "       migrate an existing installation. Move the values by hand as described in:" >&2
+    echo "       ${DOCS_URL}#moving-secrets-from-env-to-files" >&2
+    echo "       Nothing was changed." >&2
+    exit 1
+fi
 
+# ── Determine which version to install ────────────────────────────────────────
 echo ""
 echo "🔍 Fetching release information from GitHub..."
 
@@ -285,6 +339,13 @@ else
         exit 0
     fi
 
+    # A pre-release newer than the latest release: the latest release would be a downgrade
+    if version_older "$LATEST_VERSION" "$CURRENT_VERSION"; then
+        echo "✅ The installed version is newer than the latest release – nothing to do."
+        echo "   To switch to another version, e.g. a newer pre-release, run with --version <version>."
+        exit 0
+    fi
+
     if [ "$INTERACTIVE" = false ]; then
         echo "Error: A newer version is available, but this script is running non-interactively." >&2
         echo "       Re-run it from a terminal, or pick a version explicitly:" >&2
@@ -303,8 +364,7 @@ fi
 # ── Downgrade guard ───────────────────────────────────────────────────────────
 
 if [ "$IS_UPDATE" = true ] && [ "$SELECTED_VERSION" != "$CURRENT_VERSION" ]; then
-    OLDER=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$SELECTED_VERSION" | sort -V | head -n1)
-    if [ "$OLDER" = "$SELECTED_VERSION" ]; then
+    if version_older "$SELECTED_VERSION" "$CURRENT_VERSION"; then
         echo ""
         echo "⚠️  ${SELECTED_VERSION} is older than the installed version ${CURRENT_VERSION}."
         echo "    Downgrades are not supported – data written by a newer version may"
@@ -419,7 +479,7 @@ if [ "$IS_UPDATE" = true ]; then
     systemctl stop "$APP_NAME" || true
 
     # Replace only the app directories from the new package.
-    # .env, .version, storage/ and logs/ are not part of the .deb and remain untouched.
+    # .env, .version, secrets/, storage/ and logs/ are not part of the .deb and remain untouched.
     rm -rf "${INSTALL_DIR}/bin" "${INSTALL_DIR}/lib" "${INSTALL_DIR}/share"
     cp -a "${EXTRACTED_APP}/bin" "${INSTALL_DIR}/bin"
     cp -a "${EXTRACTED_APP}/lib" "${INSTALL_DIR}/lib"
@@ -436,21 +496,36 @@ else
     mkdir -p "$INSTALL_DIR"
     cp -a "$EXTRACTED_APP"/. "$INSTALL_DIR"/
 
-    # ── Generate .env ─────────────────────────────────────────────────────────
+    # ── Generate secrets ──────────────────────────────────────────────────────
+    # One file per value, named like the config key it sets. Existing files are kept, so a
+    # reinstall over an earlier installation does not sign everyone out.
 
     gen_secret() { openssl rand -hex 32; }  # 64 hex chars
-    gen_key()    { openssl rand -hex 32; }  # 64 hex chars
 
-    echo "🔑 Generating secure environment configuration..."
+    echo "🔑 Generating secrets..."
 
     OLD_UMASK=$(umask)
     umask 077
+    mkdir -p "$SECRETS_DIR"
+
+    for name in "${GENERATED_SECRETS[@]}"; do
+        [ -s "${SECRETS_DIR}/${name}" ] || printf '%s' "$(gen_secret)" > "${SECRETS_DIR}/${name}"
+    done
+    for name in "${PREPARED_SECRETS[@]}"; do
+        [ -f "${SECRETS_DIR}/${name}" ] || : > "${SECRETS_DIR}/${name}"
+    done
+
+    # ── Generate .env ─────────────────────────────────────────────────────────
 
     cat > "$ENV_FILE" << EOF
 # ─────────────────────────────────────────────────────────────
 #  Paprika – Production Environment Configuration
 #  Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 #  Install:   ${INSTALL_DIR}
+#
+#  Secrets are not in this file: they are files in
+#  ${SECRETS_DIR}, one per value, named like the
+#  config key they set.
 #
 #  Permissions: root:paprika 640 – never world-readable
 # ─────────────────────────────────────────────────────────────
@@ -477,16 +552,13 @@ else
 #      ]
 #    })
 #
-#  Enter the password as it is: characters like : @ / ? # or % need
-#  no encoding, and a percent-encoded one (%40) would be taken
-#  literally. Leave out quotes and backslashes, which systemd
-#  interprets when it reads this file (e.g. openssl rand -hex 32).
+#  The password goes into ${SECRETS_DIR}/persistence.mongo.password,
+#  as it is: no quotes, no encoding; a trailing line break is ignored.
 #
 #  See: https://docs.getpaprika.dev/installation/standalone#mongodb-setup
 PERSISTENCE_MONGO_HOST=CHANGE_ME
 PERSISTENCE_MONGO_PORT=27017
 PERSISTENCE_MONGO_USERNAME=CHANGE_ME
-PERSISTENCE_MONGO_PASSWORD=CHANGE_ME
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  OPTIONAL – change if needed
@@ -508,44 +580,22 @@ PAPRIKA_LOG_PATH=${INSTALL_DIR}/logs
 
 # ── Email (SMTP) ──────────────────────────────
 #  Only needed if you enable password reset or email verification
-#  for a tenant. Leave SMTP_HOST commented out to disable sending.
-#  Make sure SPF/DKIM allow the SMTP_FROM domain.
-#SMTP_HOST=smtp.example.com
-#SMTP_PORT=587
-#SMTP_USERNAME=
-#SMTP_PASSWORD=
-#SMTP_AUTHENTICATION=true
-#SMTP_PROTOCOL=smtp
-#SMTP_FROM=no-reply@example.com
-#SMTP_FROM_NAME=Paprika
+#  for a tenant. Fill in the smtp.* files in ${SECRETS_DIR};
+#  with an empty smtp.host no mail is sent. Make sure SPF/DKIM
+#  allow the address in smtp.from.
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  ADVANCED – do not change unless you know
 #             exactly what you are doing
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# ── Application ───────────────────────────────
-APPLICATION_SECRET=$(gen_secret)
-
-# ── Token ─────────────────────────────────────
-TOKEN_SECRET=$(gen_secret)
-TOKEN_KEY=$(gen_key)
-
-# ── Session Cookie ────────────────────────────
-SESSION_COOKIE_SECRET=$(gen_secret)
-SESSION_COOKIE_KEY=$(gen_key)
-
-# ── Flash Cookie ──────────────────────────────
-FLASH_COOKIE_SECRET=$(gen_secret)
-FLASH_COOKIE_KEY=$(gen_key)
-
-# ── Authentication Cookie ─────────────────────
-AUTHENTICATION_COOKIE_SECRET=$(gen_secret)
-AUTHENTICATION_COOKIE_KEY=$(gen_key)
+# ── Secrets ───────────────────────────────────
+APPLICATION_SECRETS_PATH=${SECRETS_DIR}
 EOF
 
     umask "$OLD_UMASK"
 
+    echo "✅ Secrets written to ${SECRETS_DIR}"
     echo "✅ .env written to ${ENV_FILE}"
     echo ""
 
@@ -604,6 +654,11 @@ chmod 750 "${INSTALL_DIR}/logs"
 
 chown root:paprika "$ENV_FILE" 2>/dev/null || true
 chmod 640 "$ENV_FILE" 2>/dev/null || true
+
+# Like .env: the app reads its secrets but cannot change them
+chown -R root:paprika "$SECRETS_DIR"
+chmod 750 "$SECRETS_DIR"
+find "$SECRETS_DIR" -type f -exec chmod 640 {} \;
 
 # ── Version file ──────────────────────────────────────────────────────────────
 
@@ -709,7 +764,12 @@ else
     echo ""
     echo "   2. ✏️  Edit ${ENV_FILE}"
     echo "      Replace all CHANGE_ME values with your"
-    echo "      MongoDB connection details."
+    echo "      MongoDB connection details, and write the"
+    echo "      MongoDB password into"
+    echo "      ${SECRETS_DIR}/persistence.mongo.password"
+    echo ""
+    echo "      SMTP is optional and off. To send mail, fill in"
+    echo "      the smtp.* files in ${SECRETS_DIR}."
     echo ""
     echo "   3. ▶️  Start Paprika when ready:"
     echo "      systemctl start ${APP_NAME}"

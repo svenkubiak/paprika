@@ -11,6 +11,7 @@ import models.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import rules.RuleParseException;
+import utils.DbWrites;
 import utils.Timestamps;
 
 import java.util.*;
@@ -289,13 +290,7 @@ public class SchemaService {
     }
 
     private void ensureDataCollection(TenantContext ctx, CollectionDefinition definition) {
-        var db = resolver.tenant(ctx);
-        String physicalName = CollectionName.physicalTenantData(definition.name());
-        boolean exists = StreamSupport.stream(db.listCollectionNames().spliterator(), false)
-                .anyMatch(physicalName::equals);
-        if (!exists) {
-            db.createCollection(physicalName);
-        }
+        DbWrites.createCollectionIfMissing(resolver.tenant(ctx), CollectionName.physicalTenantData(definition.name()));
         applyIndexes(ctx, definition);
     }
 

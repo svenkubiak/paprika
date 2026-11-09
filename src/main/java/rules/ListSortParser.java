@@ -5,11 +5,7 @@ import enums.FieldType;
 import models.CollectionDefinition;
 import org.bson.conversions.Bson;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 
 // Format is <field>:asc|desc[,<field>:asc|desc], at most MAX_FIELDS keys. An invalid sort is an
 // error, not a silently unsorted answer the client cannot detect.

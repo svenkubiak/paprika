@@ -1,12 +1,12 @@
 package utils;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import enums.FieldType;
 import io.mangoo.utils.JsonUtils;
 import models.CollectionDefinition;
 import models.FieldDefinition;
 import org.bson.Document;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.List;
 

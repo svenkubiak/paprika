@@ -1,11 +1,11 @@
 package validation.validators;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import enums.FieldType;
 import io.mangoo.utils.JsonUtils;
 import models.FieldDefinition;
 import models.FieldOptions;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.ObjectNode;
 import validation.ValidationContext;
 import validation.ValidationResult;
 

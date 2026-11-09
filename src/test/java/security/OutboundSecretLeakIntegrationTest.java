@@ -94,7 +94,8 @@ class OutboundSecretLeakIntegrationTest {
 
         Document invite = systemUsers.find(eq("id", inviteId)).first();
         collected.put("superadmin totp fallback code hash", invite.getString("totpFallbackCodeHash"));
-        collected.put("superadmin setup token hash", invite.getString("setupTokenHash"));
+        collected.put("superadmin setup token hash",
+                invite.getList("setupTokens", Document.class).getFirst().getString("hash"));
 
         Document admin = systemUsers.find(eq("username", "admin")).first();
         collected.put("superadmin password hash", admin.getString("passwordHash"));

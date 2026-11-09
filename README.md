@@ -81,7 +81,7 @@ Full installation instructions, including update and service-management commands
 
 ## ⚙️ Configuration
 
-Paprika is configured entirely through environment variables in a `.env` file. Both install scripts auto-generate the internal signing secrets (JWT, session, flash, and admin auth cookies), but not everything: Docker also generates a MongoDB root password, while the standalone install leaves MongoDB credentials for you to fill in, since it doesn't manage the database itself. SMTP is never auto-configured on either install method — it's optional and only needed if you enable password reset or email verification for a tenant.
+Paprika reads its settings from environment variables in a `.env` file and its secrets from files in a `secrets/` directory, one per value. Both install scripts auto-generate the internal signing secrets (JWT, session, flash, and admin auth cookies), but not everything: Docker also generates the MongoDB passwords, while the standalone install leaves the MongoDB connection for you to fill in, since it doesn't manage the database itself. SMTP is never auto-configured on either install method — its files are prepared empty, since it's optional and only needed if you enable password reset or email verification for a tenant.
 
 Full variable reference is in the [documentation](https://docs.getpaprika.dev/installation/configuration).
 
@@ -89,7 +89,7 @@ Full variable reference is in the [documentation](https://docs.getpaprika.dev/in
 
 | Layer | Technology |
 |---|---|
-| Backend | Java 25, mangoo I/O 10.x |
+| Backend | Java 25, mangoo I/O 11.x |
 | Database | MongoDB |
 | Deployment | Docker Compose or standalone `.deb` |
 | Admin UI | Vue 3, Vite, Nuxt UI 4 |

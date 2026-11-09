@@ -11,13 +11,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import services.ApiKeyService;
-import services.FileStorageService;
-import services.HookService;
-import services.ImageVariantQueue;
-import services.RealtimeService;
-import services.RequestLogService;
-import services.SystemCollectionService;
+import services.*;
 
 @Singleton
 public class Bootstrap implements MangooBootstrap {

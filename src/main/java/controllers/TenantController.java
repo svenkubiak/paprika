@@ -1,7 +1,5 @@
 package controllers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import dtos.*;
 import filters.admin.AdminAuthFilter;
 import helpers.HashingCapacityResponse;
@@ -19,6 +17,8 @@ import org.apache.commons.lang3.StringUtils;
 import services.ApiKeyService;
 import services.TenantService;
 import services.TenantUserService;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -173,7 +173,7 @@ public class TenantController {
             });
 
             return customFields;
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException("Invalid JSON body");
         }
     }
@@ -261,7 +261,7 @@ public class TenantController {
                     return field;
                 }
             }
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             // An unreadable body fails on the DTO binding instead.
             return null;
         }
