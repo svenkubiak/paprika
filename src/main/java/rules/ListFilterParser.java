@@ -26,11 +26,9 @@ import java.util.regex.Pattern;
  * keep authorization logic out of this class.
  */
 public final class ListFilterParser {
-
     public static final int MAX_CONDITIONS = 20;
     public static final int MAX_VALUE_LENGTH = 500;
     public static final int MAX_LIST_ENTRIES = 100;
-
     private static final String PARAMETER = "filter";
     private static final String BRACKET_PREFIX = PARAMETER + "[";
     private static final Pattern BRACKET_KEY = Pattern.compile("filter\\[([^\\[\\]]*)]\\[([^\\[\\]]*)]");

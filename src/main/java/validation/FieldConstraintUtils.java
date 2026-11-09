@@ -2,7 +2,6 @@ package validation;
 
 import models.FieldOptions;
 import org.apache.commons.lang3.StringUtils;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import tools.jackson.databind.JsonNode;
