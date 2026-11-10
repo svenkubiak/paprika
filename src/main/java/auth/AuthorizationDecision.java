@@ -42,7 +42,7 @@ public record AuthorizationDecision(RuleOperation operation, boolean adminBypass
     }
 
     public static boolean isAdminBypass(Request request) {
-        return of(request).map(AuthorizationDecision::adminBypass).orElse(false);
+        return of(request).map(AuthorizationDecision::adminBypass).orElse(Boolean.FALSE);
     }
 
     public Optional<Bson> listFilter() {

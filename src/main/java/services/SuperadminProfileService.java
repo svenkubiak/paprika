@@ -106,7 +106,7 @@ public class SuperadminProfileService {
 
         return systemUserService.confirmEmailVerification(token)
                 .map(profile -> AdminSettingsResult.ok(Map.of(
-                        "success", true,
+                        "success", Boolean.TRUE,
                         "username", StringUtils.defaultString(profile.username()))))
                 .orElseGet(() -> AdminSettingsResult.badRequest("This confirmation link is invalid or has expired"));
     }
@@ -216,7 +216,7 @@ public class SuperadminProfileService {
 
             // No token issued under the old password may outlive a change.
             revokeOtherSessions(request, userId);
-            return AdminSettingsResult.ok(Map.of("success", true));
+            return AdminSettingsResult.ok(Map.of("success", Boolean.TRUE));
         });
     }
 
@@ -258,7 +258,7 @@ public class SuperadminProfileService {
             revokeOtherSessions(request, userId);
 
             return AdminSettingsResult.ok(Map.of(
-                    "twoFactorEnabled", true,
+                    "twoFactorEnabled", Boolean.TRUE,
                     "fallbackCode", fallbackCode
             ));
         });
@@ -289,7 +289,7 @@ public class SuperadminProfileService {
             PendingTwoFactorSession.clear(request);
             revokeOtherSessions(request, userId);
 
-            return AdminSettingsResult.ok(Map.of("twoFactorEnabled", false));
+            return AdminSettingsResult.ok(Map.of("twoFactorEnabled", Boolean.FALSE));
         });
     }
 

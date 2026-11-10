@@ -129,11 +129,11 @@ public class RequestLogService {
             Object apiKeyName = request.getAttribute(ApiKeys.ATTRIBUTE_NAME);
             entry.append("apiKeyName", apiKeyName instanceof String name ? name : null);
             if (Boolean.TRUE.equals(request.getAttribute(ApiKeys.ATTRIBUTE_BYPASS_RULES))) {
-                entry.append("rulesBypassed", true);
+                entry.append("rulesBypassed", Boolean.TRUE);
             }
             // Distinguishes a deliberate hook exemption from a hook that silently failed to run.
             if (ApiKeys.bypassesHooks(request)) {
-                entry.append("hooksBypassed", true);
+                entry.append("hooksBypassed", Boolean.TRUE);
             }
         }
 
@@ -174,8 +174,8 @@ public class RequestLogService {
                     .append("errorMessage", errorMessage)
                     .append("timestamp", Timestamps.now())
                     .append("execTimeMs", invocation.duration())
-                    .append("hookFired", true)
-                    .append("hookBlocked", false)
+                    .append("hookFired", Boolean.TRUE)
+                    .append("hookBlocked", Boolean.FALSE)
                     .append("hookCount", 1)
                     .append("hookTotalMs", invocation.duration())
                     .append("hooks", List.of(toDocument(invocation)));
@@ -205,7 +205,7 @@ public class RequestLogService {
         Boolean hookBlocked = (Boolean) request.getAttribute(RequestAttributes.HOOK_BLOCKED);
 
         if (Boolean.TRUE.equals(hookFired)) {
-            entry.append("hookFired", true);
+            entry.append("hookFired", Boolean.TRUE);
             entry.append("hookBlocked", Boolean.TRUE.equals(hookBlocked));
         }
 
@@ -409,11 +409,11 @@ public class RequestLogService {
 
         if ("continued".equalsIgnoreCase(hookFilter)) {
             // Disjoint from "blocked" rather than containing it.
-            clauses.add(and(eq("hookFired", true), ne("hookBlocked", true)));
+            clauses.add(and(eq("hookFired", Boolean.TRUE), ne("hookBlocked", Boolean.TRUE)));
         } else if ("fired".equalsIgnoreCase(hookFilter)) {
-            clauses.add(eq("hookFired", true));
+            clauses.add(eq("hookFired", Boolean.TRUE));
         } else if ("blocked".equalsIgnoreCase(hookFilter)) {
-            clauses.add(and(eq("hookFired", true), eq("hookBlocked", true)));
+            clauses.add(and(eq("hookFired", Boolean.TRUE), eq("hookBlocked", Boolean.TRUE)));
         }
 
         if (clauses.isEmpty()) {

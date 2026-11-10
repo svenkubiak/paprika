@@ -82,15 +82,15 @@ public class AdminBootstrapService {
     private Map<String, Object> unauthenticatedPayload() {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("version", AppVersion.get());
-        payload.put("authenticated", false);
-        payload.put("isSuperAdmin", false);
+        payload.put("authenticated", Boolean.FALSE);
+        payload.put("isSuperAdmin", Boolean.FALSE);
         payload.put("adminId", null);
         payload.put("adminUsername", null);
         payload.put("adminAvatarUrl", null);
-        payload.put("smtpConfigured", false);
-        payload.put("hasActiveTenant", false);
+        payload.put("smtpConfigured", Boolean.FALSE);
+        payload.put("hasActiveTenant", Boolean.FALSE);
         payload.put("activeTenant", null);
-        payload.put("defaultTenantApplied", false);
+        payload.put("defaultTenantApplied", Boolean.FALSE);
         payload.put("tenants", List.of());
         payload.put("collections", List.of());
         payload.put("relationCollections", List.of());

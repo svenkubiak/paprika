@@ -239,7 +239,7 @@ public class AuthController {
         }
 
         tokenVersionService.revokeAll(session.orElseThrow().auth());
-        return Response.ok().bodyJson(Map.of("success", true));
+        return Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
     }
 
     public Response me(Request request) {
@@ -267,7 +267,7 @@ public class AuthController {
         }
 
         // Always the same answer, so a caller can't probe tenants, accounts, or whether the feature is on.
-        return Response.ok().bodyJson(Map.of("success", true));
+        return Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
     }
 
     public Response resetPassword(@NotNull(message = "Request body is required") @Valid ResetPasswordDto dto, Request request) {
@@ -280,7 +280,7 @@ public class AuthController {
             if (!tenantUserService.resetPassword(tenant, dto.token(), dto.password())) {
                 return Response.badRequest().bodyJson(Map.of("error", "Reset token is invalid or expired"));
             }
-            return Response.ok().bodyJson(Map.of("success", true));
+            return Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage()));
         } catch (MangooHashingException e) {
@@ -305,7 +305,7 @@ public class AuthController {
                             String.valueOf(challenge.user().get("username"))));
         }
 
-        return Response.ok().bodyJson(Map.of("success", true));
+        return Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
     }
 
     public Response confirmVerification(@NotNull(message = "Request body is required") @Valid VerifyConfirmDto dto, Request request) {
@@ -317,7 +317,7 @@ public class AuthController {
         if (!tenantUserService.confirmEmailVerification(tenant, dto.token())) {
             return Response.badRequest().bodyJson(Map.of("error", "Verification token is invalid or expired"));
         }
-        return Response.ok().bodyJson(Map.of("success", true));
+        return Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
     }
 
     private TenantDefinition activeTenant(String slug) {

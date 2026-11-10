@@ -84,7 +84,7 @@ public final class CollectionFileResponseHelper {
 
     public static Response toDeleteResponse(CollectionFileService.FileDeleteResult result) {
         return switch (result.status()) {
-            case SUCCESS -> Response.ok().bodyJson(Map.of("success", true));
+            case SUCCESS -> Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
             case NOT_FOUND -> Response.notFound().end();
             case CONFLICT -> Response.status(StatusCodes.CONFLICT).end();
         };

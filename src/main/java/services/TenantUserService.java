@@ -370,7 +370,7 @@ public class TenantUserService {
 
         usersCollection(tenant).updateOne(
                 eq("id", user.getString("id")),
-                new Document("$set", new Document(UserRecordUtils.EMAIL_VERIFIED, true)
+                new Document("$set", new Document(UserRecordUtils.EMAIL_VERIFIED, Boolean.TRUE)
                         .append(SystemFields.UPDATED_AT, SystemFields.timestamp())));
 
         return true;

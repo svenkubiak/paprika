@@ -10,8 +10,8 @@ import services.SystemUserService;
 import java.util.Map;
 
 public final class AdminLoginResponseHelper {
-    private static final Map<String, Object> REQUIRES_TWO_FACTOR_BODY = Map.of("requiresTwoFactor", true);
-    private static final Map<String, Object> SUCCESS_BODY = Map.of("success", true);
+    private static final Map<String, Object> REQUIRES_TWO_FACTOR_BODY = Map.of("requiresTwoFactor", Boolean.TRUE);
+    private static final Map<String, Object> SUCCESS_BODY = Map.of("success", Boolean.TRUE);
 
     private AdminLoginResponseHelper() {
     }

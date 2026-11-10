@@ -19,9 +19,9 @@ public class HealthController {
         boolean dbHealthy = datastore.isHealthy();
 
         if (dbHealthy) {
-            return Response.ok().bodyJson(Map.of("status", "ok", "db", true));
+            return Response.ok().bodyJson(Map.of("status", "ok", "db", Boolean.TRUE));
         }
 
-        return Response.status(503).bodyJson(Map.of("status", "degraded", "db", false));
+        return Response.status(503).bodyJson(Map.of("status", "degraded", "db", Boolean.FALSE));
     }
 }

@@ -59,7 +59,7 @@ public class SuperadminController {
         }
 
         mailService.sendSuperadminInvite(dto.email().trim(), link, dto.username());
-        return Response.ok().bodyJson(Map.of("success", true));
+        return Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
     }
 
     // null when the host is unknown; the invite still works through the copy link in the admin UI.
@@ -72,7 +72,7 @@ public class SuperadminController {
             case DELETED -> {
                 // Tokens and cookies die with the account, but a stream checked its token only at subscribe
                 realtimeService.revokeUserEverywhere(id);
-                yield Response.ok().bodyJson(Map.of("success", true));
+                yield Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
             }
             case NOT_FOUND -> Response.notFound().bodyJson(Map.of("error", "Superadmin not found")).end();
             case LAST_ADMIN -> Response.badRequest()

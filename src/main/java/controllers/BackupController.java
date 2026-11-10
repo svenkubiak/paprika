@@ -70,6 +70,6 @@ public class BackupController {
     private boolean isSuperAdmin(Request request) {
         return authService.resolveAdmin(request)
                 .map(auth -> auth.isAuthenticated() && auth.isSuperAdmin())
-                .orElse(false);
+                .orElse(Boolean.FALSE);
     }
 }

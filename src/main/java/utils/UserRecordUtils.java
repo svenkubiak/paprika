@@ -102,7 +102,7 @@ public final class UserRecordUtils {
     // Tokens mailed to the old address must die, or a pending verification would verify the new one.
     // Call after applyOnUpdate, which strips emailVerified from client input.
     public static void invalidateEmailBoundState(Document setDocument, Document unsetDocument) {
-        setDocument.put(EMAIL_VERIFIED, false);
+        setDocument.put(EMAIL_VERIFIED, Boolean.FALSE);
         for (String field : EMAIL_BOUND_TOKEN_FIELDS) {
             setDocument.remove(field);
             unsetDocument.put(field, "");

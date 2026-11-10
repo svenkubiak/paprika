@@ -99,11 +99,11 @@ public final class RuleParser {
         }
         if (isKeywordAt("true")) {
             pos += 4;
-            return new RuleNode.Literal(true);
+            return new RuleNode.Literal(Boolean.TRUE);
         }
         if (isKeywordAt("false")) {
             pos += 5;
-            return new RuleNode.Literal(false);
+            return new RuleNode.Literal(Boolean.FALSE);
         }
 
         if (peekIdentifierStart()) {
@@ -146,10 +146,10 @@ public final class RuleParser {
             return null;
         }
         if (matchKeyword("true")) {
-            return true;
+            return Boolean.TRUE;
         }
         if (matchKeyword("false")) {
-            return false;
+            return Boolean.FALSE;
         }
         if (peek() == '"' || peek() == '\'') {
             return parseQuotedString();

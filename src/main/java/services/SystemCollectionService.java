@@ -118,7 +118,7 @@ public class SystemCollectionService {
                         )
                 ),
                 CollectionRules.locked(),
-                true
+                Boolean.TRUE
         );
     }
 
@@ -134,7 +134,7 @@ public class SystemCollectionService {
                 canonicalUserFields(),
                 List.of(usernameIndexDefinition()),
                 CollectionRules.locked(),
-                true
+                Boolean.TRUE
         );
     }
 
@@ -228,7 +228,7 @@ public class SystemCollectionService {
                 mergeUsersFields(existing.fields()),
                 mergeUsersIndexes(existing.indexes()),
                 existing.rules() != null ? existing.rules() : CollectionRules.locked(),
-                true
+                Boolean.TRUE
         );
     }
 

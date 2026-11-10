@@ -107,7 +107,7 @@ public class AdminController {
             PendingTwoFactorSession.clear(request);
             AdminTenantSession.resetTenantSelection(request);
 
-            return Response.ok().bodyJson(Map.of("success", true));
+            return Response.ok().bodyJson(Map.of("success", Boolean.TRUE));
         } catch (IllegalArgumentException e) {
             return Response.badRequest().bodyJson(Map.of("error", e.getMessage())).end();
         } catch (MangooHashingException e) {

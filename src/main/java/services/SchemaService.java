@@ -119,7 +119,7 @@ public class SchemaService {
                         fields,
                         indexes,
                         incoming.rules(),
-                        false), true, false));
+                        Boolean.FALSE), true, false));
                 continue;
             }
 

@@ -308,11 +308,11 @@ public class SystemUserService {
                 eq("id", userId),
                 combine(
                         set(EMAIL, normalized),
-                        set(EMAIL_VERIFIED, false),
+                        set(EMAIL_VERIFIED, Boolean.FALSE),
                         set(EMAIL_TOKEN_HASH, AuthTokens.hash(token)),
                         set(EMAIL_TOKEN_EXPIRES_AT, AuthTokens.expiresAt()),
                         // An unconfirmed address cannot receive the alert.
-                        set(LOGIN_ALERT_ENABLED, false)
+                        set(LOGIN_ALERT_ENABLED, Boolean.FALSE)
                 )
         );
 
@@ -345,7 +345,7 @@ public class SystemUserService {
                         unset(EMAIL_VERIFIED),
                         unset(EMAIL_TOKEN_HASH),
                         unset(EMAIL_TOKEN_EXPIRES_AT),
-                        set(LOGIN_ALERT_ENABLED, false)
+                        set(LOGIN_ALERT_ENABLED, Boolean.FALSE)
                 )
         );
     }
@@ -367,7 +367,7 @@ public class SystemUserService {
 
         resolver.systemCollection(CollectionName.USERS).updateOne(
                 eq("id", claimed.getString("id")),
-                set(EMAIL_VERIFIED, true));
+                set(EMAIL_VERIFIED, Boolean.TRUE));
 
         return findProfile(claimed.getString("id"));
     }
