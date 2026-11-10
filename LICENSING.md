@@ -222,6 +222,8 @@ Users are responsible for ensuring that their use of the Software complies with 
 
 If you are unsure whether your intended use requires a Commercial License, contact us before deploying the Software in production.
 
+A Commercial License can be bought at https://getpaprika.dev.
+
 Commercial licensing inquiries:
 
 Sven Kubiak

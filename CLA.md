@@ -2,7 +2,7 @@
 
 Copyright © 2026 Sven Kubiak
 
-This Contributor License Agreement ("Agreement") governs contributions made to the Software project maintained by [LEGAL NAME / COMPANY] ("Licensor", "we", "us", or "our").
+This Contributor License Agreement ("Agreement") governs contributions made to the Software project maintained by Sven Kubiak ("Licensor", "we", "us", or "our").
 
 By submitting a Contribution to the project, you agree to the terms of this Agreement.
 

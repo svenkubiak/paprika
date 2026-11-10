@@ -242,10 +242,10 @@ Unless explicitly announced otherwise, the CLA requirements described above take
 
 For questions about contributing, open a project discussion or contact:
 
-[CONTRIBUTOR CONTACT EMAIL]
+hello@getpaprika.dev
 
 For licensing questions, contact:
 
-[LICENSING EMAIL]
+hello@getpaprika.dev
 
 For security issues, follow `SECURITY.md`.

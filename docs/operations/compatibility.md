@@ -29,4 +29,4 @@ A security fix that has to break the surface ships as a breaking release, not as
 - Behavior listed as not implemented in `extensions.md`.
 - The MongoDB, JDK and operating-system versions an image or `.deb` happens to be built with, beyond what the installation pages require.
 
-Commercial production still needs a commercial license. That license is not yet offered. The [PolyForm Noncommercial License](https://github.com/svenkubiak/paprika/blob/main/LICENSE) covers noncommercial use. This page is the project's versioning policy. It is not a support commitment; response times and backports stay as [SUPPORT.md](https://github.com/svenkubiak/paprika/blob/main/SUPPORT.md) describes them.
+Commercial production still needs a commercial license. You can buy one at [getpaprika.dev](https://getpaprika.dev). The [PolyForm Noncommercial License](https://github.com/svenkubiak/paprika/blob/main/LICENSE) covers noncommercial use. This page is the project's versioning policy. It is not a support commitment; response times and backports stay as [SUPPORT.md](https://github.com/svenkubiak/paprika/blob/main/SUPPORT.md) describes them.

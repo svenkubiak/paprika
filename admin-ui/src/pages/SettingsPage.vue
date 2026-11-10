@@ -347,7 +347,7 @@ await refreshSettings()
             It covers personal and hobby projects, education, research and qualifying nonprofits.
             Companies may also use Paprika for evaluation, development, testing and staging. Running
             it in production for a commercial purpose requires a commercial license per
-            installation, which you can request at
+            installation, which you can buy at
             <a
               href="https://getpaprika.dev"
               target="_blank"

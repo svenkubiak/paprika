@@ -19,7 +19,7 @@ Everything that belongs to **your own account** — password, two-factor authent
 
 ## License
 
-Shows whether a commercial license key is stored. Without one the installation reads **Noncommercial**. With one it shows the licensee, the number of licensed installations, the expiry date and the license ID.
+Shows whether a commercial license key is stored. Without one the installation reads **Noncommercial**. With one it shows the licensee, the number of licensed installations, the expiry date and the license ID. A commercial license for commercial production use can be bought at [getpaprika.dev](https://getpaprika.dev).
 
 - **License key** — paste the key you received with your commercial license. It is checked offline against the public key built into Paprika; nothing is sent anywhere. Only a key that verifies and has not expired is accepted. Line breaks picked up while copying are ignored.
 - **Remove** — deletes the stored key, the installation reads **Noncommercial** again.
