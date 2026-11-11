@@ -64,8 +64,16 @@ default:
       default-tenant-name: Default
       default-tenant-slug: default
     # Must stay a scalar: an env{} override replaces a nested block's whole subtree (mangoo only
-    # merges map with map). Environment variable: PAPRIKA_STORAGE.
+    # merges map with map). Environment variable: PAPRIKA_STORAGE. The other storage_* keys are
+    # siblings for the same reason, and use underscores so the derived variable is settable.
     storage: storage
+    storage_backend: filesystem
+    storage_bucket: ""
+    storage_region: ""
+    storage_endpoint: ""
+    storage_path_style: false
+    storage_access_key: ""
+    storage_secret_key: ""
   flash:
     cookie:
       name: paprika-flash
@@ -160,6 +168,15 @@ environments:
   prod:
     paprika:
       storage: env{}
+      # Fallbacks, not bare env{}: an unset variable must not stop an installation that stays
+      # on the filesystem. file{?} is the same idea for the two credentials.
+      storage_backend: env{filesystem}
+      storage_bucket: env{?}
+      storage_region: env{?}
+      storage_endpoint: env{?}
+      storage_path_style: env{false}
+      storage_access_key: file{?}
+      storage_secret_key: file{?}
     token:
       secret: file{}
       key: file{}

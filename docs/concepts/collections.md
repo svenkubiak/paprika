@@ -41,7 +41,7 @@ Relations are validated when the record that holds them is written: create/updat
 `maxSize` limits a single file, but the whole `multipart/form-data` request is capped at 64 MiB (67,108,864 bytes) by the server (Undertow's `undertow.maxentitysize`), and a reverse proxy in front of it may cap it lower still — nginx defaults to 1 MB, see the [nginx example](/operations/going-to-production#nginx-example). The default `maxSize` is 4,000,000 bytes. Raise it and several files add up beyond the ceiling, or one file alone exceeds it, and the upload fails no matter what the schema says.
 :::
 
-On disk, uploaded files are stored under `<PAPRIKA_STORAGE>/<tenantId>/<fileId>` — one folder per tenant, flat within it. [Deleting a tenant](/admin-ui/tenants#deleting-a-tenant) removes this folder along with the tenant's MongoDB database, so no files are left behind.
+On disk, with the filesystem backend, uploaded files are stored under `<PAPRIKA_STORAGE>/<tenantId>/<fileId>` — one folder per tenant, flat within it. The S3 backend stores the same relative path as the object key in one bucket. [Deleting a tenant](/admin-ui/tenants#deleting-a-tenant) removes that prefix, or the folder, along with the tenant's MongoDB database, so no files are left behind. See [Configuration](/installation/configuration) for selecting the backend.
 
 ## Indexes
 

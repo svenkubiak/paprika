@@ -225,8 +225,13 @@ public class Bootstrap implements MangooBootstrap {
 
     @Override
     public void applicationStarted() {
-        // Touched here so an invalid storage path stops the boot instead of failing the first upload.
-        LOG.info("File storage root: {}", fileStorageService.root());
+        // Touched here so an invalid storage path, or a bucket that does not answer, stops the boot.
+        if (fileStorageService.filesystem()) {
+            LOG.info("File storage root: {}", fileStorageService.root());
+        } else {
+            LOG.info("File storage backend s3, bucket {}, region {}, endpoint {}",
+                    fileStorageService.bucket(), fileStorageService.region(), fileStorageService.endpoint());
+        }
 
         systemCollectionService.ensureSystemCollections();
         requestLogService.purgeAllExpired();
@@ -238,5 +243,6 @@ public class Bootstrap implements MangooBootstrap {
         hookService.shutdown();
         apiKeyService.shutdown();
         imageVariantQueue.shutdown();
+        fileStorageService.shutdown();
     }
 }

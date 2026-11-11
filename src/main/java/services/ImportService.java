@@ -5,6 +5,7 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import constants.CollectionName;
+import auth.TenantContext;
 import enums.Role;
 import io.mangoo.utils.JsonUtils;
 import jakarta.inject.Inject;
@@ -18,8 +19,6 @@ import org.bson.Document;
 import org.bson.conversions.Bson;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
-import utils.AtomicFiles;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -48,8 +47,6 @@ public class ImportService {
     private static final String SYSTEM_USERS = "system/users.json";
     private static final String SYSTEM_SETTINGS = "system/settings.json";
     private static final String SYSTEM_API_KEYS = "system/api_keys.json";
-    static final String SNAPSHOT_DIRECTORY = "pre-import-snapshots";
-
     private final TenantDatabaseResolver resolver;
     private final FileStorageService fileStorageService;
     private final ExportService exportService;
@@ -211,7 +208,7 @@ public class ImportService {
 
     // Mandatory: a restore runs during an incident and must not destroy the last copy of the current state
     private String writeSafetySnapshot() throws IOException {
-        Path directory = fileStorageService.root().resolve(SNAPSHOT_DIRECTORY);
+        Path directory = fileStorageService.snapshotDirectory();
         Path target = directory.resolve("pre-import-" + Instant.now().toString().replace(':', '-') + ".zip");
 
         try {
@@ -432,12 +429,10 @@ public class ImportService {
     }
 
     private int restoreTenantFiles(Map<String, byte[]> entries, TenantDefinition tenant, String filesPrefix) throws IOException {
-        Path tenantDir = fileStorageService.root().resolve(tenant.id()).normalize();
-        if (!tenantDir.startsWith(fileStorageService.root())) {
-            throw new IllegalArgumentException(
-                    "Tenant id contains path traversal: " + tenant.id());
+        if (tenant.id().contains("..") || tenant.id().contains("/") || tenant.id().contains("\\")) {
+            throw new IllegalArgumentException("Tenant id contains path traversal: " + tenant.id());
         }
-        Files.createDirectories(tenantDir);
+        TenantContext ctx = TenantContext.guest(tenant.id(), tenant.databaseName());
 
         Set<String> restored = new HashSet<>();
         int count = 0;
@@ -446,40 +441,29 @@ public class ImportService {
             String fileId = entry.getKey().substring(filesPrefix.length());
             if (fileId.isBlank() || fileId.contains("/") || fileId.contains("\\") || fileId.contains("..")) continue;
 
-            Path target = tenantDir.resolve(fileId).normalize();
-            if (!target.startsWith(tenantDir)) continue;
-
-            AtomicFiles.write(target, entry.getValue());
+            fileStorageService.store(ctx, fileId, entry.getValue());
             restored.add(fileId);
             count++;
         }
-        deleteFilesMissingFromArchive(tenantDir, restored, tenant.id());
+        deleteFilesMissingFromArchive(ctx, restored, tenant.id());
         return count;
     }
 
-    // The archive is the whole tenant directory. A file left behind would outlive the records that referenced it.
-    private static void deleteFilesMissingFromArchive(Path tenantDir, Set<String> restored, String tenantId) throws IOException {
-        List<Path> doomed = new ArrayList<>();
-        try (var stream = Files.list(tenantDir)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (Files.isDirectory(file)) continue;
-                String fileId = file.getFileName().toString();
-                // Another instance may be writing it right now
-                if (restored.contains(fileId) || AtomicFiles.isTemporary(fileId)) continue;
-                if (fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) continue;
-
-                Path target = file.normalize();
-                if (!target.startsWith(tenantDir)) continue;
-                doomed.add(target);
+    // The archive is the whole set of tenant files. A file left behind would outlive the records that referenced it.
+    // A filesystem write still in progress is not listed, so it is left alone, as before.
+    private void deleteFilesMissingFromArchive(TenantContext ctx, Set<String> restored, String tenantId) throws IOException {
+        List<String> doomed = new ArrayList<>();
+        for (String fileId : fileStorageService.list(tenantId)) {
+            if (restored.contains(fileId) || fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) {
+                continue;
             }
+            doomed.add(fileId);
         }
-        int removed = 0;
-        for (Path target : doomed) {
-            Files.deleteIfExists(target);
-            removed++;
+        for (String fileId : doomed) {
+            fileStorageService.deleteStored(ctx, fileId);
         }
-        if (removed > 0) {
-            LOG.info("Removed {} file(s) of tenant {} that were not in the backup", removed, tenantId);
+        if (!doomed.isEmpty()) {
+            LOG.info("Removed {} file(s) of tenant {} that were not in the backup", doomed.size(), tenantId);
         }
     }
 

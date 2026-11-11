@@ -24,7 +24,7 @@ The archive is read and checked in full first. If an entry is missing or unreada
 
 An archive that contains no superadmin with a password is refused for the same reason: applying it would leave the instance with no way to sign in.
 
-Once the archive has passed, Paprika exports the **current** state and writes it to `pre-import-snapshots/` inside the [storage directory](/installation/configuration) (`PAPRIKA_STORAGE`) before the first write. The path is shown when the restore finishes and is included in the error message if the restore fails halfway through — restoring that archive puts the instance back. These snapshots are never deleted automatically; prune them yourself as part of your housekeeping.
+Once the archive has passed, Paprika exports the **current** state and writes it to `pre-import-snapshots/` inside the local directory [PAPRIKA_STORAGE](/installation/configuration) before the first write. With the S3 backend that directory holds these snapshots and not the tenant files. The path is shown when the restore finishes and is included in the error message if the restore fails halfway through — restoring that archive puts the instance back. These snapshots are never deleted automatically; prune them yourself as part of your housekeeping.
 
 ::: warning Only restore archives you produced yourself
 A backup contains the **superadmin accounts**, password hashes included. Restoring an archive somebody else handed you replaces your superadmins with theirs, which gives whoever created it access to this instance. Treat a backup file as a credential, not as a data file: keep it where you keep your secrets, and never restore one from an untrusted source.
@@ -68,13 +68,15 @@ either way. In Docker the JVM defaults to 25 % of the container memory unless yo
 **Older archives.** An export from before manifest version 2 has no `system/api_keys.json`. Restoring one still brings back tenants, records and files, and it still deletes tenant files that are not in the archive. It does not replace API keys, because the archive never contained them. A version 2 archive also contains `system/token_revocations.json`; it is restored without it, for the reason above. A current export is version 3, and a version 2 or 3 archive without `system/api_keys.json` is refused before anything is written.
 
 **Beyond that.** For an instance too large for this page, back up at the infrastructure level:
-`mongodump` (or your provider's snapshots) for the databases, and a file-level copy of
-`PAPRIKA_STORAGE` for the uploads, taken together. That path has no size limit and no memory
-cost in the application — it just does not give you the one-click restore this page does.
+`mongodump` (or your provider's snapshots) for the databases, and a copy of the uploads taken
+at the same time — the `PAPRIKA_STORAGE` directory, or the bucket when the backend is S3. That
+path has no size limit and no memory cost in the application — it just does not give you the
+one-click restore this page does.
 
 **The snapshot directory.** `pre-import-snapshots/` grows by one full backup per restore, sits
 inside `PAPRIKA_STORAGE` with whatever permissions that directory has, and contains superadmin
-password hashes and every tenant's data. Protect it like a backup file and prune it deliberately.
+password hashes and every tenant's data. That stays a local directory even when tenant files
+are in a bucket. Protect it like a backup file and prune it deliberately.
 
 ## When to use this
 

@@ -1,5 +1,6 @@
 package services;
 
+import auth.TenantContext;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import constants.CollectionName;
@@ -11,14 +12,11 @@ import models.TenantDefinition;
 import org.bson.Document;
 import org.bson.json.JsonMode;
 import org.bson.json.JsonWriterSettings;
-import utils.AtomicFiles;
 import utils.Timestamps;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -86,20 +84,18 @@ public class ExportService {
     }
 
     private void writeTenantFiles(ZipOutputStream zip, TenantDefinition tenant) throws IOException {
-        Path tenantDir = fileStorageService.root().resolve(tenant.id());
-        if (!Files.isDirectory(tenantDir)) return;
-
-        try (var stream = Files.list(tenantDir)) {
-            for (Path file : (Iterable<Path>) stream::iterator) {
-                if (Files.isDirectory(file)) continue;
-                String fileId = file.getFileName().toString();
-                if (fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) continue;
-                // An upload still being written, here or on another instance
-                if (AtomicFiles.isTemporary(fileId)) continue;
-                zip.putNextEntry(new ZipEntry("tenants/" + tenant.id() + "/files/" + fileId));
-                Files.copy(file, zip);
-                zip.closeEntry();
+        TenantContext ctx = TenantContext.guest(tenant.id(), tenant.databaseName());
+        for (String fileId : fileStorageService.list(tenant.id())) {
+            if (fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) {
+                continue;
             }
+            byte[] data = fileStorageService.read(ctx, fileId);
+            if (data == null) {
+                continue;
+            }
+            zip.putNextEntry(new ZipEntry("tenants/" + tenant.id() + "/files/" + fileId));
+            zip.write(data);
+            zip.closeEntry();
         }
     }
 

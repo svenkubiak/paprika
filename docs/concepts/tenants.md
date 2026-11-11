@@ -4,7 +4,7 @@ Paprika is multi-tenant at its core. A **tenant** is an isolated space with its 
 
 ## Isolation: one database per tenant
 
-Every tenant gets its own dedicated MongoDB database, named `tenant_<tenantId>`. This isn't a shared collection filtered by a `tenantId` column — it's a separate physical database per tenant, on the same MongoDB cluster. Deleting a tenant drops its entire database in one operation, including its `users` collection, all data collections, all field/rule/hook definitions, and all request logs — and also removes its uploaded files, which live on disk under `<PAPRIKA_STORAGE>/<tenantId>/`, outside MongoDB. Both cleanups happen as part of the same delete operation, so nothing is left behind on disk.
+Every tenant gets its own dedicated MongoDB database, named `tenant_<tenantId>`. This isn't a shared collection filtered by a `tenantId` column — it's a separate physical database per tenant, on the same MongoDB cluster. Deleting a tenant drops its entire database in one operation, including its `users` collection, all data collections, all field/rule/hook definitions, and all request logs — and also removes its uploaded files, which live outside MongoDB under `<PAPRIKA_STORAGE>/<tenantId>/` or, with the S3 backend, under that same prefix in the bucket. Both cleanups happen as part of the same delete operation, so nothing is left behind.
 
 A tenant has:
 

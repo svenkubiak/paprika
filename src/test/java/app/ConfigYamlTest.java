@@ -33,6 +33,13 @@ class ConfigYamlTest {
     @Test
     void theStorageKeyMapsToTheDocumentedEnvironmentVariable() {
         assertThat(envVariableFor(FileStorageService.STORAGE_KEY), equalTo("PAPRIKA_STORAGE"));
+        assertThat(envVariableFor(FileStorageService.BACKEND_KEY), equalTo("PAPRIKA_STORAGE_BACKEND"));
+        assertThat(envVariableFor(FileStorageService.BUCKET_KEY), equalTo("PAPRIKA_STORAGE_BUCKET"));
+        assertThat(envVariableFor(FileStorageService.REGION_KEY), equalTo("PAPRIKA_STORAGE_REGION"));
+        assertThat(envVariableFor(FileStorageService.ENDPOINT_KEY), equalTo("PAPRIKA_STORAGE_ENDPOINT"));
+        assertThat(envVariableFor(FileStorageService.PATH_STYLE_KEY), equalTo("PAPRIKA_STORAGE_PATH_STYLE"));
+        assertThat(envVariableFor(FileStorageService.ACCESS_KEY), equalTo("PAPRIKA_STORAGE_ACCESS_KEY"));
+        assertThat(envVariableFor(FileStorageService.SECRET_KEY), equalTo("PAPRIKA_STORAGE_SECRET_KEY"));
     }
 
     /** mangoo only replaces "." with "_", so a hyphenated key derives a variable no shell can set. */
@@ -86,6 +93,30 @@ class ConfigYamlTest {
 
         assertThat(test, hasKey(FileStorageService.STORAGE_KEY));
         assertThat(test.get(FileStorageService.STORAGE_KEY), not(equalTo(flatten(null).get(FileStorageService.STORAGE_KEY))));
+        assertThat("a scalar storage override must not drop the sibling backend key",
+                test.get(FileStorageService.BACKEND_KEY), equalTo(FileStorageService.FILESYSTEM));
+    }
+
+    @Test
+    void s3SettingsAreOptionalInProduction() {
+        Map<String, String> defaults = flatten(null);
+        Map<String, String> prod = flatten("prod");
+
+        assertThat(defaults.get(FileStorageService.BACKEND_KEY), equalTo(FileStorageService.FILESYSTEM));
+        assertThat(defaults.get(FileStorageService.BUCKET_KEY), equalTo(""));
+        assertThat(defaults.get(FileStorageService.REGION_KEY), equalTo(""));
+        assertThat(defaults.get(FileStorageService.ENDPOINT_KEY), equalTo(""));
+        assertThat(defaults.get(FileStorageService.PATH_STYLE_KEY), equalTo("false"));
+        assertThat(defaults.get(FileStorageService.ACCESS_KEY), equalTo(""));
+        assertThat(defaults.get(FileStorageService.SECRET_KEY), equalTo(""));
+
+        assertThat(prod.get(FileStorageService.BACKEND_KEY), equalTo("env{filesystem}"));
+        assertThat(prod.get(FileStorageService.BUCKET_KEY), equalTo("env{?}"));
+        assertThat(prod.get(FileStorageService.REGION_KEY), equalTo("env{?}"));
+        assertThat(prod.get(FileStorageService.ENDPOINT_KEY), equalTo("env{?}"));
+        assertThat(prod.get(FileStorageService.PATH_STYLE_KEY), equalTo("env{false}"));
+        assertThat(prod.get(FileStorageService.ACCESS_KEY), equalTo("file{?}"));
+        assertThat(prod.get(FileStorageService.SECRET_KEY), equalTo("file{?}"));
     }
 
     private static String envVariableFor(String key) {

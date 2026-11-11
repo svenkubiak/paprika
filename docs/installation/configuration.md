@@ -12,12 +12,29 @@ Files keep secrets out of the environment, where `docker inspect`, the systemd u
 | `APPLICATION_SECRETS_PATH` | Directory of the secret files. Paprika reads `/run/secrets` if it is not set. | Standalone: preset to `secrets/` under the install directory. Docker leaves it unset: Compose mounts the secret files to `/run/secrets`. |
 | `CONNECTOR_HTTP_HOST` | Bind address. Use `0.0.0.0` to listen on all interfaces, or `127.0.0.1` to only accept connections from a local reverse proxy. | No. Both install methods default to `127.0.0.1`, so Paprika only accepts connections from the local machine out of the box. Set it to `0.0.0.0` if Paprika needs to be reachable directly from the network rather than through a local reverse proxy. |
 | `CONNECTOR_HTTP_PORT` | HTTP port (default `8080`). | No — preset default. For Docker, change the externally exposed port via `HOST_PORT` instead. |
-| `PAPRIKA_STORAGE` | Absolute path to the file storage directory. Must be absolute in production — Paprika refuses to start on a relative path, and on a directory it cannot create or write to. | No — preset by the installer to a sensible path (`storage/` under the install directory); only change it if you know you need a different location. If you do, also adjust `ReadWritePaths` in the systemd unit (standalone) or the volume mount (Docker). |
+| `PAPRIKA_STORAGE` | Absolute path to a local directory. With the filesystem backend this is where uploaded files and [pre-import snapshots](/admin-ui/backup-restore) are stored. With the S3 backend it holds only the snapshots; tenant files live in the bucket. Must be absolute in production — Paprika refuses to start on a relative path, and on a directory it cannot create or write to. | No — preset by the installer to a sensible path (`storage/` under the install directory); only change it if you know you need a different location. If you do, also adjust `ReadWritePaths` in the systemd unit (standalone) or the volume mount (Docker). |
+| `PAPRIKA_STORAGE_BACKEND` | `filesystem` (the default) or `s3`. `s3` is S3-compatible object storage: Amazon S3 when `PAPRIKA_STORAGE_ENDPOINT` is empty, or another service that speaks the same API. Hetzner Object Storage uses the endpoint and region in the table below. | No — unset means `filesystem`, which is what an existing installation already does. |
+| `PAPRIKA_STORAGE_BUCKET` | Bucket name. Read only when the backend is `s3`. One bucket for the whole installation; each tenant is a prefix inside it. | No. |
+| `PAPRIKA_STORAGE_REGION` | Region of that bucket, for example `eu-central-1`, or `fsn1` for Hetzner Falkenstein. | No. |
+| `PAPRIKA_STORAGE_ENDPOINT` | Optional. Empty means Amazon S3 at `https://s3.{region}.amazonaws.com`. Set it for any other S3-compatible service. | No. |
+| `PAPRIKA_STORAGE_PATH_STYLE` | Optional. `true` puts the bucket in the path (`https://endpoint/bucket/key`). Leave it unset for Amazon S3 and Hetzner, which both answer virtual-hosted requests. | No — unset means `false`. |
 | `PAPRIKA_LOG_PATH` | Directory for the rolling log files. Relative paths resolve against the working directory, which systemd sets to the install directory. | No — preset by the standalone installer to `logs/` under the install directory. If you change it, also adjust `ReadWritePaths` in the systemd unit. Docker leaves it unset: the container logs to stdout and to `/app/logs` inside the container. |
 | `PERSISTENCE_MONGO_HOST` | MongoDB hostname. | Docker: preset to the bundled `mongodb` container. Standalone: **no** — left as `CHANGE_ME`, since you bring your own instance. |
 | `PERSISTENCE_MONGO_PORT` | MongoDB port (default `27017`). | Docker: preset. Standalone: preset to `27017`. |
 | `PERSISTENCE_MONGO_URL` | MongoDB connection string for a replica set, a sharded cluster or an SRV address such as MongoDB Atlas, e.g. `mongodb://mongo-1:27017,mongo-2:27017/?replicaSet=rs0`. Replaces `PERSISTENCE_MONGO_HOST` and `PERSISTENCE_MONGO_PORT`. Without credentials: username and password stay separate. | No, optional — neither installer sets it. |
 | `PERSISTENCE_MONGO_USERNAME` | MongoDB username. | Docker: set from `MONGO_USERNAME` in `.env`, a fixed `paprika` user for a scoped application account — not the MongoDB root account. Standalone: **no** — left as `CHANGE_ME`, you must provide credentials for your own instance. |
+
+`filesystem` keeps uploaded files under `PAPRIKA_STORAGE/<tenantId>/<fileId>`. `s3` uses that same relative path as the object key in one bucket. Paprika does not create the bucket. On startup it checks that the bucket answers; a failure names the bucket and the endpoint and refuses to start. The credentials need to list, read, write and delete objects in that bucket. Downloads still come through Paprika, under the same file routes as before.
+
+Hetzner Object Storage is the same backend with the location endpoint and the location as the region:
+
+| Location | `PAPRIKA_STORAGE_ENDPOINT` | `PAPRIKA_STORAGE_REGION` |
+|---|---|---|
+| Falkenstein | `https://fsn1.your-objectstorage.com` | `fsn1` |
+| Nuremberg | `https://nbg1.your-objectstorage.com` | `nbg1` |
+| Helsinki | `https://hel1.your-objectstorage.com` | `hel1` |
+
+Moving an existing directory into a bucket is a copy you run yourself (`rclone`, or `aws s3 sync` with that endpoint), then set `PAPRIKA_STORAGE_BACKEND=s3`. There is no migration inside Paprika. `PAPRIKA_STORAGE` stays a local directory either way: with `s3` it only holds [pre-import snapshots](/admin-ui/backup-restore).
 
 ## Secret files
 
@@ -44,6 +61,8 @@ Each file holds one value as it is, without quotes or encoding; a trailing line 
 | `smtp.protocol` | `smtps` or `smtptls` (empty: `smtps`). Production refuses cleartext `smtp`. | No — prepared empty. |
 | `smtp.from` | From address for outgoing emails (empty: `no-reply@localhost`, so set it once you send mail). | No — prepared empty. |
 | `smtp.from_name` | Sender display name (empty: `Paprika`). | No — prepared empty. |
+| `paprika.storage_access_key` | Access key for the S3 backend. Empty, or the file absent: ignored while the backend is `filesystem`. | No — not created by the installers. Add the file only when `PAPRIKA_STORAGE_BACKEND=s3`. |
+| `paprika.storage_secret_key` | Secret key for the S3 backend. Same rule as the access key. | No. |
 
 Who may read the files:
 
@@ -59,6 +78,7 @@ Everything else depends on the install method:
 - **Docker** generates two separate MongoDB credentials: a root password (`mongodb-secrets/mongo.root.password`, user `MONGO_ROOT_USERNAME`) that bootstraps the `mongodb` container and never leaves it, and the password of the scoped user Paprika actually authenticates with (`persistence.mongo.password`, user `MONGO_USERNAME`) — `readWriteAnyDatabase` + `dbAdminAnyDatabase`, created by [`mongo-init.js`](https://github.com/svenkubiak/paprika/blob/main/mongo-init.js) on first start from that same file, rather than the root account. There's nothing MongoDB-related left for you to configure.
 - **Standalone** does not touch MongoDB configuration at all — fill in `PERSISTENCE_MONGO_HOST`, `PERSISTENCE_MONGO_PORT` and `PERSISTENCE_MONGO_USERNAME` in `.env` and the password in `secrets/persistence.mongo.password` for your own instance before starting the service. See [Standalone → MongoDB setup](./standalone#mongodb-setup) for the role this user needs.
 - **SMTP** is never filled in by either installer, on any install method. The `smtp.*` files are prepared empty and stay that way until you opt in — SMTP is only needed if a tenant has password reset or email verification enabled, and most tenants won't need either right away.
+- **S3 credentials** are not created by either installer. Add `paprika.storage_access_key` and `paprika.storage_secret_key` only when you set `PAPRIKA_STORAGE_BACKEND=s3`, and give them the same owner and mode as the other secret files.
 
 ## Applying changes
 
