@@ -12,8 +12,8 @@ public record S3Settings(
         String accessKey,
         String secret) {
 
-    private static final Pattern REGION = Pattern.compile("[A-Za-z0-9][A-Za-z0-9-]*");
-    private static final Pattern BUCKET = Pattern.compile("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]");
+    private static final Pattern REGION_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9-]*");
+    private static final Pattern BUCKET_PATTERN = Pattern.compile("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]");
 
     public S3Settings {
         Objects.requireNonNull(bucket, "bucket must not be null");
@@ -23,12 +23,12 @@ public record S3Settings(
     }
 
     public void validate() {
-        if (!BUCKET.matcher(bucket).matches() || bucket.contains("..")) {
+        if (!BUCKET_PATTERN.matcher(bucket).matches() || bucket.contains("..")) {
             throw new IllegalStateException(
                     "paprika.storage_bucket must be an S3 bucket name, but is \"" + bucket
                             + "\". Set PAPRIKA_STORAGE_BUCKET.");
         }
-        if (!REGION.matcher(region).matches()) {
+        if (!REGION_PATTERN.matcher(region).matches()) {
             throw new IllegalStateException(
                     "paprika.storage_region must be an S3 region, but is \"" + region
                             + "\". Set PAPRIKA_STORAGE_REGION.");

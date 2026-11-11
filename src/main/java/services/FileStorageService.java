@@ -38,10 +38,10 @@ public class FileStorageService {
     public static final String PATH_STYLE_KEY = "paprika.storage_path_style";
     public static final String ACCESS_KEY = "paprika.storage_access_key";
     public static final String SECRET_KEY = "paprika.storage_secret_key";
-    public static final String FILESYSTEM = "filesystem";
+    public static final String FILESYSTEM_BACKEND = "filesystem";
     public static final String S3 = "s3";
     static final String DEFAULT_ROOT = "storage";
-    static final String DEFAULT_BACKEND = FILESYSTEM;
+    static final String DEFAULT_BACKEND = FILESYSTEM_BACKEND;
     private static final String SNAPSHOT_DIRECTORY = "pre-import-snapshots";
 
     // Variant keys derive from the file id, so no second index is needed to find their copies
@@ -89,7 +89,7 @@ public class FileStorageService {
     /** The directory tenant files live in. Only the filesystem backend has one. */
     public Path root() {
         if (!filesystem || !(objects instanceof FilesystemObjectStore files)) {
-            throw new IllegalStateException("File storage backend " + (filesystem ? FILESYSTEM : S3) + " has no directory of tenant files");
+            throw new IllegalStateException("File storage backend " + (filesystem ? FILESYSTEM_BACKEND : S3) + " has no directory of tenant files");
         }
         return files.root();
     }
@@ -244,7 +244,7 @@ public class FileStorageService {
     private static Opened open(Config config) {
         Path local = prepareLocal(Path.of(config.getString(STORAGE_KEY, DEFAULT_ROOT)), Application.inProdMode());
         String backend = backend(config.getString(BACKEND_KEY, DEFAULT_BACKEND));
-        if (FILESYSTEM.equals(backend)) {
+        if (FILESYSTEM_BACKEND.equals(backend)) {
             return filesystem(local);
         }
         S3Settings settings = new S3Settings(
@@ -280,8 +280,8 @@ public class FileStorageService {
         if (value.isEmpty()) {
             value = DEFAULT_BACKEND;
         }
-        if (!FILESYSTEM.equals(value) && !S3.equals(value)) {
-            throw new IllegalStateException(BACKEND_KEY + " must be " + FILESYSTEM + " or " + S3
+        if (!FILESYSTEM_BACKEND.equals(value) && !S3.equals(value)) {
+            throw new IllegalStateException(BACKEND_KEY + " must be " + FILESYSTEM_BACKEND + " or " + S3
                     + ", but is \"" + configured + "\". Set PAPRIKA_STORAGE_BACKEND.");
         }
         return value;

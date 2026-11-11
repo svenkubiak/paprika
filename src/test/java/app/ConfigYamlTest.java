@@ -94,7 +94,7 @@ class ConfigYamlTest {
         assertThat(test, hasKey(FileStorageService.STORAGE_KEY));
         assertThat(test.get(FileStorageService.STORAGE_KEY), not(equalTo(flatten(null).get(FileStorageService.STORAGE_KEY))));
         assertThat("a scalar storage override must not drop the sibling backend key",
-                test.get(FileStorageService.BACKEND_KEY), equalTo(FileStorageService.FILESYSTEM));
+                test.get(FileStorageService.BACKEND_KEY), equalTo(FileStorageService.FILESYSTEM_BACKEND));
     }
 
     @Test
@@ -102,7 +102,7 @@ class ConfigYamlTest {
         Map<String, String> defaults = flatten(null);
         Map<String, String> prod = flatten("prod");
 
-        assertThat(defaults.get(FileStorageService.BACKEND_KEY), equalTo(FileStorageService.FILESYSTEM));
+        assertThat(defaults.get(FileStorageService.BACKEND_KEY), equalTo(FileStorageService.FILESYSTEM_BACKEND));
         assertThat(defaults.get(FileStorageService.BUCKET_KEY), equalTo(""));
         assertThat(defaults.get(FileStorageService.REGION_KEY), equalTo(""));
         assertThat(defaults.get(FileStorageService.ENDPOINT_KEY), equalTo(""));

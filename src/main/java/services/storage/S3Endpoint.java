@@ -54,9 +54,18 @@ public final class S3Endpoint {
     }
 
     public URI objectUri(String key, Map<String, String> query) {
-        String path = pathStyle
-                ? "/" + SigV4.encode(bucket, true) + (key == null || key.isEmpty() ? "" : "/" + SigV4.encode(key, false))
-                : (key == null || key.isEmpty() ? "/" : "/" + SigV4.encode(key, false));
+        String encodedKey = key == null || key.isEmpty() ? "" : SigV4.encode(key, false);
+        String path;
+        if (pathStyle) {
+            path = "/" + SigV4.encode(bucket, true);
+            if (!encodedKey.isEmpty()) {
+                path = path + "/" + encodedKey;
+            }
+        } else if (encodedKey.isEmpty()) {
+            path = "/";
+        } else {
+            path = "/" + encodedKey;
+        }
         String queryString = canonicalQuery(query);
         StringBuilder url = new StringBuilder();
         url.append(base.getScheme().toLowerCase(Locale.ROOT)).append("://").append(host());

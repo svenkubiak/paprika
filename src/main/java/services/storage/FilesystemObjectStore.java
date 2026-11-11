@@ -13,17 +13,11 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 /** One directory per tenant, flat inside it, under the storage root. */
-public final class FilesystemObjectStore implements ObjectStore {
+public record FilesystemObjectStore(Path root) implements ObjectStore {
     private static final Logger LOG = LogManager.getLogger(FilesystemObjectStore.class);
 
-    private final Path root;
-
-    public FilesystemObjectStore(Path root) {
-        this.root = Objects.requireNonNull(root, "root must not be null");
-    }
-
-    public Path root() {
-        return root;
+    public FilesystemObjectStore {
+        Objects.requireNonNull(root, "root must not be null");
     }
 
     @Override
