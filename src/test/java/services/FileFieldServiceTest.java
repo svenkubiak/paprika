@@ -242,6 +242,43 @@ class FileFieldServiceTest {
         assertThat(rejected.getMessage(), containsString("Too many files"));
     }
 
+    @Test
+    void removingAFileKeepsTheOthersUntilTheRemovalIsCommitted() throws Exception {
+        FileStorageService storage = new FileStorageService(storageRoot);
+        FileFieldService service = new FileFieldService(storage, new ImageVariantQueue(storage));
+        TenantContext ctx = TenantContext.guest("tenant-1", "database");
+        Document record = recordHolding(storage, ctx, 2, "keep", "drop");
+        FieldDefinition field = attachment(2);
+
+        FileFieldService.FileRemoval unknown = service.prepareFileRemoval(field, record, "missing");
+        assertThat(unknown.isEmpty(), is(true));
+
+        FileFieldService.FileRemoval one = service.prepareFileRemoval(field, record, "drop");
+        assertThat(one.removedFileIds(), contains("drop"));
+        assertThat(one.updatedValue().toString(), containsString("keep"));
+        assertThat(storage.read(ctx, "drop"), is(notNullValue()));
+
+        service.commitFileRemoval(ctx, one);
+        assertThat(storage.read(ctx, "drop"), nullValue());
+        assertThat(storage.read(ctx, "keep"), is(notNullValue()));
+        service.commitFileRemoval(ctx, null);
+        assertThat(storage.read(ctx, "keep"), is(notNullValue()));
+
+        FileFieldService.FileRemoval all = service.prepareFileRemoval(field, record, " ");
+        assertThat(all.removedFileIds(), containsInAnyOrder("keep", "drop"));
+        assertThat(all.updatedValue(), nullValue());
+
+        assertThat(service.prepareFileRemoval(field, new Document(), "keep").isEmpty(), is(true));
+
+        Document single = recordHolding(storage, ctx, 1, "only");
+        FileFieldService.FileRemoval removed = service.prepareFileRemoval(attachment(1), single, "only");
+        assertThat(removed.removedFileIds(), contains("only"));
+        assertThat(removed.updatedValue(), nullValue());
+        assertThat(service.findReference(single, attachment(1), null).id(), is("only"));
+        assertThat(service.findReference(record, field, "keep").id(), is("keep"));
+        assertThat(service.findReference(record, field, " "), nullValue());
+    }
+
     private static FieldDefinition attachment(int maxSelect) {
         return new FieldDefinition(
                 "attachment",

@@ -24,6 +24,7 @@ class CidrsTest {
         assertThat(Cidrs.normalize("2A01:4F8:C17:C74C::1/48"), equalTo("2a01:4f8:c17::/48"));
         assertThat(Cidrs.normalize("::1/128"), equalTo("::1/128"));
         assertThat(Cidrs.normalize("::/0"), equalTo("::/0"));
+        assertThat(Cidrs.normalize("10.200.0.255/25"), equalTo("10.200.0.128/25"));
     }
 
     @Test
@@ -88,6 +89,8 @@ class CidrsTest {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (byte) 0xFF, (byte) 0xFF, 10, (byte) 200, 0, 1});
 
         assertThat(Cidrs.contains(List.of("10.200.0.0/24"), mapped), is(true));
+        assertThat("loopback is not an IPv4-mapped address",
+                Cidrs.contains(List.of("0.0.0.0/0"), address("::1")), is(false));
     }
 
     @Test

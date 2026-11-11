@@ -76,6 +76,61 @@ class SuperadminProfileIntegrationTest {
         assertThat(removed.getContent(), containsString("\"email\":null"));
     }
 
+    /** A new link replaces the previous one, so a mail that arrived late cannot confirm the address. */
+    @Test
+    void resendingTheConfirmationInvalidatesThePreviousLink() {
+        HttpCookie auth = AdminTestUtils.loginAsAdmin();
+        SystemUserService users = Application.getInstance(SystemUserService.class);
+        String adminId = String.valueOf(users.findPublicUserByUsername("admin").orElseThrow().get("id"));
+
+        TestResponse none = postJson("/api/admin/profile/email/resend", auth, "{}");
+        assertThat(none.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(none.getContent(), containsString("No email address"));
+
+        assertThat(postJson("/api/admin/profile/email", auth, "{\"email\":\"admin@example.test\"}").getStatusCode(),
+                equalTo(StatusCodes.OK));
+        String first = users.renewEmailVerificationToken(adminId).orElseThrow();
+
+        TestResponse resent = postJson("/api/admin/profile/email/resend", auth, "{}");
+        assertThat(resent.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(resent.getContent(), containsString("\"emailVerified\":false"));
+
+        TestResponse stale = TestRequest.post("/api/admin/verify-email")
+                .withStringBody("{\"token\":\"" + first + "\"}")
+                .withContentType("application/json")
+                .execute();
+        assertThat(stale.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(stale.getContent(), containsString("invalid or has expired"));
+
+        String second = users.renewEmailVerificationToken(adminId).orElseThrow();
+        TestResponse confirmed = TestRequest.post("/api/admin/verify-email")
+                .withStringBody("{\"token\":\"" + second + "\"}")
+                .withContentType("application/json")
+                .execute();
+        assertThat(confirmed.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(confirmed.getContent(), containsString("\"success\":true"));
+
+        TestResponse again = postJson("/api/admin/profile/email/resend", auth, "{}");
+        assertThat(again.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(again.getContent(), containsString("already confirmed"));
+    }
+
+    @Test
+    void aPasswordChangeNeedsTheCurrentPasswordAndADifferentNewOne() {
+        String current = AdminTestUtils.prepareAdminPassword();
+        HttpCookie auth = AdminTestUtils.loginAsAdmin();
+
+        TestResponse wrong = postJson("/api/admin/profile/password", auth,
+                "{\"currentPassword\":\"not-the-password\",\"newPassword\":\"another-password-123\"}");
+        assertThat(wrong.getStatusCode(), equalTo(StatusCodes.UNAUTHORIZED));
+        assertThat(wrong.getContent(), containsString("Invalid current password"));
+
+        TestResponse same = postJson("/api/admin/profile/password", auth,
+                "{\"currentPassword\":\"" + current + "\",\"newPassword\":\"" + current + "\"}");
+        assertThat(same.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(same.getContent(), containsString("must be different"));
+    }
+
     @Test
     void anUnknownConfirmationTokenIsRejectedWithoutASession() {
         TestResponse response = TestRequest.post("/api/admin/verify-email")
@@ -124,6 +179,15 @@ class SuperadminProfileIntegrationTest {
 
         assertThat(response.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
         assertThat(response.getContent(), containsString("not a PNG, JPEG or WebP image"));
+
+        TestResponse notAUrl = postJson("/api/admin/profile/avatar", auth, "{\"image\":\"hello\"}");
+        assertThat(notAUrl.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(notAUrl.getContent(), containsString("base64 image data URL"));
+
+        TestResponse gif = postJson("/api/admin/profile/avatar", auth,
+                "{\"image\":\"data:image/gif;base64," + PNG_1X1 + "\"}");
+        assertThat(gif.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(gif.getContent(), containsString("Only PNG, JPEG and WebP"));
     }
 
     @Test

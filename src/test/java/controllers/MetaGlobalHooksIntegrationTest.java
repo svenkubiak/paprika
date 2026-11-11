@@ -7,6 +7,7 @@ import io.undertow.util.StatusCodes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import utils.AdminTestUtils;
+import utils.DbUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -100,6 +101,51 @@ class MetaGlobalHooksIntegrationTest {
 
             assertThat(disabled.getStatusCode(), equalTo(StatusCodes.OK));
             assertThat(disabled.getContent(), containsString("\"includeFileRoutes\":false"));
+        } finally {
+            cookies.apply(TestRequest.delete("/api/meta/global-hooks/" + id)).execute();
+        }
+    }
+
+    @Test
+    void renamingAGlobalHookKeepsTheUrlAndABadPatchDoesNot() {
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+        TestResponse missing = AdminTestUtils.patchWithAdminCookies(
+                "/api/meta/global-hooks/" + DbUtils.id(), cookies, "{\"name\":\"Nope\"}", "application/json");
+        assertThat(missing.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+
+        TestResponse create = AdminTestUtils.postWithAdminCookies(
+                "/api/meta/global-hooks",
+                cookies,
+                """
+                {
+                  "name": "Rename me",
+                  "url": "https://example.com/before-request",
+                  "secret": "test-signing-secret",
+                  "enabled": false,
+                  "applyToAllCollections": true
+                }
+                """,
+                "application/json");
+        assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
+        String id = extractJsonString(create.getContent(), "id");
+        try {
+            TestResponse renamed = AdminTestUtils.patchWithAdminCookies(
+                    "/api/meta/global-hooks/" + id, cookies, "{\"name\":\"Renamed gate\"}", "application/json");
+            assertThat(renamed.getStatusCode(), equalTo(StatusCodes.OK));
+            assertThat(renamed.getContent(), containsString("\"name\":\"Renamed gate\""));
+            assertThat(renamed.getContent(), containsString("https://example.com/before-request"));
+
+            TestResponse blocked = AdminTestUtils.patchWithAdminCookies(
+                    "/api/meta/global-hooks/" + id,
+                    cookies,
+                    "{\"forwardHeaders\":[\"Authorization\"]}",
+                    "application/json");
+            assertThat(blocked.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+            assertThat(blocked.getContent(), containsString("cannot be forwarded"));
+
+            TestResponse list = AdminTestUtils.getWithAdminCookies("/api/meta/global-hooks", cookies);
+            assertThat(list.getContent(), containsString("Renamed gate"));
+            assertThat(list.getContent(), containsString("https://example.com/before-request"));
         } finally {
             cookies.apply(TestRequest.delete("/api/meta/global-hooks/" + id)).execute();
         }

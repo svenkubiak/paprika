@@ -7,6 +7,7 @@ import rules.ast.RuleNode;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class RuleEvaluatorTest {
 
@@ -72,5 +73,23 @@ class RuleEvaluatorTest {
         assertThat(ruleService.canAccess("auth", "owner", AuthContext.guest(), null, null), is(false));
         assertThat(ruleService.canAccess("auth", "owner", AuthContext.user("u1"), null, null), is(true));
         assertThat(ruleService.canAccess("owner", "owner", AuthContext.guest(), null, null), is(false));
+    }
+
+    @Test
+    void orderedComparisonsUseNumbersAndOtherwiseTheText() {
+        RuleNode greater = RuleParser.parse("count > 1");
+        assertThat(RuleEvaluator.evaluate(greater, context(new Document("count", 3))), is(true));
+        assertThat(RuleEvaluator.evaluate(greater, context(new Document("count", 1))), is(false));
+
+        RuleNode mixed = RuleParser.parse("title > 10");
+        assertThat(RuleEvaluator.evaluate(mixed, context(new Document("title", "2"))), is(true));
+
+        RuleNode missing = RuleParser.parse("title > a");
+        assertThrows(RuleParseException.class,
+                () -> RuleEvaluator.evaluate(missing, context(new Document())));
+    }
+
+    private static RuleEvaluationContext context(Document record) {
+        return RuleEvaluationContext.of(AuthContext.guest(), record);
     }
 }

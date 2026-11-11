@@ -12,6 +12,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -118,6 +119,14 @@ class ImageVariantsTest {
         // Displayed, the image is 120 wide - so 130 is already too wide to scale down to.
         assertThat(ImageVariants.scaleToWidth(rotated, JPEG, SOURCE_HEIGHT + 10), nullValue());
         assertThat(ImageVariants.scaleToWidth(rotated, JPEG, SOURCE_HEIGHT - 10), notNullValue());
+    }
+
+    @Test
+    void somethingThatIsNotAnImageProducesNoVariants() throws Exception {
+        assertThat(ImageVariants.scaleToWidths(null, JPEG, List.of(TARGET_WIDTH)), is(Map.of()));
+        assertThat(ImageVariants.scaleToWidths(new byte[] {1, 2, 3}, "text/plain", List.of(TARGET_WIDTH)), is(Map.of()));
+        assertThat(ImageVariants.scaleToWidths(new byte[] {1, 2, 3}, null, List.of(TARGET_WIDTH)), is(Map.of()));
+        assertThat(ImageVariants.scaleToWidths(quadrantImage(), JPEG, null), is(Map.of()));
     }
 
     private static BufferedImage variantOf(byte[] jpeg) throws Exception {

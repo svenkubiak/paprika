@@ -8,6 +8,7 @@ import models.CollectionRules;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import utils.AdminTestUtils;
+import utils.DbUtils;
 import utils.TenantTestUtils;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -58,6 +59,56 @@ class MetaHooksIntegrationTest {
         ).execute();
 
         assertThat(deleted.getStatusCode(), equalTo(StatusCodes.OK));
+    }
+
+    @Test
+    void adminCanRenameAHookAndABadPatchLeavesItUnchanged() {
+        String collection = "hooks_update_" + System.nanoTime();
+        TenantTestUtils.seedCollection(collection, new CollectionRules("*", "*", "*", "*", "*", "owner"));
+        AdminTestUtils.AdminCookies cookies = AdminTestUtils.loginAsAdminWithDefaultTenant();
+        String base = "/api/meta/collections/" + collection + "/hooks";
+
+        TestResponse missing = AdminTestUtils.patchWithAdminCookies(
+                base + "/" + DbUtils.id(), cookies, "{\"name\":\"Nope\"}", "application/json");
+        assertThat(missing.getStatusCode(), equalTo(StatusCodes.NOT_FOUND));
+
+        TestResponse create = AdminTestUtils.postWithAdminCookies(
+                base,
+                cookies,
+                """
+                {
+                  "name": "Notify",
+                  "event": "afterCreate",
+                  "url": "https://example.com/hook",
+                  "secret": "test-signing-secret"
+                }
+                """,
+                "application/json");
+        assertThat(create.getStatusCode(), equalTo(StatusCodes.CREATED));
+        String id = extractJsonString(create.getContent(), "id");
+
+        TestResponse renamed = AdminTestUtils.patchWithAdminCookies(
+                base + "/" + id, cookies, "{\"name\":\"Renamed\"}", "application/json");
+        assertThat(renamed.getStatusCode(), equalTo(StatusCodes.OK));
+        assertThat(renamed.getContent(), containsString("\"name\":\"Renamed\""));
+        assertThat(renamed.getContent(), containsString("https://example.com/hook"));
+
+        TestResponse blocked = AdminTestUtils.patchWithAdminCookies(
+                base + "/" + id,
+                cookies,
+                "{\"forwardHeaders\":[\"Authorization\"]}",
+                "application/json");
+        assertThat(blocked.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(blocked.getContent(), containsString("cannot be forwarded"));
+
+        TestResponse traced = AdminTestUtils.patchWithAdminCookies(
+                base + "/" + id, cookies, "{\"method\":\"TRACE\"}", "application/json");
+        assertThat(traced.getStatusCode(), equalTo(StatusCodes.BAD_REQUEST));
+        assertThat(traced.getContent(), containsString("Hook method must be one of"));
+
+        TestResponse list = AdminTestUtils.getWithAdminCookies(base, cookies);
+        assertThat(list.getContent(), containsString("Renamed"));
+        assertThat(list.getContent(), containsString("https://example.com/hook"));
     }
 
     private static String extractJsonString(String json, String field) {
