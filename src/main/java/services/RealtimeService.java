@@ -434,7 +434,7 @@ public class RealtimeService {
             return List.of();
         }
 
-        List<String> normalized = new ArrayList<>();
+        List<String> normalized = new ArrayList<>(subscriptions.size());
         for (String subscription : subscriptions) {
             if (StringUtils.isBlank(subscription)) {
                 continue;

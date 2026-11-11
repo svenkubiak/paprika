@@ -7,6 +7,10 @@ final class ImageWidthParameter {
         InvalidImageWidthException(String message) {
             super(message);
         }
+
+        InvalidImageWidthException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private ImageWidthParameter() {
@@ -23,7 +27,7 @@ final class ImageWidthParameter {
             }
             return width;
         } catch (NumberFormatException e) {
-            throw new InvalidImageWidthException("width must be a positive number");
+            throw new InvalidImageWidthException("width must be a positive number", e);
         }
     }
 }

@@ -111,8 +111,9 @@ public final class FileFieldUtils {
             return reference.toMap(fileUrl(collection, recordId, field.name(), null));
         }
 
-        List<Map<String, Object>> enriched = new ArrayList<>();
-        for (FileReference reference : FileReference.listFromValue(value)) {
+        List<FileReference> references = FileReference.listFromValue(value);
+        List<Map<String, Object>> enriched = new ArrayList<>(references.size());
+        for (FileReference reference : references) {
             enriched.add(reference.toMap(fileUrl(collection, recordId, field.name(), reference.id())));
         }
         return enriched;

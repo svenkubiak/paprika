@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class RuleParser {
+    private static final String[] OPERATORS = {"!=", ">=", "<=", "=", ">", "<"};
+
     private final String input;
     private int pos;
 
@@ -173,9 +175,9 @@ public final class RuleParser {
         }
         String number = input.substring(start, pos);
         if (number.contains(".")) {
-            return Double.parseDouble(number);
+            return Double.valueOf(number);
         }
-        return Long.parseLong(number);
+        return Long.valueOf(number);
     }
 
     private String parseQuotedString() {
@@ -195,8 +197,7 @@ public final class RuleParser {
 
     private String matchOperator() {
         skipWhitespace();
-        String[] operators = {"!=", ">=", "<=", "=", ">", "<"};
-        for (String operator : operators) {
+        for (String operator : OPERATORS) {
             if (input.startsWith(operator, pos)) {
                 pos += operator.length();
                 return operator;

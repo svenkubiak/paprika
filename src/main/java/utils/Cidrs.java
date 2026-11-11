@@ -38,7 +38,7 @@ public final class Cidrs {
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException(
                         "'" + trimmed + "' is not a valid CIDR range: '" + prefixPart
-                                + "' is not a prefix length");
+                                + "' is not a prefix length", e);
             }
         }
 
@@ -48,7 +48,7 @@ public final class Cidrs {
             address = InetAddress.ofLiteral(literal);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(
-                    "'" + trimmed + "' is not a valid CIDR range: '" + literal + "' is not an IP address");
+                    "'" + trimmed + "' is not a valid CIDR range: '" + literal + "' is not an IP address", e);
         }
 
         byte[] bytes = address.getAddress();
@@ -158,7 +158,8 @@ public final class Cidrs {
             if (prefix <= bitsBefore) {
                 masked[i] = 0;
             } else {
-                masked[i] = (byte) (masked[i] & (0xFF << (8 - (prefix - bitsBefore))));
+                int mask = (0xFF << (8 - (prefix - bitsBefore))) & 0xFF;
+                masked[i] = (byte) ((masked[i] & 0xFF) & mask);
             }
         }
         return masked;

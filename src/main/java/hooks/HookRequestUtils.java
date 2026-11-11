@@ -146,7 +146,7 @@ public final class HookRequestUtils {
                 continue;
             }
 
-            List<String> values = new ArrayList<>();
+            List<String> values = new ArrayList<>(headerValues.size());
             for (String value : headerValues) {
                 values.add(value);
             }

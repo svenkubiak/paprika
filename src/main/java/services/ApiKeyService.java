@@ -354,7 +354,8 @@ public class ApiKeyService {
         try {
             return Timestamps.format(Instant.parse(expiresAt.trim()));
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("expiresAt must be an ISO-8601 instant, e.g. 2026-12-31T23:59:59Z");
+            throw new IllegalArgumentException(
+                    "expiresAt must be an ISO-8601 instant, e.g. 2026-12-31T23:59:59Z", e);
         }
     }
 

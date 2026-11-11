@@ -29,7 +29,7 @@ public final class RuleToMongoConverter {
                 if ("auth".equals(prefix)) {
                     yield auth.isAuthenticated() ? Filters.empty() : IMPOSSIBLE;
                 }
-                yield Filters.exists(fieldName(prefix, name));
+                yield Filters.exists(name);
             }
             case RuleNode.Binary(RuleNode left, String operator, RuleNode right) -> convertBinary(left, operator, right, auth);
             case RuleNode.Unary(String operator, RuleNode operand) -> convertUnary(operator, operand, auth);
@@ -198,10 +198,6 @@ public final class RuleToMongoConverter {
             return value;
         }
         return null;
-    }
-
-    private static String fieldName(String prefix, String name) {
-        return prefix == null ? name : name;
     }
 
     public static Bson combineOr(List<Bson> filters) {

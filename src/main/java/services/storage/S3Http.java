@@ -65,7 +65,7 @@ public final class S3Http implements S3Request, AutoCloseable {
                 return new S3Response(response.statusCode(), new byte[0]);
             }
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            int limit = "GET".equals(method) && key != null ? MAX_OBJECT_BYTES : MAX_CONTROL_BYTES;
+            int limit = key != null && "GET".equals(method) ? MAX_OBJECT_BYTES : MAX_CONTROL_BYTES;
             try (InputStream input = response.body()) {
                 return new S3Response(response.statusCode(), readLimited(input, limit));
             }

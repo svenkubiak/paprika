@@ -68,7 +68,7 @@ public final class DbWrites {
             write.run();
         } catch (RuntimeException e) {
             if (isDuplicateKey(e)) {
-                throw new IllegalArgumentException(message);
+                throw new IllegalArgumentException(message, e);
             }
             throw e;
         }

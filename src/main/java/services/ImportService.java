@@ -105,12 +105,12 @@ public class ImportService {
         List<Document> settings = requiredDocuments(entries, SYSTEM_SETTINGS);
         List<Document> apiKeys = systemDocuments(entries, SYSTEM_API_KEYS, version);
 
-        Map<String, TenantDefinition> definitions = new LinkedHashMap<>();
+        Map<String, TenantDefinition> definitions = LinkedHashMap.newLinkedHashMap(tenantDocuments.size());
         for (TenantDefinition tenant : parseTenantDefinitions(tenantDocuments)) {
             definitions.put(tenant.id(), tenant);
         }
 
-        List<TenantPlan> tenants = new ArrayList<>();
+        List<TenantPlan> tenants = new ArrayList<>(tenantIds.size());
         for (String tenantId : tenantIds) {
             TenantDefinition tenant = definitions.get(tenantId);
             if (tenant == null) {
@@ -132,7 +132,8 @@ public class ImportService {
         try {
             return JsonUtils.getMapper().readValue(manifestBytes, new TypeReference<>() {});
         } catch (JacksonException e) {
-            throw new IllegalArgumentException("Invalid backup: " + MANIFEST + " could not be read: " + e.getMessage());
+            throw new IllegalArgumentException(
+                    "Invalid backup: " + MANIFEST + " could not be read: " + e.getMessage(), e);
         }
     }
 
@@ -202,7 +203,8 @@ public class ImportService {
         try {
             return parseDocuments(data);
         } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Invalid backup: " + name + " could not be read: " + e.getMessage());
+            throw new IllegalArgumentException(
+                    "Invalid backup: " + name + " could not be read: " + e.getMessage(), e);
         }
     }
 
@@ -250,6 +252,7 @@ public class ImportService {
         long totalBytes = 0;
         int entryCount = 0;
 
+        byte[] chunk = new byte[READ_BUFFER_SIZE];
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipData))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
@@ -260,7 +263,6 @@ public class ImportService {
                 String name = entry.getName();
                 if (!entry.isDirectory() && !name.contains("..") && !name.startsWith("/") && !name.startsWith("\\")) {
                     ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-                    byte[] chunk = new byte[READ_BUFFER_SIZE];
                     int read;
                     while ((read = zis.read(chunk)) != -1) {
                         totalBytes += read;
@@ -452,8 +454,9 @@ public class ImportService {
     // The archive is the whole set of tenant files. A file left behind would outlive the records that referenced it.
     // A filesystem write still in progress is not listed, so it is left alone, as before.
     private void deleteFilesMissingFromArchive(TenantContext ctx, Set<String> restored, String tenantId) throws IOException {
-        List<String> doomed = new ArrayList<>();
-        for (String fileId : fileStorageService.list(tenantId)) {
+        List<String> stored = fileStorageService.list(tenantId);
+        List<String> doomed = new ArrayList<>(stored.size());
+        for (String fileId : stored) {
             if (restored.contains(fileId) || fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) {
                 continue;
             }
@@ -482,7 +485,40 @@ public class ImportService {
             List<Document> metaCollections,
             List<Document> metaHooks,
             Map<String, List<Document>> data,
-            byte[] metaCollectionsJson) {}
+            byte[] metaCollectionsJson) {
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof TenantPlan other)) {
+                return false;
+            }
+            return Objects.equals(tenant, other.tenant)
+                    && Objects.equals(metaCollections, other.metaCollections)
+                    && Objects.equals(metaHooks, other.metaHooks)
+                    && Objects.equals(data, other.data)
+                    && Arrays.equals(metaCollectionsJson, other.metaCollectionsJson);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(
+                    tenant, metaCollections, metaHooks, data, Arrays.hashCode(metaCollectionsJson));
+        }
+
+        @Override
+        public String toString() {
+            return "TenantPlan[tenant=" + tenant
+                    + ", metaCollections=" + metaCollections
+                    + ", metaHooks=" + metaHooks
+                    + ", data=" + data
+                    + ", metaCollectionsJson="
+                    + (metaCollectionsJson == null ? "null" : metaCollectionsJson.length + " bytes")
+                    + "]";
+        }
+    }
 
     private record TenantRestoreResult(int collections, int documents, int files) {}
 }

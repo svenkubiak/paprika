@@ -150,7 +150,7 @@ public class SchemaService {
     private void rejectInvalidDefinitions(TenantContext ctx, List<PlannedCollection> plan) {
         List<String> problems = new ArrayList<>();
 
-        Map<String, CollectionDefinition> incoming = new LinkedHashMap<>();
+        Map<String, CollectionDefinition> incoming = LinkedHashMap.newLinkedHashMap(plan.size());
         for (PlannedCollection planned : plan) {
             // Would otherwise collide on the unique name index after the first write.
             if (incoming.put(planned.definition().name(), planned.definition()) != null) {
@@ -167,9 +167,10 @@ public class SchemaService {
             try {
                 tenantCollections.validateDefinition(
                         planned.definition(),
-                        name -> incoming.containsKey(name)
-                                ? incoming.get(name)
-                                : tenantCollections.findDefinition(ctx, name),
+                        name -> {
+                            CollectionDefinition found = incoming.get(name);
+                            return found != null ? found : tenantCollections.findDefinition(ctx, name);
+                        },
                         resulting.values());
             } catch (RuleParseException | IllegalArgumentException e) {
                 problems.add(planned.definition().name() + ": " + e.getMessage());
@@ -250,7 +251,7 @@ public class SchemaService {
             return List.of();
         }
 
-        List<HookDefinition> withNewIds = new ArrayList<>();
+        List<HookDefinition> withNewIds = new ArrayList<>(hooks.size());
         for (HookDefinition hook : hooks) {
             withNewIds.add(new HookDefinition(
                     UUID.randomUUID().toString(),

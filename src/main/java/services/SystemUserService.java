@@ -84,6 +84,31 @@ public class SystemUserService {
     }
 
     public record Avatar(byte[] data, String contentType, String version) {
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof Avatar other)) {
+                return false;
+            }
+            return Arrays.equals(data, other.data)
+                    && Objects.equals(contentType, other.contentType)
+                    && Objects.equals(version, other.version);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(Arrays.hashCode(data), contentType, version);
+        }
+
+        @Override
+        public String toString() {
+            return "Avatar[data=" + (data == null ? "null" : data.length + " bytes")
+                    + ", contentType=" + contentType
+                    + ", version=" + version
+                    + "]";
+        }
     }
 
     private final TenantDatabaseResolver resolver;

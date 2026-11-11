@@ -14,6 +14,7 @@ import org.bson.conversions.Bson;
 import utils.FileFieldUtils;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -171,6 +172,38 @@ public class CollectionFileService {
 
         public static FileDownloadResult error() {
             return new FileDownloadResult(Status.ERROR, null, null, null, null, null);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof FileDownloadResult other)) {
+                return false;
+            }
+            return status == other.status
+                    && Arrays.equals(bytes, other.bytes)
+                    && Objects.equals(mimeType, other.mimeType)
+                    && Objects.equals(fileName, other.fileName)
+                    && Objects.equals(fileId, other.fileId)
+                    && Objects.equals(deliveredWidth, other.deliveredWidth);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(status, Arrays.hashCode(bytes), mimeType, fileName, fileId, deliveredWidth);
+        }
+
+        @Override
+        public String toString() {
+            return "FileDownloadResult[status=" + status
+                    + ", bytes=" + (bytes == null ? "null" : bytes.length + " bytes")
+                    + ", mimeType=" + mimeType
+                    + ", fileName=" + fileName
+                    + ", fileId=" + fileId
+                    + ", deliveredWidth=" + deliveredWidth
+                    + "]";
         }
     }
 

@@ -251,7 +251,7 @@ public class FileStorageService {
                 blankToEmpty(config.getString(BUCKET_KEY)),
                 blankToEmpty(config.getString(REGION_KEY)),
                 blankToEmpty(config.getString(ENDPOINT_KEY)),
-                Boolean.TRUE.equals(config.getBoolean(PATH_STYLE_KEY, false)),
+                config.getBoolean(PATH_STYLE_KEY, Boolean.FALSE),
                 blankToEmpty(config.getString(ACCESS_KEY)),
                 blankToEmpty(config.getString(SECRET_KEY)));
         settings.validate();

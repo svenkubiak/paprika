@@ -632,7 +632,7 @@ public class HookService {
                 }
             }
         } catch (UnknownHostException e) {
-            throw new IllegalArgumentException("Hook URL host cannot be resolved: " + host);
+            throw new IllegalArgumentException("Hook URL host cannot be resolved: " + host, e);
         }
     }
 

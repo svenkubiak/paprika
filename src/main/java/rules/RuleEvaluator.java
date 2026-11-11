@@ -113,7 +113,7 @@ public final class RuleEvaluator {
             return comparable.compareTo(right);
         }
         if (right instanceof Comparable comparable && right.getClass().isAssignableFrom(left.getClass())) {
-            return -comparable.compareTo(left);
+            return -Integer.signum(comparable.compareTo(left));
         }
         return left.toString().compareTo(right.toString());
     }

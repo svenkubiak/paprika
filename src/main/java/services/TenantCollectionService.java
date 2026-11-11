@@ -346,7 +346,7 @@ public class TenantCollectionService {
             return;
         }
 
-        Set<String> names = new HashSet<>();
+        Set<String> names = HashSet.newHashSet(fields.size());
         for (FieldDefinition field : fields) {
             if (field == null || field.name() == null || field.name().isBlank()) {
                 throw new IllegalArgumentException("Field name must not be empty");
@@ -384,7 +384,7 @@ public class TenantCollectionService {
         // Lists break ties on _id, so only an index ending in _id can serve a sort by another field
         availableFields.add(MONGO_ID);
 
-        Set<String> usedFields = new HashSet<>();
+        Set<String> usedFields = HashSet.newHashSet(index.fields().size());
         for (IndexField field : index.fields()) {
             if (field == null) {
                 throw new IllegalArgumentException("Index field must not be null");
@@ -416,7 +416,7 @@ public class TenantCollectionService {
     }
 
     private void validateUniqueIndexNames(List<IndexDefinition> indexes) {
-        Set<String> indexNames = new HashSet<>();
+        Set<String> indexNames = HashSet.newHashSet(indexes.size());
         for (IndexDefinition index : indexes) {
             if (!indexNames.add(index.name())) {
                 throw new IllegalArgumentException("Duplicate index name: " + index.name());

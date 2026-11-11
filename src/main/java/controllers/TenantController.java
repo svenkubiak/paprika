@@ -174,7 +174,7 @@ public class TenantController {
 
             return customFields;
         } catch (JacksonException e) {
-            throw new IllegalArgumentException("Invalid JSON body");
+            throw new IllegalArgumentException("Invalid JSON body", e);
         }
     }
 

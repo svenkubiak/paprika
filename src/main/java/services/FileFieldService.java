@@ -55,7 +55,8 @@ public class FileFieldService {
 
                 validateUploads(field, files, appends ? existing.size() : 0);
 
-                List<FileReference> references = new ArrayList<>();
+                List<FileReference> references =
+                        new ArrayList<>(files.size() + (appends ? existing.size() : 0));
                 if (appends) {
                     references.addAll(existing);
                 } else {
@@ -184,6 +185,28 @@ public class FileFieldService {
 
         static VariantDelivery variant(byte[] bytes, int width) {
             return new VariantDelivery(bytes, width);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof VariantDelivery other)) {
+                return false;
+            }
+            return Arrays.equals(bytes, other.bytes) && Objects.equals(width, other.width);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(Arrays.hashCode(bytes), width);
+        }
+
+        @Override
+        public String toString() {
+            return "VariantDelivery[bytes=" + (bytes == null ? "null" : bytes.length + " bytes")
+                    + ", width=" + width + "]";
         }
     }
 

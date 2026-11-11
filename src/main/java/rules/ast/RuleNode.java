@@ -17,7 +17,7 @@ public sealed interface RuleNode permits
         }
 
         public String fieldName() {
-            return prefix == null ? name : name;
+            return name;
         }
     }
 

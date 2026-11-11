@@ -46,6 +46,10 @@ public final class ListFilterParser {
         public InvalidFilterException(String message) {
             super(message);
         }
+
+        public InvalidFilterException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private ListFilterParser() {
@@ -148,7 +152,7 @@ public final class ListFilterParser {
         try {
             type = ListFields.resolve(raw.field(), definition);
         } catch (ListFields.UnusableFieldException e) {
-            throw invalid(raw.label(), e.getMessage());
+            throw invalid(raw.label(), e.getMessage(), e);
         }
 
         FilterOperator operator = FilterOperator.fromToken(raw.operator())
@@ -295,7 +299,7 @@ public final class ListFilterParser {
                 default -> Timestamps.normalizeDateTime(value);
             };
         } catch (DateTimeParseException e) {
-            throw invalid(raw.label(), "value for " + describe(type, raw.field()) + " is not a valid ISO value");
+            throw invalid(raw.label(), "value for " + describe(type, raw.field()) + " is not a valid ISO value", e);
         }
     }
 
@@ -314,9 +318,9 @@ public final class ListFilterParser {
         // BSON types, so a long still matches a stored int.
         try {
             if (value.indexOf('.') < 0 && value.indexOf('e') < 0 && value.indexOf('E') < 0) {
-                return Long.parseLong(value);
+                return Long.valueOf(value);
             }
-            return Double.parseDouble(value);
+            return Double.valueOf(value);
         } catch (NumberFormatException e) {
             throw invalid(raw.label(), "value for number field '" + raw.field() + "' is not a number");
         }
@@ -371,5 +375,9 @@ public final class ListFilterParser {
 
     private static InvalidFilterException invalid(String label, String problem) {
         return new InvalidFilterException(label + ": " + problem);
+    }
+
+    private static InvalidFilterException invalid(String label, String problem, Throwable cause) {
+        return new InvalidFilterException(label + ": " + problem, cause);
     }
 }

@@ -306,7 +306,8 @@ public final class RuleService {
             return false;
         }
 
-        // An update must not move a record into a group the caller does not belong to
+        // An update must not move a record into a group the caller does not belong to.
+        // containsKey, not get(): a null value clears the field and has to be checked as well.
         if (body != null && body.containsKey(recordField)) {
             return membership.inEveryGroup(MembershipResolver.valuesOf(body.get(recordField)));
         }

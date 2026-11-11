@@ -17,6 +17,10 @@ public final class ListSortParser {
         public InvalidSortException(String message) {
             super(message);
         }
+
+        public InvalidSortException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private ListSortParser() {
@@ -55,7 +59,7 @@ public final class ListSortParser {
         try {
             type = ListFields.resolve(field, definition);
         } catch (ListFields.UnusableFieldException e) {
-            throw new InvalidSortException(label + ": " + e.getMessage());
+            throw new InvalidSortException(label + ": " + e.getMessage(), e);
         }
         // JSON and file references have no meaningful order
         if (type == FieldType.JSON || type == FieldType.FILE) {

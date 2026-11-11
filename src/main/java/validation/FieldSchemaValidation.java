@@ -243,7 +243,7 @@ public final class FieldSchemaValidation {
         try {
             Pattern.compile(pattern);
         } catch (PatternSyntaxException e) {
-            throw new IllegalArgumentException("Invalid pattern: " + e.getDescription());
+            throw new IllegalArgumentException("Invalid pattern: " + e.getDescription(), e);
         }
     }
 
@@ -254,7 +254,7 @@ public final class FieldSchemaValidation {
         try {
             Timestamps.parseDate(value.trim());
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException(label + " must be an ISO date (yyyy-MM-dd)");
+            throw new IllegalArgumentException(label + " must be an ISO date (yyyy-MM-dd)", e);
         }
     }
 
@@ -265,7 +265,8 @@ public final class FieldSchemaValidation {
         try {
             Timestamps.parseTime(value.trim());
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException(label + " must be an ISO time (HH:mm or HH:mm:ss, no fractional seconds)");
+            throw new IllegalArgumentException(
+                    label + " must be an ISO time (HH:mm or HH:mm:ss, no fractional seconds)", e);
         }
     }
 
@@ -276,7 +277,7 @@ public final class FieldSchemaValidation {
         try {
             Timestamps.parseDateTime(value.trim());
         } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException(label + " must be an ISO datetime with timezone");
+            throw new IllegalArgumentException(label + " must be an ISO datetime with timezone", e);
         }
     }
 }

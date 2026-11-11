@@ -302,6 +302,31 @@ public final class MultipartSupport {
     }
 
     public record UploadedFile(String fileName, byte[] bytes, String mimeType) {
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof UploadedFile other)) {
+                return false;
+            }
+            return Objects.equals(fileName, other.fileName)
+                    && Arrays.equals(bytes, other.bytes)
+                    && Objects.equals(mimeType, other.mimeType);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(fileName, Arrays.hashCode(bytes), mimeType);
+        }
+
+        @Override
+        public String toString() {
+            return "UploadedFile[fileName=" + fileName
+                    + ", bytes=" + (bytes == null ? "null" : bytes.length + " bytes")
+                    + ", mimeType=" + mimeType
+                    + "]";
+        }
     }
 
     public record ParsedMultipart(Map<String, String> textFields, Map<String, List<UploadedFile>> uploads) {

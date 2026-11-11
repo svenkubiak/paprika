@@ -15,6 +15,8 @@ import services.SchemaService;
 import services.SchemaService.SchemaImportResult;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Objects;
 
@@ -33,7 +35,8 @@ public class MetaSchemaController {
 
         try {
             byte[] json = JsonUtils.getMapper().writerWithDefaultPrettyPrinter().writeValueAsBytes(schema);
-            String filename = "schema-" + ctx.activeTenantId() + "-" + Instant.now().toString().substring(0, 10) + ".json";
+            String filename = "schema-" + ctx.activeTenantId() + "-"
+                    + LocalDate.ofInstant(Instant.now(), ZoneOffset.UTC) + ".json";
             return Response.ok()
                     .contentType("application/json")
                     .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
