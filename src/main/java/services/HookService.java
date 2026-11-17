@@ -235,7 +235,7 @@ public class HookService {
                         0,
                         null,
                         latency,
-                        result.error()
+                        result.body()
                 );
             }
             return new HookTestResult(
@@ -511,7 +511,7 @@ public class HookService {
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
             Result result = sendRequest(ctx, hook, envelope, signature);
             if (result.status() == -1) {
-                throw new IOException(result.error());
+                throw new IOException(result.body());
             }
             httpStatus = result.status();
             HookExecutionResult execution = parseBlockingResponse(result, hook);
@@ -588,7 +588,7 @@ public class HookService {
             String signature = HookSignature.sign(hook.secret(), envelope.payload());
             Result result = sendRequest(ctx, hook, envelope, signature);
             if (result.status() == -1) {
-                throw new IOException(result.error());
+                throw new IOException(result.body());
             }
 
             boolean accepted = result.status() >= 200 && result.status() < 300;
