@@ -477,7 +477,7 @@
 		<dependency>
 			<groupId>de.svenkubiak</groupId>
 			<artifactId>simple-http</artifactId>
-			<version>4.0.0</version>
+			<version>4.0.1</version>
 		</dependency>
 	</dependencies>
 	<profiles>
