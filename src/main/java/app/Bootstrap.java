@@ -85,32 +85,38 @@ public class Bootstrap implements MangooBootstrap {
                 On.get().to("/admin/collections/{collection}/api").respondeWith("admin")
         );
 
+        // Small JSON and every GET/DELETE run on the I/O thread unless the route calls
+        // withNonBlocking(), and a blocking hook holds that thread until its timeout.
         Bind.controller(AuthController.class).withRoutes(
-                On.post().to("/api/auth/register").respondeWith("register"),
-                On.post().to("/api/auth/login").respondeWith("login"),
-                On.post().to("/api/auth/refresh").respondeWith("refresh"),
-                On.post().to("/api/auth/logout").respondeWith("logout"),
-                On.post().to("/api/auth/issue-token").respondeWith("issueToken"),
-                On.get().to("/api/auth/me").respondeWith("me"),
-                On.post().to("/api/auth/password/forgot").respondeWith("forgotPassword"),
-                On.post().to("/api/auth/password/reset").respondeWith("resetPassword"),
-                On.post().to("/api/auth/verify/request").respondeWith("requestVerification"),
-                On.post().to("/api/auth/verify/confirm").respondeWith("confirmVerification")
+                On.post().to("/api/auth/register").respondeWith("register").withNonBlocking(),
+                On.post().to("/api/auth/login").respondeWith("login").withNonBlocking(),
+                On.post().to("/api/auth/refresh").respondeWith("refresh").withNonBlocking(),
+                On.post().to("/api/auth/logout").respondeWith("logout").withNonBlocking(),
+                On.post().to("/api/auth/issue-token").respondeWith("issueToken").withNonBlocking(),
+                On.get().to("/api/auth/me").respondeWith("me").withNonBlocking(),
+                On.post().to("/api/auth/password/forgot").respondeWith("forgotPassword").withNonBlocking(),
+                On.post().to("/api/auth/password/reset").respondeWith("resetPassword").withNonBlocking(),
+                On.post().to("/api/auth/verify/request").respondeWith("requestVerification").withNonBlocking(),
+                On.post().to("/api/auth/verify/confirm").respondeWith("confirmVerification").withNonBlocking()
         );
 
+        // Small JSON and every GET/DELETE run on the I/O thread unless the route calls
+        // withNonBlocking(), and a blocking hook holds that thread until its timeout.
         Bind.controller(CollectionController.class).withRoutes(
-                On.get().to("/api/collections/{collection}").respondeWith("list"),
-                On.post().to("/api/collections/{collection}").respondeWith("create"),
-                On.get().to("/api/collections/{collection}/{id}").respondeWith("read"),
-                On.patch().to("/api/collections/{collection}/{id}").respondeWith("update"),
-                On.delete().to("/api/collections/{collection}/{id}").respondeWith("delete")
+                On.get().to("/api/collections/{collection}").respondeWith("list").withNonBlocking(),
+                On.post().to("/api/collections/{collection}").respondeWith("create").withNonBlocking(),
+                On.get().to("/api/collections/{collection}/{id}").respondeWith("read").withNonBlocking(),
+                On.patch().to("/api/collections/{collection}/{id}").respondeWith("update").withNonBlocking(),
+                On.delete().to("/api/collections/{collection}/{id}").respondeWith("delete").withNonBlocking()
         );
 
+        // Small JSON and every GET/DELETE run on the I/O thread unless the route calls
+        // withNonBlocking(), and a blocking hook holds that thread until its timeout.
         Bind.controller(CollectionFileController.class).withRoutes(
-                On.get().to("/api/collections/{collection}/{id}/files/{field}").respondeWith("download"),
-                On.get().to("/api/collections/{collection}/{id}/files/{field}/{fileId}").respondeWith("downloadWithId"),
-                On.delete().to("/api/collections/{collection}/{id}/files/{field}").respondeWith("deleteField"),
-                On.delete().to("/api/collections/{collection}/{id}/files/{field}/{fileId}").respondeWith("deleteFileById")
+                On.get().to("/api/collections/{collection}/{id}/files/{field}").respondeWith("download").withNonBlocking(),
+                On.get().to("/api/collections/{collection}/{id}/files/{field}/{fileId}").respondeWith("downloadWithId").withNonBlocking(),
+                On.delete().to("/api/collections/{collection}/{id}/files/{field}").respondeWith("deleteField").withNonBlocking(),
+                On.delete().to("/api/collections/{collection}/{id}/files/{field}/{fileId}").respondeWith("deleteFileById").withNonBlocking()
         );
 
         Bind.controller(MetaHooksController.class).withRoutes(
