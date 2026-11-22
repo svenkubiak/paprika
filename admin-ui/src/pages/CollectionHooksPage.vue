@@ -28,6 +28,7 @@ const columns = [
   { accessorKey: 'url', header: 'URL' },
   { accessorKey: 'enabled', header: 'Enabled' },
   { accessorKey: 'priority', header: 'Priority' },
+  { accessorKey: 'timeoutMs', header: 'Timeout' },
   { id: 'actions', header: '' }
 ]
 
@@ -49,6 +50,10 @@ async function loadHooks() {
   }
 }
 
+function hookTimeoutMs(hook: HookDefinition) {
+  return hook.timeoutMs ?? (hook.event.startsWith('before') ? 5000 : 30000)
+}
+
 function hookToForm(hook: HookDefinition) {
   return {
     name: hook.name,
@@ -56,7 +61,7 @@ function hookToForm(hook: HookDefinition) {
     event: hook.event,
     url: hook.url,
     method: hook.method || 'POST',
-    timeoutMs: hook.timeoutMs ?? (hook.event.startsWith('before') ? 5000 : 30000),
+    timeoutMs: hookTimeoutMs(hook),
     secret: hook.secret || '',
     enabled: hook.enabled ?? true,
     priority: hook.priority ?? 100,
@@ -240,6 +245,9 @@ await loadHooks()
         </template>
         <template #priority-cell="{ row }">
           <span class="font-mono text-sm">{{ row.original.priority ?? 100 }}</span>
+        </template>
+        <template #timeoutMs-cell="{ row }">
+          <span class="font-mono text-sm">{{ hookTimeoutMs(row.original) }} ms</span>
         </template>
         <template #actions-cell="{ row }">
           <RowActions

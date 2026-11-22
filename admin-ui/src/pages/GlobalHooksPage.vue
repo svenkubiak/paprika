@@ -35,6 +35,7 @@ const columns = [
   { accessorKey: 'url', header: 'URL' },
   { accessorKey: 'enabled', header: 'Enabled' },
   { accessorKey: 'priority', header: 'Priority' },
+  { accessorKey: 'timeoutMs', header: 'Timeout' },
   { id: 'actions', header: '' }
 ]
 
@@ -58,13 +59,17 @@ function scopeLabel(hook: HookDefinition) {
   return (hook.targetCollections || []).join(', ') || '—'
 }
 
+function hookTimeoutMs(hook: HookDefinition) {
+  return hook.timeoutMs ?? 5000
+}
+
 function hookToForm(hook: HookDefinition) {
   return {
     name: hook.name,
     description: hook.description || '',
     url: hook.url,
     method: hook.method || 'POST',
-    timeoutMs: hook.timeoutMs ?? 5000,
+    timeoutMs: hookTimeoutMs(hook),
     secret: hook.secret,
     enabled: hook.enabled !== false,
     priority: hook.priority ?? 100,
@@ -242,6 +247,9 @@ await loadHooks()
         </template>
         <template #priority-cell="{ row }">
           <span class="font-mono text-sm">{{ row.original.priority ?? 100 }}</span>
+        </template>
+        <template #timeoutMs-cell="{ row }">
+          <span class="font-mono text-sm">{{ hookTimeoutMs(row.original) }} ms</span>
         </template>
         <template #actions-cell="{ row }">
           <RowActions @edit="openEdit(row.original)" @delete="requestDelete(row.original)">
