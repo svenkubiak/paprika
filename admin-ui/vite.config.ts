@@ -217,6 +217,17 @@ export default defineConfig({
         bundlerTimings: false
       },
       output: {
+        // Vue, Reka UI and Nuxt UI otherwise land in the entry, which sits just over the 600 kB
+        // warning. Only modules already on the first load move; route chunks keep their own deps.
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor',
+              test: /node_modules/,
+              tags: ['$initial']
+            }
+          ]
+        },
         entryFileNames: 'js/[name]-[hash].js',
         chunkFileNames: 'js/[name]-[hash].js',
         assetFileNames: (assetInfo) => {
